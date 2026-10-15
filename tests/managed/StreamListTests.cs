@@ -26,6 +26,47 @@ public class StreamListTests
         Assert.Equal("Jerma985 (11,455 | 2.7h)", s.Header(Now));
     }
 
+    [Theory]
+    [InlineData(0, "0")]
+    [InlineData(676, "676")]
+    [InlineData(999, "999")]
+    [InlineData(1000, "1K")]
+    [InlineData(2447, "2.4K")]
+    [InlineData(11455, "11.4K")]
+    [InlineData(999_999, "999.9K")]
+    [InlineData(1_250_000, "1.2M")]
+    public void ViewersAreCompactLikeTwitchsSidebar(int viewers, string expected) =>
+        Assert.Equal(expected, UiFormats.CompactViewers(viewers));
+
+    [Fact]
+    public async Task FollowedStreamsCarryTheUserIdAndAvatarsComeInBatches()
+    {
+        var userRequests = new List<Uri>();
+        var http = new HttpClient(new FakeHttp(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/streams/followed"))
+                return FakeHttp.Json("""
+                    {"data":[{"user_id":"1","user_login":"a","user_name":"A","game_name":"g","title":"t","viewer_count":5,"started_at":"2026-10-14T18:00:00Z"}],
+                     "pagination":{}}
+                    """);
+            userRequests.Add(request.RequestUri);
+            var ids = System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query).GetValues("id")!;
+            var users = ids.Select(id =>
+                $$"""{"id":"{{id}}","profile_image_url":"https://static-cdn.jtvnw.net/jtv_user_pictures/{{id}}-profile_image-300x300.png"}""");
+            return FakeHttp.Json("""{"data":[""" + string.Join(",", users) + "]}");
+        }));
+        var helix = new HelixClient(http, "client", "token");
+
+        var streams = await helix.GetFollowedStreamsAsync("me", CancellationToken.None);
+        Assert.Equal("1", streams.Single().UserId);
+
+        var ids = Enumerable.Range(1, 150).Select(i => i.ToString()).ToList();
+        var images = await helix.GetProfileImagesAsync(ids, CancellationToken.None);
+        Assert.Equal(2, userRequests.Count); // 100 + 50: Helix's per-request limit
+        Assert.Equal(150, images.Count);
+        Assert.Equal("https://static-cdn.jtvnw.net/jtv_user_pictures/7-profile_image-70x70.png", images["7"].AbsoluteUri);
+    }
+
     [Fact]
     public void FavouritesSortFirstThenByViewers()
     {

@@ -10,19 +10,20 @@
         x:DataType="vm:MainViewModel"
         Title="{Binding WindowTitle}"
         Icon="avares://StreamEdge/Assets/icon.ico"
-        Width="1920" Height="480" MinWidth="960" MinHeight="240">
+        Width="1920" Height="480" MinWidth="{Binding MinWindowWidth}" MinHeight="240">
 
   <v:UltrawideLayout x:Name="Layout" ChatShare="{Binding ChatShare}" ChatOnLeft="{Binding ChatOnLeft}"
-                    VideoOnly="{Binding VideoOnly}">
+                    VideoOnly="{Binding VideoOnly}" Stacked="{Binding VideoAboveList}">
 
     <!-- ===== Chat ===== -->
-    <!-- One or more chat columns side by side, and the layer that shows
-         where a dragged tab will land. -->
+    <!-- One or more chats, side by side or stacked, and the layer that
+         shows where a dragged tab will land. -->
     <Panel x:Name="ChatPane" Background="{StaticResource SePanelBg}">
       <ItemsControl x:Name="ChatColumns" ItemsSource="{Binding Columns}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
-            <UniformGrid Rows="1" />
+            <!-- The dark ground shows only in the gaps between stacked chats. -->
+            <v:ChatSplitPanel Background="{StaticResource SeWindowBg}" />
           </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
@@ -77,11 +78,22 @@
           <Button DockPanel.Dock="Right" Content="⚙" ToolTip.Tip="Settings">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedRight">
-                <!-- Taller than a bar display: scroll rather than clip. -->
-                <ScrollViewer MaxHeight="420" HorizontalScrollBarVisibility="Disabled">
+                <!-- Taller than a bar display: scroll rather than clip. Short
+                     enough that the popup and its padding fit under the pane
+                     header on a 480-pixel screen. -->
+                <ScrollViewer MaxHeight="400" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Width="320" Spacing="8" Margin="0,0,12,0">
+                <!-- The account first: logging in is what most people open this for. -->
+                <StackPanel Spacing="8" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
+                  <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" />
+                  <v:LoginBox IsVisible="{Binding !IsSignedIn}" />
+                  <Button Content="Log out" Command="{Binding SignOutCommand}" IsVisible="{Binding IsSignedIn}" />
+                </StackPanel>
+                <Separator />
                 <TextBlock Text="Layout and startup" FontWeight="SemiBold" />
                 <CheckBox Content="Chat on the left (stream list on the right)" IsChecked="{Binding ChatOnLeft}" />
+                <CheckBox Content="Video above the stream list (4:3 screens)" IsChecked="{Binding VideoAboveList}"
+                          ToolTip.Tip="Video and stream list in one column, chat beside it" />
                 <CheckBox Content="Reopen the last tabs at startup" IsChecked="{Binding ReopenLastChannel}" />
                 <CheckBox Content="Show background tabs as picture-in-picture" IsChecked="{Binding ShowPip}" />
                 <Separator />
@@ -100,10 +112,6 @@
                 <CheckBox Content="History without an auth-token (recent-messages.robotty.de)" IsChecked="{Binding UseRecentMessages}" />
                 <Separator />
                 <StackPanel Spacing="8" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
-                  <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" />
-                  <v:LoginBox IsVisible="{Binding !IsSignedIn}" />
-                  <Button Content="Log out" Command="{Binding SignOutCommand}" IsVisible="{Binding IsSignedIn}" />
-                  <Separator />
                   <TextBlock Text="Ad-free playback (optional)" FontWeight="SemiBold" />
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}"
                              Text="Paste the auth-token cookie from a browser signed in to twitch.tv. It is stored encrypted and sent only to gql.twitch.tv when resolving a stream." />
@@ -132,17 +140,24 @@
           <!-- The login screen: shown in place of the list until signed in. -->
           <v:LoginBox DataContext="{Binding Account}" IsVisible="{Binding !IsSignedIn}" HorizontalAlignment="Center" />
         </StackPanel>
-        <ListBox x:Name="StreamList" ItemsSource="{Binding Streams.Items}" SelectedItem="{Binding Streams.Selected}"
+        <!-- Hidden when empty: it would otherwise sit over the login box and
+             take its clicks. -->
+        <ListBox x:Name="StreamList" Classes="streams" ItemsSource="{Binding Streams.Items}" SelectedItem="{Binding Streams.Selected}"
+                 IsVisible="{Binding !Streams.IsEmpty}"
                  Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-          <ListBox.Styles>
-            <Style Selector="ListBoxItem">
-              <Setter Property="Padding" Value="8,4" />
-            </Style>
-          </ListBox.Styles>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:StreamItemViewModel">
-              <StackPanel Spacing="1" Background="Transparent">
-                <StackPanel.ContextMenu>
+              <!-- As in twitch.tv's followed channels: avatar, name over
+                   game, live dot and viewers; the title is on hover. -->
+              <Grid ColumnDefinitions="Auto,*,Auto" Background="Transparent">
+                <ToolTip.Tip>
+                  <StackPanel MaxWidth="360" Spacing="2">
+                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding Uptime}" Foreground="{StaticResource SeTextDim}"
+                               FontSize="{StaticResource SeSmallFontSize}" />
+                  </StackPanel>
+                </ToolTip.Tip>
+                <Grid.ContextMenu>
                   <ContextMenu>
                     <MenuItem Header="Open" Command="{Binding OpenCommand}" />
                     <MenuItem Header="Open in new tab" Command="{Binding OpenInNewTabCommand}" />
@@ -150,23 +165,31 @@
                     <Separator />
                     <MenuItem Header="{Binding FavoriteMenuText}" Command="{Binding ToggleFavoriteCommand}" />
                   </ContextMenu>
-                </StackPanel.ContextMenu>
-                <!-- ──── ★ Name (viewers | uptime) ──── -->
-                <Grid ColumnDefinitions="*,Auto,*">
-                  <Rectangle Height="1" Fill="{StaticResource SeRule}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <!-- Click to star: starred channels sort to the top. A
-                         button, so clicking it doesn't also open the channel. -->
-                    <Button Classes="star" Classes.on="{Binding IsFavorite}" Content="{Binding FavoriteGlyph}"
-                            Command="{Binding ToggleFavoriteCommand}" ToolTip.Tip="{Binding FavoriteMenuText}" />
-                    <TextBlock Text="{Binding Header}" FontWeight="SemiBold" Foreground="{StaticResource SeText}"
-                               VerticalAlignment="Center" />
-                  </StackPanel>
-                  <Rectangle Grid.Column="2" Height="1" Fill="{StaticResource SeRule}" VerticalAlignment="Center" Margin="6,0,0,0" />
-                </Grid>
-                <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="{StaticResource SeText}" />
-                <TextBlock Text="{Binding Game}" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}" />
-              </StackPanel>
+                </Grid.ContextMenu>
+                <!-- The initial shows until the avatar loads, or if there is none. -->
+                <Panel Classes="avatar">
+                  <Border Classes="avatarPlaceholder">
+                    <TextBlock Text="{Binding Initial}" />
+                  </Border>
+                  <em:RemoteImage Source="{Binding ProfileImage}" Stretch="UniformToFill">
+                    <em:RemoteImage.Clip>
+                      <EllipseGeometry Rect="0,0,30,30" />
+                    </em:RemoteImage.Clip>
+                  </em:RemoteImage>
+                </Panel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,6,0">
+                  <TextBlock Classes="streamName" Text="{Binding DisplayName}" />
+                  <TextBlock Classes="streamGame" Text="{Binding Game}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Top" Margin="0,1,0,0">
+                  <!-- Click to star: starred channels sort to the top. A
+                       button, so clicking it doesn't also open the channel. -->
+                  <Button Classes="star" Classes.on="{Binding IsFavorite}" Content="{Binding FavoriteGlyph}"
+                          Command="{Binding ToggleFavoriteCommand}" ToolTip.Tip="{Binding FavoriteMenuText}" />
+                  <Ellipse Classes="liveDot" />
+                  <TextBlock Classes="streamViewers" Text="{Binding ViewersText}" />
+                </StackPanel>
+              </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>

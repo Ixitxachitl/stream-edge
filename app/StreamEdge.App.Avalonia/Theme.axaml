@@ -128,7 +128,10 @@
     <Setter Property="Padding" Value="8,3" />
     <Setter Property="MinHeight" Value="24" />
   </Style>
-  <Style Selector="Border.paneHeader TextBlock">
+  <!-- Child selectors, not descendant: a header button's flyout is a
+       logical descendant of the header too, and these would shrink
+       everything in it (the login button ended up 20 pixels tall). -->
+  <Style Selector="Border.paneHeader > DockPanel > TextBlock, Border.paneHeader > DockPanel > StackPanel > TextBlock">
     <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
     <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
     <Setter Property="VerticalAlignment" Value="Center" />
@@ -347,7 +350,89 @@
     <Setter Property="Foreground" Value="{StaticResource SeFavorite}" />
   </Style>
 
-  <Style Selector="Border.paneHeader Button">
+  <!-- Users in chat, over a chat column. -->
+  <Style Selector="Border.chattersHeader">
+    <Setter Property="Background" Value="{StaticResource SeHeaderBg}" />
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="MinHeight" Value="28" />
+  </Style>
+  <Style Selector="Button.chattersTool">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="8,2" />
+    <Setter Property="Margin" Value="2,0,0,0" />
+  </Style>
+  <Style Selector="TextBlock.chattersNote">
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+  </Style>
+  <Style Selector="ListBox.chatters ListBoxItem">
+    <Setter Property="Padding" Value="10,3" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="ListBox.chatters ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="TextBlock.chattersSection">
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="0,8,0,2" />
+  </Style>
+  <Style Selector="TextBlock.chatterName">
+    <Setter Property="Foreground" Value="{StaticResource SeText}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <!-- Stream list rows, after twitch.tv's followed channels sidebar. -->
+  <Style Selector="ListBox.streams ListBoxItem">
+    <Setter Property="Padding" Value="10,5" />
+  </Style>
+  <Style Selector="ListBox.streams Panel.avatar">
+    <Setter Property="Width" Value="30" />
+    <Setter Property="Height" Value="30" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ListBox.streams Border.avatarPlaceholder">
+    <Setter Property="Background" Value="{StaticResource SeRule}" />
+    <Setter Property="CornerRadius" Value="15" />
+  </Style>
+  <Style Selector="ListBox.streams Border.avatarPlaceholder TextBlock">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+  </Style>
+  <Style Selector="ListBox.streams TextBlock.streamName">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource SeText}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="ListBox.streams TextBlock.streamGame">
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="ListBox.streams TextBlock.streamViewers">
+    <Setter Property="Foreground" Value="{StaticResource SeText}" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- twitch.tv's live red. -->
+  <Style Selector="ListBox.streams Ellipse.liveDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Fill" Value="#EB0400" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- Stars stay out of the way: shown when on, or over the row. -->
+  <Style Selector="ListBox.streams Button.star">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="ListBox.streams Button.star.on, ListBox.streams ListBoxItem:pointerover Button.star">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <Style Selector="Border.paneHeader > DockPanel > Button, Border.paneHeader > DockPanel > StackPanel > Button">
     <Setter Property="Padding" Value="6,0" />
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="Height" Value="20" />

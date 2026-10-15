@@ -138,12 +138,17 @@ public sealed partial class AccountViewModel : ObservableObject
     /// before they were requested don't).</summary>
     public bool CanModerate { get; private set; }
 
+    /// <summary>The token may read the full viewer list where the user is a mod.</summary>
+    public bool CanReadChatters { get; private set; }
+
     private void NoteScopes(TwitchAuth.Identity identity)
     {
         CanUseOwnEmotes = identity.Scopes?.Contains(TwitchAuth.EmotesScope) == true;
         OnPropertyChanged(nameof(CanUseOwnEmotes));
         CanModerate = identity.Scopes?.Contains(TwitchAuth.ModerationScope) == true;
         OnPropertyChanged(nameof(CanModerate));
+        CanReadChatters = identity.Scopes?.Contains(TwitchAuth.ChattersScope) == true;
+        OnPropertyChanged(nameof(CanReadChatters));
     }
 
     public async Task RestoreAsync(CancellationToken ct)

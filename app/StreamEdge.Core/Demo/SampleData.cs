@@ -32,6 +32,10 @@ public static class SampleData
         ];
     }
 
+    /// <summary>People in the demo chat who haven't said anything (IRC NAMES).</summary>
+    public static IReadOnlyList<string> Lurkers { get; } =
+        ["quietkoala", "pixel_pancake", "lurkmaster9000", "sleepyotter", "moss_and_mist", "bytebard"];
+
     public static IReadOnlyList<ChatMessage> Chat(DateTimeOffset now)
     {
         var t = now - TimeSpan.FromMinutes(10);

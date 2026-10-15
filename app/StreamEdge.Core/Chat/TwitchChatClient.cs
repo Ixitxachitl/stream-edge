@@ -36,6 +36,10 @@ public sealed class TwitchChatClient : IAsyncDisposable
     /// <summary>CLEARMSG / CLEARCHAT: lines to remove from the view.</summary>
     public event Action<ChatModeration>? ModerationReceived;
 
+    /// <summary>A channel's NAMES list on joining: (channel, logins). Twitch
+    /// only sends names for chats under about a thousand people.</summary>
+    public event Action<string, IReadOnlyList<string>>? NamesReceived;
+
     /// <summary>USERSTATE / GLOBALUSERSTATE: how we appear (badges, colour).</summary>
     public event Action<ChatUserState>? UserStateReceived;
 
@@ -164,6 +168,12 @@ public sealed class TwitchChatClient : IAsyncDisposable
             case "CLEARMSG" or "CLEARCHAT":
                 if (ChatModeration.FromIrc(irc) is { } moderation)
                     ModerationReceived?.Invoke(moderation);
+                return;
+            case "353":
+                // NAMES: ":tmi 353 me = #channel :a b c", who was already here.
+                if (irc.Params.Count >= 3)
+                    NamesReceived?.Invoke(irc.Params[^2].TrimStart('#'),
+                        (irc.Trailing ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
                 return;
         }
         // Our own JOIN/PART echoes are noise.

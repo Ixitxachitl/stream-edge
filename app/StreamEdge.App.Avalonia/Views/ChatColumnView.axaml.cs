@@ -38,6 +38,7 @@ public partial class ChatColumnView : UserControl
         PointsButton.Click += (_, _) => _column?.Main.RefreshPoints();
         RedeemButton.Click += (_, _) => _column?.Main.RedeemOnTwitchCommand.Execute(null);
         ChatScroll.ScrollChanged += OnChatScrolled;
+        UsersInChatItem.Click += (_, _) => { if (_column is { } c) c.Main.ShowChatters(c); };
         // What the chat box can draw and complete: emotes the user can send
         // in the channel this column shows.
         ChatInput.EmoteLookup = code => _column is { } c ? c.Main.Services.SendableEmote(code, c.Selected?.RoomId)?.ImageUrl : null;

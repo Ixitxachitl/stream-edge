@@ -34,7 +34,16 @@ public sealed partial class ChatColumnViewModel : ObservableObject
     {
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
+        // The viewer list is the old channel's.
+        Chatters = null;
     }
+
+    /// <summary>"Users in chat", open over this column's chat; null when closed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsChatters))]
+    private ChatterListViewModel? _chatters;
+
+    public bool ShowsChatters => Chatters is not null;
 
     /// <summary>The column the chat box, emote menu and mod menu act on: the
     /// last one clicked or typed in.</summary>
@@ -46,8 +55,13 @@ public sealed partial class ChatColumnViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasFront;
 
-    /// <summary>The rightmost column: the PIP switch stays at the top right
-    /// of the chat pane, in its tab strip.</summary>
+    /// <summary>Sits under the chat before it, in the same column, rather
+    /// than beside it.</summary>
+    [ObservableProperty]
+    private bool _stacksBelow;
+
+    /// <summary>The top chat of the rightmost column: the PIP switch stays
+    /// at the top right of the chat pane, in its tab strip.</summary>
     [ObservableProperty]
     private bool _isLast;
 

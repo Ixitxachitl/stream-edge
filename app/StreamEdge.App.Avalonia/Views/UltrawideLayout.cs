@@ -21,7 +21,12 @@ namespace StreamEdge.AvaloniaApp.Views;
 /// <remarks>Children: chat, player, list (always in that order, whichever
 /// side chat is drawn on), then two <see cref="PaneGrip"/>s, left then right.
 /// Only when the window is too narrow to give both sides
-/// <see cref="MinSideWidth"/> does the player shrink (and letterbox).</remarks>
+/// <see cref="MinSideWidth"/> does the player shrink (and letterbox).
+///
+/// <see cref="Stacked"/> is the arrangement for 4:3 and other squarish
+/// screens: the player sits above the list in one column, 16:9 at the
+/// column's width, with chat beside the column. Then there is one grip, and
+/// dragging it moves the column edge, so the video grows or shrinks with it.</remarks>
 public sealed class UltrawideLayout : Panel
 {
     public static readonly StyledProperty<double> PlayerAspectProperty =
@@ -49,10 +54,14 @@ public sealed class UltrawideLayout : Panel
     public static readonly StyledProperty<bool> VideoOnlyProperty =
         AvaloniaProperty.Register<UltrawideLayout, bool>(nameof(VideoOnly));
 
+    /// <summary>Player above the list, chat beside them (4:3 screens).</summary>
+    public static readonly StyledProperty<bool> StackedProperty =
+        AvaloniaProperty.Register<UltrawideLayout, bool>(nameof(Stacked));
+
     static UltrawideLayout()
     {
         AffectsMeasure<UltrawideLayout>(PlayerAspectProperty, MinSideWidthProperty,
-            ChatShareProperty, GripWidthProperty, ShowPlayerProperty, VideoOnlyProperty);
+            ChatShareProperty, GripWidthProperty, ShowPlayerProperty, VideoOnlyProperty, StackedProperty);
         AffectsArrange<UltrawideLayout>(ChatOnLeftProperty);
     }
 
@@ -63,6 +72,7 @@ public sealed class UltrawideLayout : Panel
     public bool ShowPlayer { get => GetValue(ShowPlayerProperty); set => SetValue(ShowPlayerProperty, value); }
     public bool ChatOnLeft { get => GetValue(ChatOnLeftProperty); set => SetValue(ChatOnLeftProperty, value); }
     public bool VideoOnly { get => GetValue(VideoOnlyProperty); set => SetValue(VideoOnlyProperty, value); }
+    public bool Stacked { get => GetValue(StackedProperty); set => SetValue(StackedProperty, value); }
 
     public readonly record struct Input(double Aspect, double MinSide, double ChatShare, bool ShowPlayer, double Grip);
 
@@ -88,6 +98,28 @@ public sealed class UltrawideLayout : Panel
         return new Widths(chat, player, sides - chat);
     }
 
+    /// <summary>Pane sizes in the <see cref="Stacked"/> arrangement: chat's
+    /// width, the player-and-list column's width, and the player's height
+    /// (the list gets the rest of the column).</summary>
+    public readonly record struct Column(double Chat, double Width, double PlayerHeight);
+
+    /// <summary>The <see cref="Stacked"/> split, one grip excluded. Here
+    /// <see cref="Input.ChatShare"/> is chat's share of the whole width.
+    /// Public so tests can check the arithmetic without rendering.</summary>
+    public static Column Stack(Size size, Input p)
+    {
+        var avail = Math.Max(0, size.Width - p.Grip);
+        var chat = Math.Round(avail * p.ChatShare);
+        if (avail >= 2 * p.MinSide) chat = Math.Clamp(chat, p.MinSide, avail - p.MinSide);
+        var column = avail - chat;
+        // 16:9 at the column's width, but never so tall that the list below
+        // gets less than the minimum; then the video letterboxes instead.
+        var player = p.ShowPlayer && double.IsFinite(size.Height)
+            ? Math.Floor(Math.Max(0, Math.Min(column / p.Aspect, size.Height - p.MinSide)))
+            : 0;
+        return new Column(chat, column, player);
+    }
+
     private Input Current() => new(PlayerAspect, MinSideWidth, ChatShare, ShowPlayer, GripWidth);
 
     private IEnumerable<PaneGrip> Grips => Children.OfType<PaneGrip>();
@@ -99,6 +131,19 @@ public sealed class UltrawideLayout : Panel
             for (var i = 0; i < Children.Count; i++) Children[i].Measure(i == 1 ? availableSize : default);
             return new Size(double.IsFinite(availableSize.Width) ? availableSize.Width : 0,
                 double.IsFinite(availableSize.Height) ? availableSize.Height : 0);
+        }
+        if (Stacked)
+        {
+            var panel = new Size(double.IsFinite(availableSize.Width) ? availableSize.Width : 2 * MinSideWidth + GripWidth,
+                double.IsFinite(availableSize.Height) ? availableSize.Height : 0);
+            var c = Stack(panel, Current());
+            Size[] sizes =
+            [
+                new(c.Chat, panel.Height), new(c.Width, c.PlayerHeight), new(c.Width, panel.Height - c.PlayerHeight),
+                new(GripWidth, panel.Height), default,
+            ];
+            for (var i = 0; i < Children.Count; i++) Children[i].Measure(i < sizes.Length ? sizes[i] : default);
+            return panel;
         }
         // Infinite width (inside a ScrollViewer, say) has no sensible split;
         // fall back to the player at its natural width plus two minimum sides.
@@ -118,6 +163,11 @@ public sealed class UltrawideLayout : Panel
         if (VideoOnly)
         {
             for (var i = 0; i < Children.Count; i++) Children[i].Arrange(i == 1 ? new Rect(finalSize) : default);
+            return finalSize;
+        }
+        if (Stacked)
+        {
+            ArrangeStacked(finalSize);
             return finalSize;
         }
         var w = Split(finalSize, Current());
@@ -141,11 +191,31 @@ public sealed class UltrawideLayout : Panel
         return finalSize;
     }
 
+    /// <summary>Left to right: column, grip, chat (or chat, grip, column);
+    /// the second grip isn't used.</summary>
+    private void ArrangeStacked(Size finalSize)
+    {
+        var c = Stack(finalSize, Current());
+        var columnX = ChatOnLeft ? c.Chat + GripWidth : 0;
+        var chatX = ChatOnLeft ? 0 : c.Width + GripWidth;
+        var h = finalSize.Height;
+        Rect[] rects =
+        [
+            new(chatX, 0, c.Chat, h),
+            new(columnX, 0, c.Width, c.PlayerHeight),
+            new(columnX, c.PlayerHeight, c.Width, h - c.PlayerHeight),
+            new(ChatOnLeft ? c.Chat : c.Width, 0, GripWidth, h),
+            default,
+        ];
+        for (var i = 0; i < Children.Count; i++) Children[i].Arrange(i < rects.Length ? rects[i] : default);
+    }
+
     // ----- Dragging ---------------------------------------------------------
 
     private bool _dragging;
     private double _dragStartX;
     private Widths _dragStartWidths;
+    private Column _dragStartColumn;
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -175,6 +245,7 @@ public sealed class UltrawideLayout : Panel
         _dragging = true;
         _dragStartX = e.GetPosition(this).X;
         _dragStartWidths = Split(Bounds.Size, Current());
+        _dragStartColumn = Stack(Bounds.Size, Current());
         e.Pointer.Capture(grip);
         e.Handled = true;
     }
@@ -197,15 +268,32 @@ public sealed class UltrawideLayout : Panel
     /// <summary>Slides the player <paramref name="dx"/> pixels right (negative:
     /// left) from where the drag started. Either grip does the same thing: the
     /// player's size is fixed, so the left side grows by what the right side
-    /// loses. Public for tests.</summary>
+    /// loses. <see cref="Stacked"/>, it moves the edge between the column and
+    /// chat instead, resizing the video. Public for tests.</summary>
     public void Drag(double dx)
     {
+        if (Stacked)
+        {
+            DragStacked(dx);
+            return;
+        }
         var start = _dragging ? _dragStartWidths : Split(Bounds.Size, Current());
         if (start.Sides <= 0) return;
         var left = (ChatOnLeft ? start.Chat : start.List) + dx;
         if (start.Sides >= 2 * MinSideWidth) left = Math.Clamp(left, MinSideWidth, start.Sides - MinSideWidth);
         var chat = ChatOnLeft ? left : start.Sides - left;
         SetCurrentValue(ChatShareProperty, chat / start.Sides);
+    }
+
+    private void DragStacked(double dx)
+    {
+        var start = _dragging ? _dragStartColumn : Stack(Bounds.Size, Current());
+        var avail = start.Chat + start.Width;
+        if (avail <= 0) return;
+        var left = (ChatOnLeft ? start.Chat : start.Width) + dx;
+        if (avail >= 2 * MinSideWidth) left = Math.Clamp(left, MinSideWidth, avail - MinSideWidth);
+        var chat = ChatOnLeft ? left : avail - left;
+        SetCurrentValue(ChatShareProperty, chat / avail);
     }
 
     /// <summary>Back to an even split.</summary>

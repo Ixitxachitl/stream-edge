@@ -1,0 +1,40 @@
+<!-- "Users in chat", over a chat column like twitch.tv's viewer list:
+     search, then sections. A name opens its user card. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
+             xmlns:chat="using:StreamEdge.Chat"
+             x:Class="StreamEdge.AvaloniaApp.Views.ChatterListView"
+             x:DataType="vm:ChatterListViewModel">
+  <DockPanel Background="{StaticResource SePanelBg}">
+    <Border DockPanel.Dock="Top" Classes="chattersHeader">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Classes="chattersTool" Content="✕" ToolTip.Tip="Close"
+                Command="{Binding CloseCommand}" />
+        <Button DockPanel.Dock="Right" Classes="chattersTool" Content="⟳" ToolTip.Tip="Refresh"
+                Command="{Binding RefreshCommand}" />
+        <TextBlock Text="Users in chat" FontWeight="SemiBold" VerticalAlignment="Center"
+                   Foreground="{StaticResource SeText}" />
+      </DockPanel>
+    </Border>
+    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="8,6,8,4">
+      <TextBox x:Name="SearchBox" Text="{Binding Search}" PlaceholderText="Filter" />
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" Classes="chattersNote" />
+        <TextBlock Text="{Binding Note}" Classes="chattersNote" TextWrapping="Wrap" Margin="0,0,8,0"
+                   IsVisible="{Binding Note, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </DockPanel>
+    </StackPanel>
+    <ListBox x:Name="ChatterItems" Classes="chatters" ItemsSource="{Binding Items}" Background="Transparent"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListBox.DataTemplates>
+        <DataTemplate DataType="vm:ChatterSection">
+          <TextBlock Classes="chattersSection" Text="{Binding Title}" />
+        </DataTemplate>
+        <DataTemplate DataType="chat:Chatter">
+          <TextBlock Classes="chatterName" Text="{Binding DisplayName}" />
+        </DataTemplate>
+      </ListBox.DataTemplates>
+    </ListBox>
+  </DockPanel>
+</UserControl>

@@ -182,6 +182,83 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void StackingPutsAChatAboveOrBelowAnotherAndIsRemembered() => Ui(() =>
+    {
+        var vm = Demo(out var settings);
+        var (ninten, vine, jerma) = (vm.FrontTab!, Tab(vm, "vinesauce"), Tab(vm, "jerma985"));
+
+        vm.MoveTabToStack(vine, vm.Columns[0], below: true);
+        Assert.Equal([["nintendope503", "jerma985"], ["vinesauce"]], vm.Columns.Select(Logins));
+        Assert.Equal([false, true], vm.Columns.Select(c => c.StacksBelow));
+        Assert.Equal(1, vm.VisibleColumnCount);
+        Assert.Same(ninten, vm.FrontTab); // stacking doesn't touch the video
+
+        vm.MoveTabToStack(jerma, vm.Columns[0], below: false);
+        Assert.Equal([["jerma985"], ["nintendope503"], ["vinesauce"]], vm.Columns.Select(Logins));
+        Assert.Equal([false, true, true], vm.Columns.Select(c => c.StacksBelow));
+        Assert.Equal([false, true, true], settings.ChatColumns.Select(c => c.Below));
+        // The PIP switch stays in the top chat.
+        Assert.True(vm.Columns[0].IsLast);
+
+        // The top chat leaving its column: the one under it heads it now.
+        vm.MoveTabToNewColumn(jerma, 3);
+        Assert.Equal([["nintendope503"], ["vinesauce"], ["jerma985"]], vm.Columns.Select(Logins));
+        Assert.Equal([false, true, false], vm.Columns.Select(c => c.StacksBelow));
+        Assert.Equal(2, vm.VisibleColumnCount);
+        Assert.True(vm.Columns[2].IsLast);
+
+        // A chat alone in its spot can't stack onto itself or where it already is.
+        Assert.False(vm.CanStack(vine, vm.Columns[1], below: true));
+        Assert.False(vm.CanStack(vine, vm.Columns[0], below: true));
+        Assert.True(vm.CanStack(vine, vm.Columns[0], below: false));
+    });
+
+    [Fact]
+    public void TopAndBottomEdgesStackAndTheChatsShareTheHeight() => Ui(() =>
+    {
+        // A 4:3 screen, video above the list: a tall chat pane, where
+        // stacking pays off. (Three across at 1080p leaves chat 180 px wide.)
+        var vm = Demo(out var settings);
+        settings.VideoAboveList = true;
+        var window = new MainWindow { DataContext = vm, Width = 1024, Height = 768 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var pane = window.FindControl<Control>("ChatPane")!;
+        var (w, h) = (pane.Bounds.Width, pane.Bounds.Height);
+        var vine = Tab(vm, "vinesauce");
+
+        var bottom = window.DropTargetAt(vine, new Point(w / 2, h - 20))!;
+        Assert.True(bottom.StackBelow);
+        Assert.False(bottom.NewColumn);
+        Assert.False(window.DropTargetAt(vine, new Point(w / 2, 80))!.StackBelow);
+        // The sides still make columns.
+        Assert.True(window.DropTargetAt(vine, new Point(w - 10, h / 2))!.NewColumn);
+
+        vm.MoveTabToStack(vine, bottom.Column!, below: true);
+        Dispatcher.UIThread.RunJobs();
+        var views = window.GetVisualDescendants().OfType<ChatColumnView>().ToList();
+        Assert.Equal(2, views.Count);
+        Rect InPane(Control c) => new(c.TranslatePoint(default, pane)!.Value, c.Bounds.Size);
+        var (top, under) = (InPane(views[0]), InPane(views[1]));
+        Assert.Equal(top.X, under.X);
+        Assert.Equal(w, top.Width);
+        Assert.InRange(Math.Abs(top.Height - under.Height), 0, 1); // whole pixels: an odd one goes below
+        Assert.True(under.Y > top.Bottom); // a gap between them
+        Assert.Equal(h, under.Bottom, 0);
+
+        // Over the lower chat's left edge: a new column left of the whole stack.
+        var left = window.DropTargetAt(Tab(vm, "jerma985"), new Point(10, h * 0.75))!;
+        Assert.True(left.NewColumn);
+        Assert.Equal(0, left.Index);
+
+        if (Environment.GetEnvironmentVariable("STREAMEDGE_SNAPSHOT") is { Length: > 0 } path)
+#pragma warning disable CS0618
+            window.CaptureRenderedFrame()!.Save(path.Replace(".png", "-stacked.png"));
+#pragma warning restore CS0618
+        window.Close();
+    });
+
+    [Fact]
     public void DraggingATabWithTheMouseSplitsItOffAndAClickStillSelects() => Ui(() =>
     {
         var vm = Demo(out _);

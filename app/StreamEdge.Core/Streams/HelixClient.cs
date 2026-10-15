@@ -15,6 +15,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
     internal sealed record Pagination([property: JsonPropertyName("cursor")] string? Cursor);
 
     internal sealed record HelixStream(
+        [property: JsonPropertyName("user_id")] string? UserId,
         [property: JsonPropertyName("user_login")] string UserLogin,
         [property: JsonPropertyName("user_name")] string UserName,
         [property: JsonPropertyName("game_name")] string GameName,
@@ -23,7 +24,46 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         [property: JsonPropertyName("started_at")] DateTimeOffset StartedAt)
     {
         public LiveStream ToLiveStream() =>
-            new(UserLogin, UserName, Title, GameName, ViewerCount, StartedAt);
+            new(UserLogin, UserName, Title, GameName, ViewerCount, StartedAt, UserId: UserId);
+    }
+
+    internal sealed record UsersPage([property: JsonPropertyName("data")] List<HelixUser> Data);
+
+    internal sealed record HelixUser(
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("profile_image_url")] string? ProfileImageUrl);
+
+    /// <summary>Helix takes at most this many ids per "Get Users" request.</summary>
+    private const int UsersPerRequest = 100;
+
+    /// <summary>Avatars for these user ids, by id; users without one are left
+    /// out. The list shows them at 30 pixels, so this asks for Twitch's 70×70
+    /// size rather than the 300×300 the API returns.</summary>
+    public async Task<IReadOnlyDictionary<string, Uri>> GetProfileImagesAsync(
+        IReadOnlyCollection<string> userIds, CancellationToken ct)
+    {
+        var images = new Dictionary<string, Uri>();
+        foreach (var batch in userIds.Distinct().Chunk(UsersPerRequest))
+        {
+            var url = "https://api.twitch.tv/helix/users?" + string.Join("&", batch.Select(id => "id=" + Uri.EscapeDataString(id)));
+            var page = await GetAsync<UsersPage>(url, ct).ConfigureAwait(false);
+            foreach (var user in page?.Data ?? [])
+                if (ParseProfileImage(user.ProfileImageUrl) is { } image) images[user.Id] = image;
+        }
+        return images;
+    }
+
+    internal static Uri? ParseProfileImage(string? url) =>
+        Uri.TryCreate(url?.Replace("-300x300.", "-70x70."), UriKind.Absolute, out var uri) ? uri : null;
+
+    private async Task<T?> GetAsync<T>(string url, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("Client-Id", clientId);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<T>(ct).ConfigureAwait(false);
     }
 
     /// <summary>Every live channel the user follows (all pages).</summary>
@@ -36,12 +76,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         {
             var url = $"https://api.twitch.tv/helix/streams/followed?user_id={Uri.EscapeDataString(userId)}&first=100"
                       + (cursor is null ? "" : "&after=" + Uri.EscapeDataString(cursor));
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("Client-Id", clientId);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            var page = await response.Content.ReadFromJsonAsync<StreamsPage>(ct).ConfigureAwait(false);
+            var page = await GetAsync<StreamsPage>(url, ct).ConfigureAwait(false);
             if (page is null) break;
             streams.AddRange(page.Data.Select(s => s.ToLiveStream()));
             cursor = page.Pagination?.Cursor;

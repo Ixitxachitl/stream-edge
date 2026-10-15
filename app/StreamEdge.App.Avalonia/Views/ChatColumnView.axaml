@@ -212,6 +212,16 @@
         <!-- Emotes show as emotes while typing; Tab completes them. -->
         <em:EmoteTextBox x:Name="ChatInput" Text="{Binding Chat.Draft}" IsEnabled="{Binding Chat.CanSend}"
                          PlaceholderText="{Binding Chat.Placeholder}" MinHeight="28" Padding="6,4" />
+        <!-- Signed out, the chat box is a way in rather than a dead end. -->
+        <Button x:Name="ChatLogin" Classes="twitch" Content="Log in to chat" Command="{Binding Main.Account.SignInCommand}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" VerticalContentAlignment="Center" Padding="6,4">
+          <Button.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.And}">
+              <Binding Path="!Main.Account.IsSignedIn" />
+              <Binding Path="!Main.Account.IsPending" />
+            </MultiBinding>
+          </Button.IsVisible>
+        </Button>
         <!-- Matching emotes, above the chat box like twitch.tv's. -->
         <Popup x:Name="SuggestionPopup" PlacementTarget="{Binding #ChatInput}" Placement="TopEdgeAlignedLeft"
                IsOpen="{Binding #ChatInput.IsSuggesting}" IsLightDismissEnabled="False">
@@ -232,7 +242,13 @@
         </Popup>
       </Panel>
     </DockPanel>
+    <Panel>
     <ScrollViewer x:Name="ChatScroll" HorizontalScrollBarVisibility="Disabled">
+      <ScrollViewer.ContextMenu>
+        <ContextMenu>
+          <MenuItem x:Name="UsersInChatItem" Header="Users in chat" IsEnabled="{Binding HasChannel}" />
+        </ContextMenu>
+      </ScrollViewer.ContextMenu>
       <ItemsControl x:Name="ChatItems" ItemsSource="{Binding Chat.Lines}">
         <ItemsControl.Styles>
           <!-- As on twitch.tv: no zebra rows, a faint highlight under the pointer. -->
@@ -247,5 +263,10 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
     </ScrollViewer>
+    <!-- Right-click → Users in chat: covers the lines, as on twitch.tv. -->
+    <Panel IsVisible="{Binding ShowsChatters}">
+      <v:ChatterListView x:Name="Chatters" DataContext="{Binding Chatters}" />
+    </Panel>
+    </Panel>
   </DockPanel>
 </UserControl>

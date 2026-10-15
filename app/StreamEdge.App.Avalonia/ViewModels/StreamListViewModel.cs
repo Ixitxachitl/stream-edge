@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StreamEdge.Streams;
+using StreamEdge.Ui;
 
 namespace StreamEdge.AvaloniaApp.ViewModels;
 
@@ -27,13 +28,22 @@ public sealed partial class StreamItemViewModel : ObservableObject
     {
         Stream = stream;
         _header = stream.Header(now);
+        _uptime = "Live for " + UiFormats.Uptime(stream.Uptime(now));
         _toggleFavorite = toggleFavorite;
         _open = open;
     }
 
     public LiveStream Stream { get; }
     public string Title => Stream.Title;
-    public string Game => "(" + Stream.Game + ")";
+    public string Game => Stream.Game;
+    public string DisplayName => Stream.DisplayName;
+    public Uri? ProfileImage => Stream.ProfileImage;
+
+    /// <summary>Shown in the avatar's place until it loads, or if there is none.</summary>
+    public string Initial => DisplayName.Length > 0 ? char.ToUpperInvariant(DisplayName[0]).ToString() : "?";
+
+    /// <summary>"11.4K", as twitch.tv's sidebar has it.</summary>
+    public string ViewersText => UiFormats.CompactViewers(Stream.Viewers);
     public bool IsFavorite => Stream.IsFavorite;
     public string FavoriteGlyph => IsFavorite ? "★" : "☆";
     public string FavoriteMenuText => IsFavorite ? "Unstar" : "Star (keep at top)";
@@ -41,6 +51,10 @@ public sealed partial class StreamItemViewModel : ObservableObject
     /// <summary>"Name (viewers | uptime)": refreshed by the clock tick.</summary>
     [ObservableProperty]
     private string _header;
+
+    /// <summary>"Live for 2.4h", for the row's tooltip; refreshed by the clock tick.</summary>
+    [ObservableProperty]
+    private string _uptime;
 
     [RelayCommand]
     private void ToggleFavorite() => _toggleFavorite(this);
@@ -54,7 +68,11 @@ public sealed partial class StreamItemViewModel : ObservableObject
     [RelayCommand]
     private void OpenInBackground() => _open(Stream.Login, OpenMode.Background);
 
-    public void Tick(DateTimeOffset now) => Header = Stream.Header(now);
+    public void Tick(DateTimeOffset now)
+    {
+        Header = Stream.Header(now);
+        Uptime = "Live for " + UiFormats.Uptime(Stream.Uptime(now));
+    }
 }
 
 public sealed partial class StreamListViewModel : ObservableObject

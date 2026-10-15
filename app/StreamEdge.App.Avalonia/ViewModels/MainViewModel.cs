@@ -54,10 +54,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Services.MyEmotesChanged += () => RenderChats(null);
         EmoteMenu = new EmoteMenuViewModel(Services, () => ActiveTab, Account);
         ModMenu = new ModMenuViewModel(() => ActiveTab, Moderation);
-        Columns.CollectionChanged += (_, _) =>
-        {
-            for (var i = 0; i < Columns.Count; i++) Columns[i].IsLast = i == Columns.Count - 1;
-        };
+        Columns.CollectionChanged += (_, _) => OnSplitsChanged();
         Activate(AddColumn(0));
         Account.AccountChanged += () => _ = OnAccountChangedAsync();
         Streams.OpenRequested += (login, mode) => OpenChannel(login, mode);
@@ -79,11 +76,56 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// one of <see cref="Columns"/>, which hold the order shown.</summary>
     public ObservableCollection<ChannelTabViewModel> Tabs { get; } = [];
 
-    /// <summary>Chat columns, left to right; always at least one.</summary>
+    /// <summary>Chat splits, left to right and top to bottom; always at
+    /// least one. A split with <see cref="ChatColumnViewModel.StacksBelow"/>
+    /// sits under the one before it, so a run of those is one column.</summary>
     public ObservableCollection<ChatColumnViewModel> Columns { get; } = [];
 
     /// <summary>Most columns side by side.</summary>
     public const int MaxColumns = 4;
+
+    /// <summary>Most chats stacked in one column.</summary>
+    public const int MaxStack = 4;
+
+    /// <summary>Most chats in all.</summary>
+    public const int MaxSplits = 8;
+
+    /// <summary>Chats were stacked or unstacked: the chat pane re-lays them out.</summary>
+    public event Action? SplitLayoutChanged;
+
+    /// <summary>The chats in <paramref name="split"/>'s column, top to bottom.</summary>
+    public IReadOnlyList<ChatColumnViewModel> StackOf(ChatColumnViewModel split)
+    {
+        var at = Columns.IndexOf(split);
+        if (at < 0) return [];
+        var head = at;
+        while (head > 0 && Columns[head].StacksBelow) head--;
+        var end = head + 1;
+        while (end < Columns.Count && Columns[end].StacksBelow) end++;
+        return [.. Columns.Skip(head).Take(end - head)];
+    }
+
+    /// <summary>Columns side by side: chats that don't stack under another.</summary>
+    public int VisibleColumnCount => Columns.Count(c => !c.StacksBelow);
+
+    private void OnSplitsChanged()
+    {
+        // The first chat can't stack under anything.
+        if (Columns.Count > 0) Columns[0].StacksBelow = false;
+        // The PIP switch goes in the top right chat's tab strip.
+        var lastHead = Columns.LastOrDefault(c => !c.StacksBelow);
+        foreach (var c in Columns) c.IsLast = c == lastHead;
+        SplitLayoutChanged?.Invoke();
+    }
+
+    /// <summary>Before <paramref name="split"/> leaves its place: if it heads a
+    /// column, the chat under it heads the column now.</summary>
+    private void Unstack(ChatColumnViewModel split)
+    {
+        var at = Columns.IndexOf(split);
+        if (at >= 0 && !split.StacksBelow && at + 1 < Columns.Count && Columns[at + 1].StacksBelow)
+            Columns[at + 1].StacksBelow = false;
+    }
 
     /// <summary>The tab on video (full size); the rest are PIP or audio.</summary>
     [ObservableProperty]
@@ -123,6 +165,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         get => _settings.ChatOnLeft;
         set => SetProperty(_settings.ChatOnLeft, value, _settings, (s, v) => s.ChatOnLeft = v);
     }
+
+    /// <summary>The 4:3 layout: video above the stream list, chat beside them.</summary>
+    public bool VideoAboveList
+    {
+        get => _settings.VideoAboveList;
+        set
+        {
+            if (SetProperty(_settings.VideoAboveList, value, _settings, (s, v) => s.VideoAboveList = v))
+                OnPropertyChanged(nameof(MinWindowWidth));
+        }
+    }
+
+    /// <summary>Three across needs room for 16:9 between two minimum-width
+    /// sides; stacked fits an 800×600 screen.</summary>
+    public double MinWindowWidth => VideoAboveList ? 640 : 960;
 
     public bool ReopenLastChannel
     {
@@ -172,6 +229,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var tab = OpenChannel(SampleData.Channel, OpenMode.NewTab)!;
         tab.Chat.Clear();
         foreach (var line in SampleData.Chat(now)) tab.Chat.Add(line);
+        tab.Chat.Roster.AddNames(SampleData.Lurkers);
         tab.Chat.Points = SampleData.Points();
         tab.Chat.Status = "Demo data";
         tab.Player.Status = "Demo mode: no playback.";
@@ -201,6 +259,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 if (columns[i].Tabs.Count == 0) continue;
                 var column = Columns[^1].Tabs.Count == 0 ? Columns[^1] : AddColumn(Columns.Count);
+                column.StacksBelow = columns[i].Below && Columns.Count > 1;
                 Activate(column);
                 foreach (var login in columns[i].Tabs.ToList()) OpenChannel(login, OpenMode.Background);
                 if (TabFor(columns[i].Selected ?? "") is { } selected && column.Tabs.Contains(selected))
@@ -221,6 +280,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         };
         client.MessageReceived += m => _ui.Post(() => TabFor(m.Channel)?.Chat.Add(m));
         client.ModerationReceived += m => _ui.Post(() => TabFor(m.Channel)?.Chat.Apply(m));
+        client.NamesReceived += (channel, names) => _ui.Post(() => TabFor(channel)?.Chat.Roster.AddNames(names));
         client.RoomStateReceived += (channel, roomId) => _ui.Post(() => OnRoomState(channel, roomId));
         client.UserStateReceived += state => _ui.Post(() => OnUserState(state));
         client.StatusChanged += s => _ui.Post(() =>
@@ -322,6 +382,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private ChatColumnViewModel AddColumn(int at)
     {
+        var column = NewColumn();
+        Columns.Insert(Math.Clamp(at, 0, Columns.Count), column);
+        return column;
+    }
+
+    private ChatColumnViewModel NewColumn()
+    {
         var column = new ChatColumnViewModel(this, _idleChat);
         // The active column's selection is what the chat box acts on.
         column.PropertyChanged += (_, e) =>
@@ -331,8 +398,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnPropertyChanged(nameof(ActiveTab));
                 OnPropertyChanged(nameof(Chat));
             }
+            else if (e.PropertyName == nameof(ChatColumnViewModel.StacksBelow) && Columns.Contains(column))
+            {
+                OnSplitsChanged();
+            }
         };
-        Columns.Insert(Math.Clamp(at, 0, Columns.Count), column);
         return column;
     }
 
@@ -369,7 +439,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (ColumnOf(tab) is not { } source) return false;
         var from = Columns.IndexOf(source);
-        return source.Tabs.Count == 1 ? at != from && at != from + 1 : Columns.Count < MaxColumns;
+        var lone = source.Tabs.Count == 1;
+        // A lone tab in a column of its own just moves that column.
+        if (lone && StackOf(source).Count == 1) return at != from && at != from + 1;
+        return VisibleColumnCount < MaxColumns && (lone || Columns.Count < MaxSplits);
     }
 
     /// <summary>Drop on a column's edge: the tab becomes a new column there
@@ -381,6 +454,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (source.Tabs.Count == 1)
         {
             var from = Columns.IndexOf(source);
+            Unstack(source);
+            source.StacksBelow = false;
             Columns.Move(from, at > from ? at - 1 : at);
             Activate(source);
         }
@@ -392,6 +467,63 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             column.Selected = tab;
             Activate(column);
         }
+        UpdateColumnFlags();
+        SaveTabs();
+    }
+
+    /// <summary>Whether dropping on a chat's top or bottom edge, stacking a
+    /// new chat above or below <paramref name="anchor"/>, would do anything.</summary>
+    public bool CanStack(ChannelTabViewModel tab, ChatColumnViewModel anchor, bool below)
+    {
+        if (ColumnOf(tab) is not { } source || !Columns.Contains(anchor)) return false;
+        var lone = source.Tabs.Count == 1;
+        var stack = StackOf(anchor);
+        if (lone)
+        {
+            if (source == anchor) return false;
+            // Already right there.
+            var (s, a) = (Columns.IndexOf(source), Columns.IndexOf(anchor));
+            if (stack.Contains(source) && (below ? s == a + 1 : s == a - 1)) return false;
+        }
+        var adds = lone && stack.Contains(source) ? 0 : 1;
+        return stack.Count + adds <= MaxStack && (lone || Columns.Count < MaxSplits);
+    }
+
+    /// <summary>Drop on a chat's top or bottom edge: the tab becomes a new
+    /// chat stacked above or below <paramref name="anchor"/>, in its column.
+    /// A tab alone in its chat takes the chat with it.</summary>
+    public void MoveTabToStack(ChannelTabViewModel tab, ChatColumnViewModel anchor, bool below)
+    {
+        if (!CanStack(tab, anchor, below) || ColumnOf(tab) is not { } source) return;
+        ChatColumnViewModel split;
+        if (source.Tabs.Count == 1)
+        {
+            Unstack(source);
+            Columns.Remove(source);
+            split = source;
+        }
+        else
+        {
+            split = NewColumn();
+            TakeOut(tab, source);
+            split.Tabs.Add(tab);
+            split.Selected = tab;
+        }
+        var at = Columns.IndexOf(anchor);
+        if (below)
+        {
+            split.StacksBelow = true;
+            Columns.Insert(at + 1, split);
+        }
+        else
+        {
+            // In first, then the anchor stacks under it: the other way round,
+            // a first-place anchor would be unstacked again on the spot.
+            split.StacksBelow = anchor.StacksBelow;
+            Columns.Insert(at, split);
+            anchor.StacksBelow = true;
+        }
+        Activate(split);
         UpdateColumnFlags();
         SaveTabs();
     }
@@ -411,6 +543,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (column.Tabs.Count > 0 || Columns.Count <= 1) return;
         var index = Columns.IndexOf(column);
+        Unstack(column);
         Columns.Remove(column);
         if (ActiveColumn == column) Activate(Columns[Math.Min(index, Columns.Count - 1)]);
     }
@@ -474,6 +607,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Tabs = [.. c.Tabs.Select(t => t.Login)],
             Selected = c.Selected?.Login,
+            Below = c.StacksBelow,
         })];
         _settings.Channel = FrontTab?.Login;
     }
@@ -551,6 +685,33 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _ = card.LoadAsync(_http, _settings.EffectiveClientId,
                 Account.IsSignedIn && Account.CanModerate ? Account.AccessToken : null, _stop.Token);
         return card;
+    }
+
+    /// <summary>Opens "Users in chat" over a column, for the channel it shows.
+    /// The complete list needs the user to moderate there and a login with
+    /// the chatters scope; otherwise it's who chat has shown.</summary>
+    public void ShowChatters(ChatColumnViewModel column)
+    {
+        if (column.Selected is not { } tab) return;
+        Func<CancellationToken, Task<IReadOnlyList<Chatter>?>>? fetchAll = null;
+        string note;
+        if (_options.Demo)
+            note = "Demo data.";
+        else if (!tab.Chat.IsModerator)
+            note = "Twitch only gives moderators the full list, so this is everyone who has chatted, plus lurkers in smaller channels.";
+        else if (!Account.CanReadChatters || Account.AccessToken is null || Account.UserId is null || tab.RoomId is null)
+            note = "Log in again (⚙) to see everyone: StreamEdge now asks for permission to read the viewer list.";
+        else
+        {
+            note = "Only people chat has shown.";
+            var (token, me, room) = (Account.AccessToken, Account.UserId, tab.RoomId);
+            fetchAll = async ct =>
+                await ChatterRoster.FetchAsync(_http, _settings.EffectiveClientId, token, room, me, ct) is { } all
+                    ? tab.Chat.Roster.Merge(all)
+                    : null;
+        }
+        column.Chatters = new ChatterListViewModel(tab.Chat, fetchAll, note, () => column.Chatters = null);
+        _ = column.Chatters.RefreshAsync();
     }
 
     // ----- Moderation -----------------------------------------------------
@@ -899,6 +1060,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var helix = new HelixClient(_http, _settings.EffectiveClientId, token);
             var live = await helix.GetFollowedStreamsAsync(Account.UserId, _stop.Token);
+            live = await WithAvatarsAsync(helix, live);
             Streams.Set(live, DateTimeOffset.Now);
             Streams.EmptyText = "No followed channels are live.";
             foreach (var tab in Tabs) ShowChannelInfo(tab);
@@ -907,6 +1069,28 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Streams.EmptyText = "Could not load streams: " + ex.Message;
         }
+    }
+
+    /// <summary>Channel avatars by user id. Kept for the session: they rarely
+    /// change, and the list refreshes every few minutes.</summary>
+    private readonly Dictionary<string, Uri> _avatars = [];
+
+    /// <summary>The streams with their channels' avatars, looking up only
+    /// the ones not seen before. A failed lookup leaves the list without
+    /// avatars rather than without streams.</summary>
+    private async Task<IReadOnlyList<LiveStream>> WithAvatarsAsync(HelixClient helix, IReadOnlyList<LiveStream> live)
+    {
+        var missing = live.Select(s => s.UserId).OfType<string>().Where(id => !_avatars.ContainsKey(id)).ToList();
+        if (missing.Count > 0)
+        {
+            try
+            {
+                foreach (var (id, image) in await helix.GetProfileImagesAsync(missing, _stop.Token))
+                    _avatars[id] = image;
+            }
+            catch (HttpRequestException) { }
+        }
+        return [.. live.Select(s => s.UserId is { } id && _avatars.TryGetValue(id, out var image) ? s with { ProfileImage = image } : s)];
     }
 
     private bool _overlayWarned;

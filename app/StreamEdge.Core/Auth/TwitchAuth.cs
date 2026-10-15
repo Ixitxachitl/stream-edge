@@ -14,16 +14,21 @@ namespace StreamEdge.Auth;
 public sealed class TwitchAuth(HttpClient http, string clientId)
 {
     /// <summary>Followed live streams, reading and sending chat, the user's
-    /// own emotes (emote menu, own messages), and moderator actions for the
-    /// channels they moderate. Logins from before a scope was added lack it.</summary>
+    /// own emotes (emote menu, own messages), and moderator actions and the
+    /// full viewer list for the channels they moderate. Logins from before a
+    /// scope was added lack it.</summary>
     public const string Scopes = "user:read:follows chat:read chat:edit user:read:emotes"
         + " moderator:manage:banned_users moderator:manage:chat_messages moderator:manage:warnings"
         + " moderator:manage:chat_settings moderator:manage:announcements moderator:manage:shield_mode"
-        + " moderator:read:followers";
+        + " moderator:read:followers moderator:read:chatters";
 
     /// <summary>Stands in for the moderation set: a token that has it was
     /// issued with all of them.</summary>
     public const string ModerationScope = "moderator:manage:banned_users";
+
+    /// <summary>The viewer list's Helix "Get Chatters"; added after the
+    /// moderation set, so tokens can have that without this.</summary>
+    public const string ChattersScope = "moderator:read:chatters";
 
     /// <summary>Added after the first release; tokens from before lack it.</summary>
     public const string EmotesScope = "user:read:emotes";

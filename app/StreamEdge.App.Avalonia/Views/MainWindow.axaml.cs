@@ -47,11 +47,13 @@ public partial class MainWindow : Window
         {
             _vm.PropertyChanged -= OnViewModelChanged;
             _vm.Tabs.CollectionChanged -= OnTabsChanged;
+            _vm.SplitLayoutChanged -= OnSplitLayoutChanged;
         }
         _vm = DataContext as MainViewModel;
         if (_vm is null) return;
         _vm.PropertyChanged += OnViewModelChanged;
         _vm.Tabs.CollectionChanged += OnTabsChanged;
+        _vm.SplitLayoutChanged += OnSplitLayoutChanged;
         RestorePlacement();
         // Tabs opened before the window existed (demo, or restored at start-up).
         foreach (var tab in _vm.Tabs) AddVideo(tab);
@@ -183,6 +185,9 @@ public partial class MainWindow : Window
         flyout.ShowAt(e.Anchor);
         e.Handled = true;
     }
+
+    /// <summary>A chat was stacked or unstacked without the list changing.</summary>
+    private void OnSplitLayoutChanged() => ChatColumns.ItemsPanelRoot?.InvalidateMeasure();
 
     private void OnModAction(object? sender, ModActionEventArgs e)
     {

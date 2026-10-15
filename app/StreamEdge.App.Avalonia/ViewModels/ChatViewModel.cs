@@ -152,8 +152,13 @@ public sealed partial class ChatViewModel : ObservableObject
 
     public void Add(ChatMessage message) => Add(message, own: false);
 
+    /// <summary>Who's in this chat, as far as it has shown; the viewer list's source.</summary>
+    public ChatterRoster Roster => _roster ??= new ChatterRoster(Channel);
+    private ChatterRoster? _roster;
+
     private void Add(ChatMessage message, bool own)
     {
+        Roster.Observe(message);
         // Official Twitch chat doesn't show joins and parts; they're opt-in.
         if (message.Kind == ChatMessageKind.Membership && !_settings.ShowJoinPart) return;
 

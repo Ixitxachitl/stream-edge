@@ -68,6 +68,11 @@ public sealed class AppSettings
     /// left instead.</summary>
     public bool ChatOnLeft { get; set; }
 
+    /// <summary>For 4:3 and other squarish screens: the player above the
+    /// stream list in one column, chat beside it. Off is the three-across
+    /// layout for bar displays.</summary>
+    public bool VideoAboveList { get; set; }
+
     /// <summary>Monitor to open on, by index into the platform's screen list.
     /// Null means "wherever the OS puts it"; the point of the app is a small
     /// secondary display, so this is usually set.</summary>
@@ -177,9 +182,13 @@ public sealed class AppSettings
 /// draw and send it again.</summary>
 public sealed record RecentEmote(string Code, Uri ImageUrl, StreamEdge.Chat.Emotes.EmoteProvider Provider);
 
-/// <summary>A chat column as saved: its tabs in order and the selected one.</summary>
+/// <summary>A chat as saved: its tabs in order, the selected one, and
+/// whether it stacks under the one before.</summary>
 public sealed class ChatColumnState
 {
     public List<string> Tabs { get; set; } = [];
     public string? Selected { get; set; }
+
+    /// <summary>Stacked under the chat before it rather than beside it.</summary>
+    public bool Below { get; set; }
 }

@@ -79,6 +79,35 @@ public class LayoutTests(HeadlessAvalonia ui) : UiTest(ui)
     }
 
     [Theory]
+    // 4:3 screens, even split: the video is 16:9 at the column's width.
+    [InlineData(1024, 768, 509, 286)]
+    [InlineData(800, 600, 397, 223)]
+    [InlineData(1600, 1200, 797, 448)]
+    public void StackedPlayerIs16By9AtTheColumnWidth(double w, double h, double column, double player)
+    {
+        var c = UltrawideLayout.Stack(new Size(w, h), Layout());
+        Assert.Equal(column, c.Width);
+        Assert.Equal(player, c.PlayerHeight);
+        Assert.Equal(w, c.Chat + c.Width + Grip);
+    }
+
+    [Fact]
+    public void StackedPlayerLeavesTheListItsMinimum()
+    {
+        // A wide, short window: 16:9 at 957 px would be 538 tall.
+        var c = UltrawideLayout.Stack(new Size(1920, 480), Layout());
+        Assert.Equal(480 - 180, c.PlayerHeight);
+    }
+
+    [Fact]
+    public void StackedChatKeepsItsMinimum()
+    {
+        var c = UltrawideLayout.Stack(new Size(1024, 768), Layout(share: 0.01));
+        Assert.Equal(180, c.Chat);
+        Assert.Equal(1024 - 180 - Grip, c.Width);
+    }
+
+    [Theory]
     [InlineData(853, 480, 0, 0, 853, 480)]      // exact fit
     [InlineData(600, 480, 0, 71, 600, 338)]     // narrower pane: letterbox
     [InlineData(1000, 480, 73, 0, 853, 480)]    // wider pane: pillarbox
@@ -237,6 +266,99 @@ public class SidesAndFavoritesTests(HeadlessAvalonia ui) : UiTest(ui)
         return window;
     }
 
+    /// <summary>Whether a click at the middle of <paramref name="target"/> reaches it.</summary>
+    private static bool TakesClicks(Window window, Control target)
+    {
+        // Hit testing works on the rendered scene, so render one first.
+        window.CaptureRenderedFrame();
+        var center = target.TranslatePoint(new Point(target.Bounds.Width / 2, target.Bounds.Height / 2), window)!.Value;
+        return window.GetInputElementsAt(center).FirstOrDefault() is Visual hit
+            && hit.GetSelfAndVisualAncestors().Contains(target);
+    }
+
+    [Fact]
+    public void SignedOutTheLoginButtonsInTheListAndChatTakeClicks() => Ui(() =>
+    {
+        var window = Open(new AppSettings(), out var vm);
+        vm.Streams.Set([], DateTimeOffset.Now);
+        Dispatcher.UIThread.RunJobs();
+
+        // The empty list used to sit over the login box and take its clicks.
+        var streams = window.FindControl<Control>("StreamsPane")!;
+        var listLogin = streams.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Log in with Twitch");
+        Assert.True(TakesClicks(window, listLogin));
+
+        var chatLogin = window.GetVisualDescendants().OfType<Button>().First(b => b.Name == "ChatLogin");
+        Assert.True(chatLogin.IsEffectivelyVisible);
+        Assert.True(TakesClicks(window, chatLogin));
+        window.Close();
+    });
+
+    [Fact]
+    public void SettingsLoginButtonIsFullSizeNotAHeaderButton() => Ui(() =>
+    {
+        var window = Open(new AppSettings(), out _);
+        var gear = window.GetVisualDescendants().OfType<Button>().First(b => b.Content as string == "⚙");
+        gear.Flyout!.ShowAt(gear);
+        Dispatcher.UIThread.RunJobs();
+
+        var content = (Control)((Flyout)gear.Flyout).Content!;
+        var login = content.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Log in with Twitch");
+        // The header's compact-button style (20 px, transparent) once leaked into its flyouts.
+        Assert.True(login.Bounds.Height > 20);
+        Assert.NotEqual(Avalonia.Media.Colors.Transparent, (login.Background as Avalonia.Media.ISolidColorBrush)?.Color);
+        // And the header's own buttons keep it.
+        Assert.Equal(20, gear.Bounds.Height);
+        gear.Flyout.Hide();
+        window.Close();
+    });
+
+    [Fact]
+    public void UsersInChatOpensOverTheChatFiltersAndCloses() => Ui(() =>
+    {
+        var window = Open(new AppSettings(), out var vm);
+        var column = vm.Columns[0];
+        vm.ShowChatters(column);
+        Dispatcher.UIThread.RunJobs();
+
+        var list = column.Chatters!;
+        var view = window.GetVisualDescendants().OfType<ChatterListView>().Single();
+        Assert.True(view.IsEffectivelyVisible);
+        // Demo chat: the broadcaster and moderators first, lurkers among the users.
+        Assert.Equal("BROADCASTER", ((ChatterSection)list.Items[0]).Title);
+        Assert.Contains(list.Items, i => i is StreamEdge.Chat.Chatter { Login: "quietkoala" });
+        var frame = window.CaptureRenderedFrame();
+        if (Environment.GetEnvironmentVariable("STREAMEDGE_SNAPSHOT") is { Length: > 0 } path)
+#pragma warning disable CS0618
+            frame!.Save(path.Replace(".png", "-chatters.png"));
+#pragma warning restore CS0618
+
+        list.Search = "koala";
+        Assert.Equal(["USERS", "quietkoala"],
+            list.Items.Select(i => i is ChatterSection s ? s.Title : ((StreamEdge.Chat.Chatter)i).Login));
+
+        list.CloseCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Null(column.Chatters);
+        Assert.False(view.IsEffectivelyVisible);
+        window.Close();
+    });
+
+    [Fact]
+    public void StreamRowsShowNameGameAndCompactViewers() => Ui(() =>
+    {
+        var window = Open(new AppSettings(), out _);
+        var list = window.FindControl<ListBox>("StreamList")!;
+        var jerma = list.GetVisualDescendants().OfType<ListBoxItem>()
+            .Single(i => i.DataContext is StreamItemViewModel { DisplayName: "Jerma985" });
+        var texts = jerma.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+        Assert.Contains("Jerma985", texts);
+        Assert.Contains("Grand Theft Auto V", texts);
+        Assert.Contains("11.4K", texts);
+        Assert.Contains("J", texts); // avatar placeholder: demo data has no avatars
+        window.Close();
+    });
+
     [Fact]
     public void ListIsOnTheLeftByDefaultAndSwapsWithTheSetting() => Ui(() =>
     {
@@ -250,6 +372,48 @@ public class SidesAndFavoritesTests(HeadlessAvalonia ui) : UiTest(ui)
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(0, chat.Bounds.X);
         Assert.True(streams.Bounds.X > 1000);
+        window.Close();
+    });
+
+    [Fact]
+    public void VideoAboveListStacksThePlayerOverTheListWithChatBeside() => Ui(() =>
+    {
+        var settings = new AppSettings { VideoAboveList = true };
+        var vm = new MainViewModel(settings, new StartupOptions { Demo = true }, InlineDispatcher.Instance);
+        var window = new MainWindow { DataContext = vm, Width = 1024, Height = 768 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var layout = window.FindControl<UltrawideLayout>("Layout")!;
+        var player = window.FindControl<Control>("PlayerPane")!;
+        var streams = window.FindControl<Control>("StreamsPane")!;
+        var chat = window.FindControl<Control>("ChatPane")!;
+
+        Assert.Equal(new Rect(0, 0, 509, 286), player.Bounds);
+        Assert.Equal(new Rect(0, 286, 509, 768 - 286), streams.Bounds);
+        Assert.Equal(new Rect(514, 0, 510, 768), chat.Bounds);
+        Assert.Equal(640, window.MinWidth);
+
+        // The grip moves the column edge, and the video follows its width.
+        layout.Drag(91);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(600, player.Bounds.Width);
+        Assert.Equal(337, player.Bounds.Height);
+        Assert.Equal(337, streams.Bounds.Y);
+        Assert.Equal(419, chat.Bounds.Width);
+
+        // Chat on the left mirrors it.
+        vm.ChatOnLeft = true;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, chat.Bounds.X);
+        Assert.Equal(chat.Bounds.Width + 5, player.Bounds.X);
+        Assert.Equal(player.Bounds.X, streams.Bounds.X);
+
+        // And off again is the usual three across.
+        vm.VideoAboveList = false;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, player.Bounds.Y);
+        Assert.Equal(768, player.Bounds.Height);
+        Assert.Equal(960, window.MinWidth);
         window.Close();
     });
 

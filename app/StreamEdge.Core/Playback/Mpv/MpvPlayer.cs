@@ -47,12 +47,14 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         ("ytdl", "no"),
         ("audio-client-name", "StreamEdge"),
         ("hwdec", "auto-safe"),
-        // OpenGL, mpv's default elsewhere. On Windows mpv runs it through
-        // ANGLE, so it is still Direct3D 11 underneath. The dxgi.dll crashes
-        // once blamed on D3D11 came from RivaTuner's overlay hooking the
-        // swap chain resize as videos switch between full size and PIP
-        // (see OverlayCheck); with it out of the process, either API is fine.
-        ("gpu-api", "opengl"),
+        // Direct3D 11, mpv's own choice on Windows. Not OpenGL: mpv tries its
+        // ANGLE context first, and the shinchiro builds don't ship
+        // libEGL.dll, so that fails, and mpv's cleanup of the failed attempt
+        // calls the never-loaded eglGetProcAddress, a null pointer, killing
+        // the process on every video. The dxgi.dll crashes once blamed on
+        // D3D11 came from RivaTuner's overlay hooking the swap chain resize
+        // as videos switch between full size and PIP (see OverlayCheck).
+        ("gpu-api", "d3d11"),
 
         // mpv's own low-latency preset: no audio buffer, single-threaded
         // decode, minimal demuxer probing, no frame interpolation.

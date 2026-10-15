@@ -21,6 +21,15 @@ public static class UiFormats
     public static string Viewers(int viewers) =>
         viewers.ToString("N0", CultureInfo.InvariantCulture);
 
+    /// <summary>Viewer count as twitch.tv's sidebar shows it: "676",
+    /// "11.4K", "1.2M". Rounded down, so it never claims more than there are.</summary>
+    public static string CompactViewers(int viewers) => viewers switch
+    {
+        < 1_000 => viewers.ToString(CultureInfo.InvariantCulture),
+        < 1_000_000 => (Math.Floor(viewers / 100.0) / 10).ToString("0.#", CultureInfo.InvariantCulture) + "K",
+        _ => (Math.Floor(viewers / 100_000.0) / 10).ToString("0.#", CultureInfo.InvariantCulture) + "M",
+    };
+
     /// <summary>Window-title stats, "[viewers|uptime]".</summary>
     public static string TitleStats(int viewers, TimeSpan uptime) =>
         $"[{Viewers(viewers)}|{Uptime(uptime)}]";

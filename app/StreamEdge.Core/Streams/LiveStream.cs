@@ -4,7 +4,7 @@ using StreamEdge.Ui;
 namespace StreamEdge.Streams;
 
 /// <summary>One live channel in the stream list, as Helix "Get Followed
-/// Streams" describes it.</summary>
+/// Streams" describes it, plus the channel's avatar from "Get Users".</summary>
 public sealed record LiveStream(
     string Login,
     string DisplayName,
@@ -12,7 +12,9 @@ public sealed record LiveStream(
     string Game,
     int Viewers,
     DateTimeOffset StartedAt,
-    bool IsFavorite = false)
+    bool IsFavorite = false,
+    string? UserId = null,
+    Uri? ProfileImage = null)
 {
     public TimeSpan Uptime(DateTimeOffset now) => now - StartedAt;
 
