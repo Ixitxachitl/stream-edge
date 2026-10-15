@@ -78,7 +78,40 @@ public partial class MainWindow : Window
             case nameof(MainViewModel.ShowPip):
                 Videos.InvalidateArrange();
                 break;
+            case nameof(MainViewModel.VideoOnly):
+                ApplyVideoOnly();
+                break;
         }
+    }
+
+    private WindowState? _stateBeforeVideoOnly;
+
+    /// <summary>Video-only: the window goes full screen with just the
+    /// player in it, and comes back as it was.</summary>
+    private void ApplyVideoOnly()
+    {
+        if (_vm is null) return;
+        if (_vm.VideoOnly)
+        {
+            _stateBeforeVideoOnly ??= WindowState;
+            WindowState = WindowState.FullScreen;
+        }
+        else if (_stateBeforeVideoOnly is { } before)
+        {
+            _stateBeforeVideoOnly = null;
+            WindowState = before;
+        }
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && _vm is { VideoOnly: true })
+        {
+            _vm.VideoOnly = false;
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
     }
 
     // ----- Video surfaces: one per tab ------------------------------------
@@ -100,6 +133,9 @@ public partial class MainWindow : Window
             try
             {
                 mpv = new MpvPlayer(wid);
+                // Clicks, double-clicks and the wheel land on mpv's native
+                // window, never on Avalonia; mpv reports them on its own thread.
+                mpv.InputReceived += input => Dispatcher.UIThread.Post(() => vm.OnVideoInput(tab, input));
                 vm.AttachPlayer(tab, mpv);
             }
             catch (Exception ex) when (ex is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
@@ -247,7 +283,7 @@ public partial class MainWindow : Window
     /// maximizing keeps the size to return to.</summary>
     private void RememberNow()
     {
-        if (!_tracking || _vm is null || WindowState == WindowState.Minimized) return;
+        if (!_tracking || _vm is null || _vm.VideoOnly || WindowState == WindowState.Minimized) return;
         var mode = WindowState switch
         {
             WindowState.Maximized => WindowMode.Maximized,

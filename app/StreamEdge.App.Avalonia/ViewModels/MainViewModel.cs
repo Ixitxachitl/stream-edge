@@ -599,6 +599,38 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         tab.Attach(player, _http, _settings, tier, SecretStore.Get(SecretStore.PlaybackAuthToken));
     }
 
+    /// <summary>Just the video, filling the screen: chat, list and tabs
+    /// hidden. Double-click the video (or Esc) to toggle.</summary>
+    [ObservableProperty]
+    private bool _videoOnly;
+
+    /// <summary>Mouse and keys over a tab's video (from mpv, which owns the
+    /// video window): double-click the front video for video-only
+    /// fullscreen; click a PIP thumbnail to bring it forward; scroll for
+    /// that tab's own volume; Esc leaves fullscreen.</summary>
+    public void OnVideoInput(ChannelTabViewModel tab, Playback.Mpv.VideoInput input)
+    {
+        if (!Tabs.Contains(tab)) return;
+        switch (input)
+        {
+            case Playback.Mpv.VideoInput.DoubleClick when tab.IsFront:
+                VideoOnly = !VideoOnly;
+                break;
+            case Playback.Mpv.VideoInput.Click or Playback.Mpv.VideoInput.DoubleClick when !tab.IsFront:
+                SetFront(tab);
+                break;
+            case Playback.Mpv.VideoInput.WheelUp:
+                tab.ChangeVolume(+5, _settings);
+                break;
+            case Playback.Mpv.VideoInput.WheelDown:
+                tab.ChangeVolume(-5, _settings);
+                break;
+            case Playback.Mpv.VideoInput.Escape:
+                VideoOnly = false;
+                break;
+        }
+    }
+
     /// <summary>A surface was created but mpv failed to start on it.</summary>
     public void PlayerFailed(ChannelTabViewModel tab, string message)
     {

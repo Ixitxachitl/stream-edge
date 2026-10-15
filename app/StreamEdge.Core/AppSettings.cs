@@ -49,6 +49,10 @@ public sealed class AppSettings
     public int Volume { get; set; } = 100;
     public bool Muted { get; set; }
 
+    /// <summary>Volume per channel (0–100), set with the scroll wheel over
+    /// its video; channels not in here use <see cref="Volume"/>.</summary>
+    public Dictionary<string, int> ChannelVolumes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Closed captions on the front tab, when the stream has them.</summary>
     public bool Captions { get; set; }
 

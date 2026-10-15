@@ -2,6 +2,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
@@ -118,6 +119,33 @@ public class LayoutTests(HeadlessAvalonia ui) : UiTest(ui)
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(0.5, settings.ChatShare);
         Assert.Equal(xBefore, player.Bounds.X);
+        window.Close();
+    });
+
+    [Fact]
+    public void VideoOnlyGivesThePlayerTheWholeWindowAndEscapeBringsThePanesBack() => Ui(() =>
+    {
+        var settings = new AppSettings();
+        var vm = new MainViewModel(settings, new StartupOptions { Demo = true }, InlineDispatcher.Instance);
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var player = window.FindControl<Control>("PlayerPane")!;
+        var chat = window.FindControl<Control>("ChatPane")!;
+        var playerBefore = player.Bounds;
+
+        vm.VideoOnly = true;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(WindowState.FullScreen, window.WindowState);
+        Assert.Equal(0, player.Bounds.X);
+        Assert.Equal(window.ClientSize.Width, player.Bounds.Width);
+        Assert.Equal(0, chat.Bounds.Width);
+
+        window.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(vm.VideoOnly);
+        Assert.Equal(WindowState.Normal, window.WindowState);
+        Assert.Equal(playerBefore, player.Bounds);
         window.Close();
     });
 

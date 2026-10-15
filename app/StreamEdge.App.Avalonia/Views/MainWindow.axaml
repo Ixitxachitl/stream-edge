@@ -12,7 +12,8 @@
         Icon="avares://StreamEdge/Assets/icon.ico"
         Width="1920" Height="480" MinWidth="960" MinHeight="240">
 
-  <v:UltrawideLayout x:Name="Layout" ChatShare="{Binding ChatShare}" ChatOnLeft="{Binding ChatOnLeft}">
+  <v:UltrawideLayout x:Name="Layout" ChatShare="{Binding ChatShare}" ChatOnLeft="{Binding ChatOnLeft}"
+                    VideoOnly="{Binding VideoOnly}">
 
     <!-- ===== Chat ===== -->
     <DockPanel x:Name="ChatPane" Background="{StaticResource SePanelBg}">
@@ -36,7 +37,7 @@
                       <Button Classes="tabName" Content="{Binding Title}" Command="{Binding SelectCommand}"
                               ToolTip.Tip="Bring to front" />
                       <Button Classes="tabIcon" Content="{Binding Player.MuteGlyph}" Command="{Binding Player.ToggleMuteCommand}"
-                              ToolTip.Tip="Mute this tab" />
+                              ToolTip.Tip="{Binding VolumeTip}" />
                       <Button Classes="tabIcon" Content="✕" Command="{Binding CloseCommand}" ToolTip.Tip="Close tab" />
                     </StackPanel>
                   </Border>

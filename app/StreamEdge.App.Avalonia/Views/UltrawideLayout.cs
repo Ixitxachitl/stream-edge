@@ -45,10 +45,14 @@ public sealed class UltrawideLayout : Panel
     public static readonly StyledProperty<bool> ChatOnLeftProperty =
         AvaloniaProperty.Register<UltrawideLayout, bool>(nameof(ChatOnLeft));
 
+    /// <summary>Just the player, filling the panel (video-only fullscreen).</summary>
+    public static readonly StyledProperty<bool> VideoOnlyProperty =
+        AvaloniaProperty.Register<UltrawideLayout, bool>(nameof(VideoOnly));
+
     static UltrawideLayout()
     {
         AffectsMeasure<UltrawideLayout>(PlayerAspectProperty, MinSideWidthProperty,
-            ChatShareProperty, GripWidthProperty, ShowPlayerProperty);
+            ChatShareProperty, GripWidthProperty, ShowPlayerProperty, VideoOnlyProperty);
         AffectsArrange<UltrawideLayout>(ChatOnLeftProperty);
     }
 
@@ -58,6 +62,7 @@ public sealed class UltrawideLayout : Panel
     public double GripWidth { get => GetValue(GripWidthProperty); set => SetValue(GripWidthProperty, value); }
     public bool ShowPlayer { get => GetValue(ShowPlayerProperty); set => SetValue(ShowPlayerProperty, value); }
     public bool ChatOnLeft { get => GetValue(ChatOnLeftProperty); set => SetValue(ChatOnLeftProperty, value); }
+    public bool VideoOnly { get => GetValue(VideoOnlyProperty); set => SetValue(VideoOnlyProperty, value); }
 
     public readonly record struct Input(double Aspect, double MinSide, double ChatShare, bool ShowPlayer, double Grip);
 
@@ -89,6 +94,12 @@ public sealed class UltrawideLayout : Panel
 
     protected override Size MeasureOverride(Size availableSize)
     {
+        if (VideoOnly)
+        {
+            for (var i = 0; i < Children.Count; i++) Children[i].Measure(i == 1 ? availableSize : default);
+            return new Size(double.IsFinite(availableSize.Width) ? availableSize.Width : 0,
+                double.IsFinite(availableSize.Height) ? availableSize.Height : 0);
+        }
         // Infinite width (inside a ScrollViewer, say) has no sensible split;
         // fall back to the player at its natural width plus two minimum sides.
         var width = double.IsFinite(availableSize.Width)
@@ -104,6 +115,11 @@ public sealed class UltrawideLayout : Panel
 
     protected override Size ArrangeOverride(Size finalSize)
     {
+        if (VideoOnly)
+        {
+            for (var i = 0; i < Children.Count; i++) Children[i].Arrange(i == 1 ? new Rect(finalSize) : default);
+            return finalSize;
+        }
         var w = Split(finalSize, Current());
         var widths = new[] { w.Chat, w.Player, w.List };
         var grips = Grips.ToList();

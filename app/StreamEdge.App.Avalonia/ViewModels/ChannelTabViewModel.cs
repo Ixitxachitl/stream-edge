@@ -20,6 +20,7 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
         _select = select;
         _close = close;
         Chat = new ChatViewModel(settings, services) { Channel = login };
+        _volume = settings.ChannelVolumes.TryGetValue(login, out var volume) ? volume : settings.Volume;
         Player = new PlayerViewModel { Channel = login };
         Player.MuteHandler = muted => Video?.SetMute(muted);
         Player.SelectQualityHandler = index => Session?.SelectQuality(index);
@@ -47,6 +48,28 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
 
     [ObservableProperty]
     private bool _isFront;
+
+    /// <summary>This tab's own volume, 0–100: each tab (PIP thumbnails
+    /// included) is its own player. Remembered per channel.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VolumeTip))]
+    private int _volume;
+
+    public string VolumeTip => $"Volume {Volume}% (scroll over the video)";
+
+    /// <summary>The scroll wheel over this tab's video.</summary>
+    public void ChangeVolume(int delta, AppSettings settings)
+    {
+        Volume = Math.Clamp(Volume + delta, 0, 100);
+        settings.ChannelVolumes[Login] = Volume;
+        if (Video is { } video)
+        {
+            video.SetVolume(Volume);
+            // Scrolling up from muted means "I want to hear this".
+            if (Player.Muted && delta > 0) Player.ToggleMuteCommand.Execute(null);
+            video.ShowMessage($"Volume {Volume}%");
+        }
+    }
 
     /// <summary>Set once the view has a player on this tab's video surface.</summary>
     internal IVideoPlayer? Video { get; private set; }
@@ -76,7 +99,7 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
         Video = player;
         if (player is null) return;
 
-        player.SetVolume(settings.Volume);
+        player.SetVolume(Volume);
         player.SetMute(Player.Muted);
         var session = new LivePlaybackSession(http, player) { PreferredQuality = settings.PreferredQuality, Tier = tier };
         session.StatusChanged += () => Player.Apply(session.Status, session.Variants, session.Current);
