@@ -28,6 +28,8 @@ public partial class MainWindow : Window
         // The emote menu rebuilds as it opens: sets may have loaded since.
         EmoteButton.Click += (_, _) => _vm?.EmoteMenu.Open();
         ModMenuButton.Click += (_, _) => _ = _vm?.ModMenu.OpenAsync();
+        PointsButton.Click += (_, _) => _vm?.RefreshPoints();
+        RedeemButton.Click += (_, _) => _vm?.RedeemOnTwitchCommand.Execute(null);
         // Names, mentions and mod icons in chat lines (and in user cards,
         // whose recent messages are chat lines too).
         AddHandler(ChatLine.UserClickedEvent, OnUserClicked);
@@ -133,9 +135,6 @@ public partial class MainWindow : Window
             try
             {
                 mpv = new MpvPlayer(wid);
-                // Clicks, double-clicks and the wheel land on mpv's native
-                // window, never on Avalonia; mpv reports them on its own thread.
-                mpv.InputReceived += input => Dispatcher.UIThread.Post(() => vm.OnVideoInput(tab, input));
                 vm.AttachPlayer(tab, mpv);
             }
             catch (Exception ex) when (ex is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
@@ -150,6 +149,9 @@ public partial class MainWindow : Window
             mpv?.Dispose();
             mpv = null;
         };
+        // Clicks, double-clicks and the wheel over the video land on the
+        // native window, never on Avalonia.
+        surface.Input += input => vm.OnVideoInput(tab, input);
         tab.PropertyChanged += OnTabChanged;
         tab.Player.PropertyChanged += OnTabPlayerChanged;
         Videos.Children.Add(surface);

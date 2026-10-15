@@ -70,6 +70,7 @@ public sealed class ChatLine : Border
 
         var stack = new StackPanel { Spacing = 2 };
         StyleRow(entry, stack);
+        if (m.CustomRewardId is not null && !entry.IsDeleted) stack.Children.Add(Redemption(entry));
 
         if (m.IsReply && !entry.IsDeleted)
             stack.Children.Add(new TextBlock
@@ -98,6 +99,12 @@ public sealed class ChatLine : Border
         else if (m.MsgId == "highlighted-message")
         {
             Bar("#9147FF", "#2D2245");
+        }
+        else if (m.CustomRewardId is not null)
+        {
+            // A reward that asks for text, as twitch.tv shows it: a grey
+            // card with the reward's own colour down the side.
+            Bar(entry.Reward?.Color is { Length: > 0 } c && Color.TryParse(c, out _) ? c : "#9147FF", "#26262C");
         }
         else if (m.Kind == ChatMessageKind.System && m.Login is not null)
         {
@@ -136,6 +143,37 @@ public sealed class ChatLine : Border
             Background = gradient;
         }
     }
+
+    /// <summary>"Redeemed Hydrate · ◉ 500" above a reward's message.</summary>
+    private static Control Redemption(ChatEntry entry)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        row.Children.Add(new TextBlock
+        {
+            Text = entry.Reward is { } r ? $"Redeemed {r.Title}" : "Redeemed a reward",
+            Foreground = DimBrush,
+            FontSize = 11.5,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        if (entry.Reward is { Cost: > 0 } reward)
+        {
+            row.Children.Add(PointsGlyph(entry.PointsIcon, 14));
+            row.Children.Add(new TextBlock
+            {
+                Text = reward.Cost.ToString("N0"),
+                Foreground = DimBrush,
+                FontSize = 11.5,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+        return row;
+    }
+
+    /// <summary>The channel's own points icon, or Twitch's default.</summary>
+    internal static Control PointsGlyph(Uri? icon, double size) => icon is not null
+        ? new RemoteImage { Source = icon, Width = size, Height = size, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center }
+        : new TextBlock { Text = "◉", Foreground = Brush("#BF94FF"), FontSize = size - 2, VerticalAlignment = VerticalAlignment.Center };
 
     private void Bar(string bar, string background)
     {

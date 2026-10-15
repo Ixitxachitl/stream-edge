@@ -49,6 +49,9 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
     [ObservableProperty]
     private bool _isFront;
 
+    /// <summary>When channel points were last asked for.</summary>
+    internal DateTimeOffset PointsLoadedAt { get; set; }
+
     /// <summary>This tab's own volume, 0–100: each tab (PIP thumbnails
     /// included) is its own player. Remembered per channel.</summary>
     [ObservableProperty]
@@ -120,4 +123,14 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
             await session.DisposeAsync().ConfigureAwait(false);
         }
     }
+}
+
+/// <summary>Mouse and keyboard input on a video.</summary>
+public enum VideoInput
+{
+    Click,
+    DoubleClick,
+    WheelUp,
+    WheelDown,
+    Escape,
 }

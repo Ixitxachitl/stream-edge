@@ -150,6 +150,28 @@ public class LayoutTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void PointsMenuShowsTheChannelsRewards() => Ui(() =>
+    {
+        var vm = new MainViewModel(new AppSettings(), new StartupOptions { Demo = true }, InlineDispatcher.Instance);
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var button = window.FindControl<Button>("PointsButton")!;
+        Assert.True(button.IsVisible);
+
+        button.Flyout!.ShowAt(button);
+        Dispatcher.UIThread.RunJobs();
+        var frame = window.CaptureRenderedFrame();
+        if (Environment.GetEnvironmentVariable("STREAMEDGE_SNAPSHOT") is { Length: > 0 } path)
+#pragma warning disable CS0618
+            frame!.Save(path.Replace(".png", "-points.png"));
+#pragma warning restore CS0618
+        Assert.Equal(3, vm.Chat.Rewards.Count);
+        button.Flyout.Hide();
+        window.Close();
+    });
+
+    [Fact]
     public void DemoWindowRendersAllThreePanes() => Ui(() =>
     {
         var vm = new MainViewModel(new AppSettings(), new StartupOptions { Demo = true }, InlineDispatcher.Instance);

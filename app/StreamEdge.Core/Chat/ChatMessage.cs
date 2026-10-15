@@ -77,6 +77,10 @@ public sealed record ChatMessage(
     /// <summary>Bits cheered with this message, 0 for none.</summary>
     public int Bits { get; init; }
 
+    /// <summary>Tag <c>custom-reward-id</c>: the message was sent by
+    /// redeeming this channel-points reward (one that asks for text).</summary>
+    public string? CustomRewardId { get; init; }
+
     public bool IsReply => ReplyParentName is not null;
 
     public static ChatMessage System(string channel, string text, DateTimeOffset at) =>
@@ -139,6 +143,7 @@ public sealed record ChatMessage(
         ReplyParentName = irc.Tag("reply-parent-display-name") ?? irc.Tag("reply-parent-user-login"),
         ReplyParentBody = irc.Tag("reply-parent-msg-body"),
         Bits = int.TryParse(irc.Tag("bits"), out var bits) && bits > 0 ? bits : 0,
+        CustomRewardId = irc.Tag("custom-reward-id"),
     };
 
     internal static DateTimeOffset? SentAt(IrcMessage irc) =>

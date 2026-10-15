@@ -66,19 +66,6 @@ internal static class MpvNative
     [DllImport(Lib)]
     public static extern void mpv_free(IntPtr data);
 
-    /// <summary>Next event, or one with id 0 (none) after the timeout.
-    /// Returns a pointer to mpv_event, valid until the next call.</summary>
-    [DllImport(Lib)]
-    public static extern IntPtr mpv_wait_event(IntPtr ctx, double timeout);
-
-    /// <summary>Makes a pending <see cref="mpv_wait_event"/> return at once.</summary>
-    [DllImport(Lib)]
-    public static extern void mpv_wakeup(IntPtr ctx);
-
-    public const int EventNone = 0;
-    public const int EventShutdown = 1;
-    public const int EventClientMessage = 16;
-
     [DllImport(Lib)]
     public static extern IntPtr mpv_error_string(int error);
 

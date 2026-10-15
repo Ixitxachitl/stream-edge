@@ -54,6 +54,14 @@ public static class SampleData
                 ["moderator/1"], "A wild Murkrow appears Catch it using !pokecatch (winners revealed in 90s)"),
             Say(5, "nintendope503", "NintenDope503", "#B65CFF", "!pokecatch Ultraball", "broadcaster/1"),
             Say(6, "pokemoncommunitygame", "PokemonCommunityGame", "#FF6B3D", "Murkrow has been caught by: NintenDope503", "moderator/1"),
+            Say(7, "ixitxachitl", "Ixitxachitl", "#4E8FD6", "Elden Ring next please") with { CustomRewardId = "next-game" },
         ];
     }
+
+    public static ChannelPoints Points() => new("Dope Points", null,
+    [
+        new("hydrate", "Hydrate", 100, "#1F69FF", null, null, false, true),
+        new("next-game", "Pick the next game", 2500, "#392E5C", null, "Name a game", true, true),
+        new("vip", "VIP for a week", 50000, "#E91916", null, null, false, true),
+    ], 12345);
 }

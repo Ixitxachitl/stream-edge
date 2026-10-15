@@ -109,4 +109,27 @@ public class ChatViewModelTests
         Assert.Equal(["moderator", "subscriber"], chat.Lines[0].Badges.Select(b => b.Set));
         Assert.All(chat.Lines[0].Badges, b => Assert.Null(b.Image));
     }
+
+    [Fact]
+    public void RedemptionsShowTheirRewardOnceTheChannelsRewardsAreKnown()
+    {
+        var chat = Chat();
+        chat.Add(Irc("@custom-reward-id=vote;display-name=Alice;id=1;user-id=2 :alice!alice@alice.tmi.twitch.tv PRIVMSG #chan :Elden Ring"));
+        Assert.Null(chat.Lines[0].Reward);
+        Assert.False(chat.HasPoints);
+
+        var reward = new StreamEdge.Streams.ChannelReward("vote", "Sub Vote", 5000, "#392E5C", null, "!vote Game", true, true);
+        chat.Points = new StreamEdge.Streams.ChannelPoints("PotatoCoin", null, [reward], 4000);
+        Assert.Same(reward, chat.Lines[0].Reward);
+        Assert.True(chat.HasPoints);
+        Assert.Equal("4K", chat.BalanceText);
+
+        // Lines after the rewards loaded get theirs straight away.
+        chat.Add(Irc("@custom-reward-id=vote;display-name=Bob;id=3;user-id=4 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :Hades"));
+        Assert.Same(reward, chat.Lines[1].Reward);
+
+        var tile = Assert.Single(chat.Rewards);
+        Assert.Equal(0.45, tile.Opacity); // 1,000 short
+        Assert.Contains("1,000 more needed", tile.Tip.Replace('.', ','));
+    }
 }

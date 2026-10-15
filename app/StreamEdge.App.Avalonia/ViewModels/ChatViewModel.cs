@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using StreamEdge.Chat;
+using StreamEdge.Streams;
 
 namespace StreamEdge.AvaloniaApp.ViewModels;
 
@@ -34,6 +35,15 @@ public sealed partial class ChatEntry : ObservableObject
 
     [ObservableProperty]
     private bool _isDeleted;
+
+    /// <summary>The channel-points reward this message redeemed, once the
+    /// channel's rewards are known.</summary>
+    [ObservableProperty]
+    private ChannelReward? _reward;
+
+    /// <summary>The channel's points icon, drawn beside a reward's cost;
+    /// null for the default.</summary>
+    public Uri? PointsIcon { get; set; }
 
     /// <summary>The user moderates this channel: the line shows mod icons.</summary>
     [ObservableProperty]
@@ -84,6 +94,43 @@ public sealed partial class ChatViewModel : ObservableObject
         foreach (var entry in Lines) entry.CanModerate = value;
     }
 
+    /// <summary>This channel's points name, icon, rewards and the user's
+    /// balance; null until loaded, or if the channel has points off.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPoints), nameof(BalanceText), nameof(PointsTip), nameof(Rewards), nameof(PointsNotice))]
+    private ChannelPoints? _points;
+
+    public bool HasPoints => Points is not null;
+
+    /// <summary>"12.3K", or empty without an auth-token to read it with.</summary>
+    public string BalanceText => Points?.Balance is { } b ? ChannelPoints.Short(b) : "";
+
+    public string PointsTip => Points is not { } p ? ""
+        : p.Balance is { } b ? $"{b:N0} {p.Name}"
+        : $"{p.Name} · add your auth-token in Settings to see your balance";
+
+    /// <summary>The points menu's tiles, cheapest first.</summary>
+    public IReadOnlyList<RewardTile> Rewards => Points is not { } p ? []
+        : [.. p.Rewards.Select(r => new RewardTile(r, p.Balance))];
+
+    public string PointsNotice => Points switch
+    {
+        null => "",
+        { Balance: null } => "Add your auth-token in Settings to see your balance. Redeeming happens on twitch.tv.",
+        { Rewards.Count: 0 } => "This channel has no custom rewards right now.",
+        _ => "Redeeming happens on twitch.tv: Twitch only allows it from its own apps.",
+    };
+
+    partial void OnPointsChanged(ChannelPoints? value)
+    {
+        foreach (var entry in Lines)
+            if (entry.Message.CustomRewardId is not null)
+            {
+                entry.PointsIcon = value?.Icon;
+                entry.Reward = value?.Reward(entry.Message.CustomRewardId);
+            }
+    }
+
     [ObservableProperty]
     private string _status = "";
 
@@ -114,7 +161,11 @@ public sealed partial class ChatViewModel : ObservableObject
         // Official Twitch chat doesn't show joins and parts; they're opt-in.
         if (message.Kind == ChatMessageKind.Membership && !_settings.ShowJoinPart) return;
 
-        var entry = new ChatEntry(message, TimeOf(message.Timestamp)) { IsOwn = own, CanModerate = IsModerator };
+        var entry = new ChatEntry(message, TimeOf(message.Timestamp))
+        {
+            IsOwn = own, CanModerate = IsModerator,
+            PointsIcon = Points?.Icon, Reward = Points?.Reward(message.CustomRewardId),
+        };
         if (_services is not null)
         {
             entry.Render(_services, RoomId);
@@ -136,7 +187,11 @@ public sealed partial class ChatViewModel : ObservableObject
         foreach (var message in history)
         {
             if (message.Id is { } id && live.Contains(id)) continue;
-            var entry = new ChatEntry(message, TimeOf(message.Timestamp)) { CanModerate = IsModerator };
+            var entry = new ChatEntry(message, TimeOf(message.Timestamp))
+            {
+                CanModerate = IsModerator,
+                PointsIcon = Points?.Icon, Reward = Points?.Reward(message.CustomRewardId),
+            };
             if (_services is not null)
             {
                 entry.Render(_services, RoomId);
@@ -220,4 +275,24 @@ public sealed partial class ChatViewModel : ObservableObject
         : $"{(int)d.TotalDays} days";
 
     public void Clear() => Lines.Clear();
+}
+
+/// <summary>One reward in the points menu, drawn like twitch.tv's tiles.</summary>
+public sealed record RewardTile(ChannelReward Reward, int? Balance)
+{
+    public string Title => Reward.Title;
+    public Uri? Image => Reward.Image;
+    public string Cost => Reward.Cost.ToString("N0");
+    public string Background => Reward.Color is { Length: > 0 } c && Avalonia.Media.Color.TryParse(c, out _) ? c : "#9147FF";
+
+    /// <summary>Paused, sold out, or more than the user has: drawn dimmed.</summary>
+    public double Opacity => Reward.IsAvailable && (Balance is not { } b || b >= Reward.Cost) ? 1 : 0.45;
+
+    public string Tip => string.Join(Environment.NewLine, new[]
+    {
+        $"{Reward.Title} · {Reward.Cost:N0}",
+        Reward.Prompt,
+        Reward.IsAvailable ? null : "Not available right now",
+        Balance is { } b && b < Reward.Cost ? $"{Reward.Cost - b:N0} more needed" : null,
+    }.Where(s => !string.IsNullOrEmpty(s)));
 }

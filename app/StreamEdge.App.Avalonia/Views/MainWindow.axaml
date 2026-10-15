@@ -155,6 +155,63 @@
             </Flyout>
           </Button.Flyout>
         </Button>
+        <!-- Channel points, like twitch.tv's button under the chat box:
+             balance and the rewards on offer (redeeming opens twitch.tv). -->
+        <Button DockPanel.Dock="Right" x:Name="PointsButton" Classes="emoteMenu" Margin="4,0,0,0"
+                IsVisible="{Binding Chat.HasPoints}" ToolTip.Tip="{Binding Chat.PointsTip}">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Panel Width="16" Height="16" VerticalAlignment="Center">
+              <TextBlock Text="◉" FontSize="14" Foreground="#BF94FF" VerticalAlignment="Center"
+                         IsVisible="{Binding Chat.Points.Icon, Converter={x:Static ObjectConverters.IsNull}, FallbackValue=True}" />
+              <em:RemoteImage Source="{Binding Chat.Points.Icon, FallbackValue={x:Null}}" Stretch="Uniform" />
+            </Panel>
+            <TextBlock Text="{Binding Chat.BalanceText}" FontSize="{StaticResource SeSmallFontSize}" VerticalAlignment="Center"
+                       IsVisible="{Binding Chat.BalanceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+          <Button.Flyout>
+            <Flyout Placement="TopEdgeAlignedRight">
+              <DockPanel Width="344" DataContext="{Binding Chat}" x:DataType="vm:ChatViewModel">
+                <DockPanel DockPanel.Dock="Top" Margin="2,0,2,6">
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding PointsTip}" FontSize="{StaticResource SeSmallFontSize}"
+                             Foreground="{StaticResource SeTextDim}" VerticalAlignment="Center"
+                             IsVisible="{Binding Points.Balance, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}" />
+                  <TextBlock Text="{Binding Points.Name, FallbackValue=''}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </DockPanel>
+                <Button DockPanel.Dock="Bottom" Content="Redeem on twitch.tv ↗" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center" Margin="0,6,0,0" x:Name="RedeemButton" />
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding PointsNotice}" TextWrapping="Wrap" Margin="2,6,2,0"
+                           Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}" />
+                <ScrollViewer MaxHeight="300" HorizontalScrollBarVisibility="Disabled">
+                  <ItemsControl ItemsSource="{Binding Rewards}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel ItemWidth="84" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:RewardTile">
+                        <Border Margin="2" CornerRadius="4" Background="{Binding Background}" Height="96"
+                                Opacity="{Binding Opacity}" ToolTip.Tip="{Binding Tip}">
+                          <DockPanel Margin="4">
+                            <Border DockPanel.Dock="Bottom" Background="#99000000" CornerRadius="3" Padding="4,1"
+                                    HorizontalAlignment="Center">
+                              <TextBlock Text="{Binding Cost}" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                            </Border>
+                            <TextBlock DockPanel.Dock="Bottom" Text="{Binding Title}" FontSize="11" Foreground="White"
+                                       TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                                       TextAlignment="Center" Margin="0,2" />
+                            <em:RemoteImage Source="{Binding Image}" Width="28" Height="28" Stretch="Uniform"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          </DockPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </DockPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
         <TextBox x:Name="ChatInput" Text="{Binding Chat.Draft}" IsEnabled="{Binding Chat.CanSend}"
                  PlaceholderText="{Binding Chat.Placeholder}" MinHeight="28" Padding="6,4" />
       </DockPanel>

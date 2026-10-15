@@ -27,80 +27,20 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
 
         var rc = MpvNative.mpv_initialize(_ctx);
         if (rc < 0) throw new InvalidOperationException("mpv_initialize: " + MpvNative.ErrorString(rc));
-
-        foreach (var (key, input) in Bindings)
-            Command($"keybind {key} \"script-message streamedge {input}\"");
-        _events = new Thread(EventLoop) { IsBackground = true, Name = "mpv events" };
-        _events.Start();
-    }
-
-    /// <summary>Mouse and keys over the video, reported as <see cref="InputReceived"/>.
-    /// The video is a native window that takes these before the app could,
-    /// so mpv catches them and passes them on.</summary>
-    internal static readonly (string Key, VideoInput Input)[] Bindings =
-    [
-        ("MBTN_LEFT", VideoInput.Click),
-        ("MBTN_LEFT_DBL", VideoInput.DoubleClick),
-        ("WHEEL_UP", VideoInput.WheelUp),
-        ("WHEEL_DOWN", VideoInput.WheelDown),
-        ("ESC", VideoInput.Escape),
-    ];
-
-    /// <summary>Raised on mpv's event thread; marshal before touching UI.</summary>
-    public event Action<VideoInput>? InputReceived;
-
-    private readonly Thread _events;
-    private volatile bool _closing;
-
-    private void EventLoop()
-    {
-        while (!_closing)
-        {
-            var ctx = _ctx;
-            if (ctx == IntPtr.Zero) return;
-            var ev = MpvNative.mpv_wait_event(ctx, 1.0);
-            if (ev == IntPtr.Zero) continue;
-            // mpv_event: int event_id; int error; uint64 reply_userdata; void* data.
-            switch (System.Runtime.InteropServices.Marshal.ReadInt32(ev))
-            {
-                case MpvNative.EventShutdown:
-                    return;
-                case MpvNative.EventClientMessage:
-                    var data = System.Runtime.InteropServices.Marshal.ReadIntPtr(ev, 16);
-                    if (ClientMessage(data) is ["streamedge", var name, ..] && Enum.TryParse<VideoInput>(name, out var input))
-                        InputReceived?.Invoke(input);
-                    break;
-            }
-        }
-    }
-
-    /// <summary>mpv_event_client_message: int num_args; const char** args.</summary>
-    private static string[] ClientMessage(IntPtr data)
-    {
-        if (data == IntPtr.Zero) return [];
-        var count = System.Runtime.InteropServices.Marshal.ReadInt32(data);
-        var args = System.Runtime.InteropServices.Marshal.ReadIntPtr(data, IntPtr.Size);
-        var result = new string[Math.Clamp(count, 0, 16)];
-        for (var i = 0; i < result.Length; i++)
-            result[i] = System.Runtime.InteropServices.Marshal.PtrToStringUTF8(
-                System.Runtime.InteropServices.Marshal.ReadIntPtr(args, i * IntPtr.Size)) ?? "";
-        return result;
     }
 
     /// <summary>Latency over smoothness. Applied in order, so later lines
     /// override what the low-latency profile sets.</summary>
     internal static readonly (string Name, string Value)[] Options =
     [
-        // Embedded player: no mpv UI or terminal, and none of mpv's own key
-        // or mouse bindings. The video window does take input, but only the
-        // bindings in Bindings below, which report back to the app.
+        // Embedded player: no mpv UI, keys, or terminal.
         ("terminal", "no"),
         ("msg-level", "all=warn"),
         ("osc", "no"),
         ("input-default-bindings", "no"),
-        ("input-vo-keyboard", "yes"),
-        ("input-cursor", "yes"),
-        ("cursor-autohide", "1000"),
+        ("input-vo-keyboard", "no"),
+        ("input-cursor", "no"),
+        ("cursor-autohide", "no"),
         ("idle", "yes"),
         ("keep-open", "no"),
         ("force-window", "yes"),
@@ -151,7 +91,11 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         ("sub-border-style", "background-box"),
         ("sub-back-color", "#C0000000"),
         ("osd-level", "1"),
-        ("osd-font-size", "26"),
+        // OSD text ("Ad break", "Volume 70%") in real pixels: scaled by
+        // window height, as mpv does by default, it shrank to a few pixels
+        // in a PIP thumbnail.
+        ("osd-scale-by-window", "no"),
+        ("osd-font-size", "22"),
         ("osd-duration", "1500"),
     ];
 
@@ -263,25 +207,10 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
 
     public void Dispose()
     {
-        // Stop the event thread first: it must not be inside mpv_wait_event
-        // when the handle is destroyed.
-        _closing = true;
-        if (_ctx != IntPtr.Zero) MpvNative.mpv_wakeup(_ctx);
-        _events.Join(TimeSpan.FromSeconds(2));
         var ctx = _ctx;
         _ctx = IntPtr.Zero;
         // Must happen before the host window is destroyed: mpv is still
         // rendering into it until this returns.
         if (ctx != IntPtr.Zero) MpvNative.mpv_terminate_destroy(ctx);
     }
-}
-
-/// <summary>Mouse and keyboard input on a video, from mpv.</summary>
-public enum VideoInput
-{
-    Click,
-    DoubleClick,
-    WheelUp,
-    WheelDown,
-    Escape,
 }

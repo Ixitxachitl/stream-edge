@@ -16,6 +16,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private static readonly TimeSpan StreamRefresh = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ClockTick = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PointsRefresh = TimeSpan.FromMinutes(5);
     // Catch-up decisions need fresh buffer readings; 4 Hz is plenty.
     private static readonly TimeSpan PlaybackTick = TimeSpan.FromMilliseconds(250);
 
@@ -151,6 +152,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var tab = OpenChannel(SampleData.Channel, OpenMode.NewTab)!;
         tab.Chat.Clear();
         foreach (var line in SampleData.Chat(now)) tab.Chat.Add(line);
+        tab.Chat.Points = SampleData.Points();
         tab.Chat.Status = "Demo data";
         tab.Player.Status = "Demo mode: no playback.";
     }
@@ -253,6 +255,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             _ = LoadChannelLookAsync(tab);
             _ = LoadHistoryAsync(tab);
+            _ = LoadPointsAsync(tab);
         }
 
         if (mode != OpenMode.Background || FrontTab is null) SetFront(tab);
@@ -497,6 +500,43 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>The channel's points name, icon and rewards, and with the
+    /// auth-token the user's balance. Signed out works for all but the balance.</summary>
+    internal async Task LoadPointsAsync(ChannelTabViewModel tab)
+    {
+        tab.PointsLoadedAt = DateTimeOffset.Now;
+        try
+        {
+            var points = await ChannelPoints.FetchAsync(_http, tab.Login,
+                SecretStore.Get(SecretStore.PlaybackAuthToken), _stop.Token);
+            if (points is null) return;
+            _ui.Post(() =>
+            {
+                if (Tabs.Contains(tab)) tab.Chat.Points = points;
+            });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            // Points are extra; chat works without them. Retried next refresh.
+        }
+    }
+
+    /// <summary>twitch.tv's popout chat for the front channel, which has
+    /// the redeem button this app can't offer.</summary>
+    [RelayCommand]
+    private void RedeemOnTwitch()
+    {
+        if (FrontTab is { } front) UrlLauncher.TryOpen($"https://www.twitch.tv/popout/{Uri.EscapeDataString(front.Login)}/chat");
+    }
+
+    /// <summary>The points menu opening: a fresh balance if the last is
+    /// more than a few seconds old.</summary>
+    public void RefreshPoints()
+    {
+        if (!_options.Demo && FrontTab is { } front && DateTimeOffset.Now - front.PointsLoadedAt >= TimeSpan.FromSeconds(10))
+            _ = LoadPointsAsync(front);
+    }
+
     // ----- Chat extras ----------------------------------------------------
 
     /// <summary>ROOMSTATE gives a channel's numeric id, which its emote sets
@@ -608,24 +648,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// video window): double-click the front video for video-only
     /// fullscreen; click a PIP thumbnail to bring it forward; scroll for
     /// that tab's own volume; Esc leaves fullscreen.</summary>
-    public void OnVideoInput(ChannelTabViewModel tab, Playback.Mpv.VideoInput input)
+    public void OnVideoInput(ChannelTabViewModel tab, VideoInput input)
     {
         if (!Tabs.Contains(tab)) return;
         switch (input)
         {
-            case Playback.Mpv.VideoInput.DoubleClick when tab.IsFront:
+            case VideoInput.DoubleClick when tab.IsFront:
                 VideoOnly = !VideoOnly;
                 break;
-            case Playback.Mpv.VideoInput.Click or Playback.Mpv.VideoInput.DoubleClick when !tab.IsFront:
+            case VideoInput.Click or VideoInput.DoubleClick when !tab.IsFront:
                 SetFront(tab);
                 break;
-            case Playback.Mpv.VideoInput.WheelUp:
+            case VideoInput.WheelUp:
                 tab.ChangeVolume(+5, _settings);
                 break;
-            case Playback.Mpv.VideoInput.WheelDown:
+            case VideoInput.WheelDown:
                 tab.ChangeVolume(-5, _settings);
                 break;
-            case Playback.Mpv.VideoInput.Escape:
+            case VideoInput.Escape:
                 VideoOnly = false;
                 break;
         }
@@ -696,6 +736,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Streams.Tick(now);
         foreach (var tab in Tabs) ShowChannelInfo(tab);
         if (!_options.Demo && now - _lastStreamRefresh >= StreamRefresh) _ = RefreshStreamsAsync();
+        // The balance changes as the user redeems or earns elsewhere; only
+        // the front tab's is on screen.
+        if (!_options.Demo && FrontTab is { } front && now - front.PointsLoadedAt >= PointsRefresh) _ = LoadPointsAsync(front);
         // Not just at exit: a crash or power cut should cost at most this
         // tick's worth of layout, tabs and window placement.
         _settings.Save();
