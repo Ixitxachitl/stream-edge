@@ -14,6 +14,9 @@ public enum ChatTokenKind
     Link,
     /// <summary>"@name"; <see cref="ChatToken.MentionLogin"/> is set.</summary>
     Mention,
+    /// <summary>A GIF; <see cref="ChatToken.Url"/> is its image and
+    /// <see cref="ChatToken.Text"/> its "[title]".</summary>
+    Gif,
 }
 
 /// <summary>One run of a chat line. <see cref="Text"/> is always the
@@ -46,19 +49,26 @@ public static class ChatTokenizer
     /// <paramref name="thirdPartyLookup"/> (normally
     /// <c>code =&gt; registry.Lookup(roomId, code)</c>).</summary>
     /// <param name="selfLogin">Signed-in login, to flag mentions of it; null when anonymous.</param>
+    /// <param name="gifs">Draw GIFs; off, a GIF stays its "[title]" text.</param>
     public static IReadOnlyList<ChatToken> Tokenize(
-        ChatMessage message, Func<string, Emote?>? thirdPartyLookup, string? selfLogin)
+        ChatMessage message, Func<string, Emote?>? thirdPartyLookup, string? selfLogin, bool gifs = true)
     {
         var text = message.Text;
         var builder = new Builder();
         var pos = 0;
-        foreach (var range in message.TwitchEmotes)
+        // Twitch's emotes and GIFs, in the order they appear.
+        var spans = message.TwitchEmotes.Select(r => (r.Start, r.Length, Emote: (TwitchEmoteRange?)r, Gif: (ChatGif?)null))
+            .Concat(message.Gifs.Select(g => (g.Start, g.Length, Emote: (TwitchEmoteRange?)null, Gif: (ChatGif?)g)))
+            .OrderBy(s => s.Start);
+        foreach (var span in spans)
         {
-            if (range.Start < pos || range.Start + range.Length > text.Length) continue;
-            Words(builder, text, pos, range.Start, thirdPartyLookup, selfLogin);
-            var code = text.Substring(range.Start, range.Length);
-            builder.AddEmote(new Emote(code, range.ImageUrl, EmoteProvider.Twitch));
-            pos = range.Start + range.Length;
+            if (span.Start < pos || span.Start + span.Length > text.Length) continue;
+            Words(builder, text, pos, span.Start, thirdPartyLookup, selfLogin);
+            var code = text.Substring(span.Start, span.Length);
+            if (span.Emote is { } range) builder.AddEmote(new Emote(code, range.ImageUrl, EmoteProvider.Twitch));
+            else if (gifs && span.Gif is { } gif) builder.Add(new ChatToken(ChatTokenKind.Gif, code) { Url = gif.Url });
+            else builder.AddText(code);
+            pos = span.Start + span.Length;
         }
         Words(builder, text, pos, text.Length, thirdPartyLookup, selfLogin);
         return builder.Finish();

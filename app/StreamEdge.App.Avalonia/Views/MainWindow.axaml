@@ -88,6 +88,8 @@
                 <TextBlock Text="Chat" FontWeight="SemiBold" />
                 <CheckBox Content="Timestamps" IsChecked="{Binding ShowTimestamps}" />
                 <CheckBox Content="Join and part messages" IsChecked="{Binding ShowJoinPart}" />
+                <CheckBox Content="GIFs" IsChecked="{Binding ShowGifs}"
+                          ToolTip.Tip="Twitch's GIPHY GIFs, drawn in chat; off, they show as their title" />
                 <CheckBox Content="Chat history when a channel opens" IsChecked="{Binding LoadChatHistory}"
                           ToolTip.Tip="Twitch's own history needs the auth-token (below)" />
                 <TextBlock Text="Third-party (each optional)" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}" />

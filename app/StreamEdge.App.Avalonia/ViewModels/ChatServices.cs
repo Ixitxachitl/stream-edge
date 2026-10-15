@@ -126,5 +126,5 @@ public sealed class ChatServices
     public IReadOnlyList<ChatToken> Tokenize(ChatMessage message, string? roomId, bool own = false) =>
         ChatTokenizer.Tokenize(message,
             own ? code => MyEmote(code) ?? Emotes.Lookup(roomId, code) : code => Emotes.Lookup(roomId, code),
-            SelfLogin());
+            SelfLogin(), Settings.ShowGifs);
 }

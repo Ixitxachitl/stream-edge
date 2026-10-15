@@ -16,6 +16,11 @@ public enum ChatMessageKind
 /// <see cref="Start"/> and <see cref="Length"/> are UTF-16 offsets (what
 /// <see cref="string.Substring(int, int)"/> wants), already converted from the
 /// code-point offsets Twitch sends.</summary>
+/// <summary>A GIF (from GIPHY) in a message, from the <c>gifs</c> tag. The
+/// message text there is its title in brackets, "[Yes GIF by …]", shown when
+/// the GIF isn't. <see cref="Url"/> must be used exactly as Twitch sends it.</summary>
+public sealed record ChatGif(string Id, Uri Url, int Start, int Length);
+
 public sealed record TwitchEmoteRange(string Id, int Start, int Length)
 {
     /// <summary>Twitch's CDN picks the format for us with "default": an
@@ -76,6 +81,10 @@ public sealed record ChatMessage(
 
     /// <summary>Bits cheered with this message, 0 for none.</summary>
     public int Bits { get; init; }
+
+    /// <summary>GIFs in the message (tag <c>gifs</c>), by position in
+    /// <see cref="Text"/>, sorted and non-overlapping.</summary>
+    public IReadOnlyList<ChatGif> Gifs { get; init; } = [];
 
     /// <summary>Tag <c>custom-reward-id</c>: the message was sent by
     /// redeeming this channel-points reward (one that asks for text).</summary>
@@ -144,6 +153,7 @@ public sealed record ChatMessage(
         ReplyParentBody = irc.Tag("reply-parent-msg-body"),
         Bits = int.TryParse(irc.Tag("bits"), out var bits) && bits > 0 ? bits : 0,
         CustomRewardId = irc.Tag("custom-reward-id"),
+        Gifs = ParseGifs(irc.Tag("gifs"), emoteText, emoteOffset),
     };
 
     internal static DateTimeOffset? SentAt(IrcMessage irc) =>
@@ -166,14 +176,7 @@ public sealed record ChatMessage(
     {
         if (string.IsNullOrEmpty(tag) || text.Length == 0) return [];
 
-        // cpStart[k] = UTF-16 index of code point k; one extra slot for "end".
-        var cpStart = new List<int>(text.Length + 1);
-        for (var i = 0; i < text.Length; i++)
-        {
-            cpStart.Add(i);
-            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1])) i++;
-        }
-        cpStart.Add(text.Length);
+        var cpStart = CodePointStarts(text);
         var codePoints = cpStart.Count - 1;
 
         var ranges = new List<TwitchEmoteRange>();
@@ -205,4 +208,55 @@ public sealed record ChatMessage(
         }
         return clean;
     }
+
+    /// <summary>cpStart[k] = UTF-16 index of code point k, plus one extra
+    /// slot for the end: Twitch's tag positions count code points.</summary>
+    private static List<int> CodePointStarts(string text)
+    {
+        var cpStart = new List<int>(text.Length + 1);
+        for (var i = 0; i < text.Length; i++)
+        {
+            cpStart.Add(i);
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1])) i++;
+        }
+        cpStart.Add(text.Length);
+        return cpStart;
+    }
+
+    /// <summary>Parses <c>start-end|gifId|url,start-end|gifId|url</c>: positions
+    /// are code points with the end included, as for emotes. URLs carry query
+    /// strings, so entries are split only where a new "start-end|" begins.</summary>
+    internal static IReadOnlyList<ChatGif> ParseGifs(string? tag, string text, int offset = 0)
+    {
+        if (string.IsNullOrEmpty(tag) || text.Length == 0) return [];
+        var cpStart = CodePointStarts(text);
+        var codePoints = cpStart.Count - 1;
+        var gifs = new List<ChatGif>();
+        foreach (var entry in GifEntry.Split(tag))
+        {
+            var parts = entry.Split('|', 3);
+            if (parts.Length != 3) continue;
+            var dash = parts[0].IndexOf('-');
+            if (dash < 0
+                || !int.TryParse(parts[0].AsSpan(0, dash), out var first)
+                || !int.TryParse(parts[0].AsSpan(dash + 1), out var last)
+                || first < 0 || last < first || last >= codePoints
+                || !Uri.TryCreate(parts[2], UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps) continue;
+            var start = cpStart[first];
+            gifs.Add(new ChatGif(parts[1], url, start + offset, cpStart[last + 1] - start));
+        }
+        gifs.Sort((a, b) => a.Start.CompareTo(b.Start));
+        var clean = new List<ChatGif>(gifs.Count);
+        var end = 0;
+        foreach (var g in gifs)
+        {
+            if (g.Start < end) continue;
+            clean.Add(g);
+            end = g.Start + g.Length;
+        }
+        return clean;
+    }
+
+    private static readonly global::System.Text.RegularExpressions.Regex GifEntry =
+        new(@",(?=\d+-\d+\|)", global::System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 }

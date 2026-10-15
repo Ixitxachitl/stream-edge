@@ -63,6 +63,9 @@
       "type": "shell",
       "command": "pwsh",
       "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/fetch-libmpv.ps1"],
+      // Windows PowerShell on Windows: it's always there, and the scripts
+      // run under it. PowerShell 7 (pwsh) elsewhere.
+      "windows": { "command": "powershell" },
       "problemMatcher": [],
       "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
     },
@@ -73,6 +76,9 @@
       "type": "shell",
       "command": "pwsh",
       "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/build-release.ps1"],
+      // Windows PowerShell on Windows: it's always there, and the scripts
+      // run under it. PowerShell 7 (pwsh) elsewhere.
+      "windows": { "command": "powershell" },
       "problemMatcher": [],
       "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
     },

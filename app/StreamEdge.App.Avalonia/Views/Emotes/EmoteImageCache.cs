@@ -50,6 +50,12 @@ public static class EmoteImageCache
     // early rather than hold that much memory per emote.
     private const int MaxFrames = 240;
 
+    /// <summary>Tallest frame kept, in pixels. Emotes are far below it; GIFs
+    /// from GIPHY come full-size, and every frame is kept decoded, so they
+    /// are shrunk to this (still sharp at chat's 100-pixel GIF height on a
+    /// 2x display).</summary>
+    private const int MaxDecodeHeight = 256;
+
     // A slow connection (tens of KB/s) can still fetch a 50 KB emote; it
     // just can't fetch fifty at once inside 20 s, which is what used to happen.
     private static readonly HttpClient Http = CreateHttp();
@@ -173,6 +179,12 @@ public static class EmoteImageCache
         if (codec is null) return null;
 
         var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        // Frames are decoded at full size (later frames draw over earlier
+        // ones) and kept at most MaxDecodeHeight tall.
+        var shrink = info.Height > MaxDecodeHeight;
+        var kept = shrink
+            ? new SKImageInfo(Math.Max(1, info.Width * MaxDecodeHeight / info.Height), MaxDecodeHeight, SKColorType.Bgra8888, SKAlphaType.Premul)
+            : info;
         var frameInfos = codec.FrameInfo;
         var count = Math.Clamp(frameInfos.Length, 1, MaxFrames);
         var decoded = new SKBitmap[count];
@@ -200,8 +212,17 @@ public static class EmoteImageCache
                 // Browsers treat very short GIF delays as 100 ms; so do we.
                 var duration = frameInfos.Length > 0 ? frameInfos[i].Duration : 0;
                 durations[i] = duration <= 10 ? 100 : duration;
-                frames[i] = new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, bitmap.GetPixels(),
-                    new PixelSize(info.Width, info.Height), new Vector(96, 96), bitmap.RowBytes);
+                if (shrink)
+                {
+                    using var scaled = bitmap.Resize(kept, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None));
+                    frames[i] = new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, scaled.GetPixels(),
+                        new PixelSize(kept.Width, kept.Height), new Vector(96, 96), scaled.RowBytes);
+                }
+                else
+                {
+                    frames[i] = new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, bitmap.GetPixels(),
+                        new PixelSize(info.Width, info.Height), new Vector(96, 96), bitmap.RowBytes);
+                }
             }
             return new EmoteImage(frames[..count], durations[..count]);
         }

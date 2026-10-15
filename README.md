@@ -14,7 +14,7 @@ side by side in one short row.
 
 Requires the .NET 8 SDK (or newer) and libmpv for video:
 
-- **Windows:** `pwsh scripts/fetch-libmpv.ps1` (once; the build copies it next to the app)
+- **Windows:** `powershell -File scripts/fetch-libmpv.ps1` (once; the build copies it next to the app)
 - **Linux:** `sudo apt install libmpv2` (or your distribution's mpv library package)
 - **macOS:** `brew install mpv`
 
@@ -48,7 +48,7 @@ stored encrypted (DPAPI on Windows) and sent only to `gql.twitch.tv`.
 
 ## Release
 
-`pwsh scripts/build-release.ps1` publishes a self-contained single-file build for
+`pwsh scripts/build-release.ps1` (or `powershell -File …` on Windows) publishes a self-contained single-file build for
 the host OS into `dist/`. Pushing a `v*` tag runs `.github/workflows/release.yml`
 for Windows, Linux (x64 and arm64) and macOS.
 

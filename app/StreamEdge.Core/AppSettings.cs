@@ -108,6 +108,11 @@ public sealed class AppSettings
     /// <summary>7TV emotes.</summary>
     public bool UseSevenTv { get; set; } = true;
 
+    /// <summary>GIFs (Twitch's GIPHY GIFs) drawn in chat; off, they show as
+    /// their "[title]" text. They're full-size downloads, so this is the
+    /// switch for a slow connection or a busy chat.</summary>
+    public bool ShowGifs { get; set; } = true;
+
     /// <summary>JOIN/PART lines. Off by default: official chat doesn't show
     /// them and in busy channels they drown the conversation.</summary>
     public bool ShowJoinPart { get; set; }

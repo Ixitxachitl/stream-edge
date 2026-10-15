@@ -38,4 +38,21 @@ public class EmoteImageTests(HeadlessAvalonia ui) : UiTest(ui)
     [Fact]
     public void GarbageIsNotAnImage() => Ui(() =>
         Assert.Null(EmoteImageCache.Decode([1, 2, 3, 4])));
+
+    [Fact]
+    public void TallImagesAreShrunkWhenDecoded() => Ui(() =>
+    {
+        // A 480x480 picture, like a GIF from GIPHY.
+        using var bitmap = new SkiaSharp.SKBitmap(480, 480);
+        bitmap.Erase(SkiaSharp.SKColors.Purple);
+        using var png = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+
+        var image = EmoteImageCache.Decode(png.ToArray())!;
+        Assert.Equal(new Avalonia.PixelSize(256, 256), image.PixelSize);
+
+        // Emote-sized images are left alone.
+        using var small = new SkiaSharp.SKBitmap(112, 112);
+        using var smallPng = small.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        Assert.Equal(new Avalonia.PixelSize(112, 112), EmoteImageCache.Decode(smallPng.ToArray())!.PixelSize);
+    });
 }

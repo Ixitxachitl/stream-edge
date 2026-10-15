@@ -739,6 +739,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var tab in Tabs.Where(t => roomId is null || t.RoomId == roomId)) tab.Chat.RenderAll();
     }
 
+    /// <summary>GIFs drawn in chat, or left as their "[title]" text.</summary>
+    public bool ShowGifs
+    {
+        get => _settings.ShowGifs;
+        set
+        {
+            if (SetProperty(_settings.ShowGifs, value, _settings, (s, v) => s.ShowGifs = v)) RenderChats(null);
+        }
+    }
+
     public bool ShowPronouns
     {
         get => _settings.ShowPronouns;

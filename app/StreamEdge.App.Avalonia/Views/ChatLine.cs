@@ -32,6 +32,10 @@ public sealed class ChatLine : Border
     }
 
     private const double EmoteHeight = 28;
+
+    /// <summary>GIFs are pictures, not emotes: bigger, but kept short enough
+    /// that one doesn't fill a 480-pixel-tall chat.</summary>
+    private const double GifHeight = 100;
     private const double BadgeHeight = 18;
 
     private static readonly IBrush TimeBrush = Brush("#ADADB8");
@@ -240,6 +244,9 @@ public sealed class ChatLine : Border
                 case ChatTokenKind.Emote when token.Emote is { } emote:
                     inlines.Add(Emote(emote, token.Overlays, token == gigantic ? EmoteHeight * 4 : EmoteHeight));
                     break;
+                case ChatTokenKind.Gif when token.Url is { } gif:
+                    inlines.Add(Gif(gif, token.Text));
+                    break;
                 case ChatTokenKind.Link when token.Url is { } url:
                     inlines.Add(Clickable(token.Text, LinkBrush, FontWeight.Normal, () => UrlLauncher.TryOpen(url.AbsoluteUri), underline: true));
                     break;
@@ -345,6 +352,19 @@ public sealed class ChatLine : Border
             VerticalAlignment = VerticalAlignment.Center,
         };
         return new InlineUIContainer(view) { BaselineAlignment = BaselineAlignment.Center };
+    }
+
+    /// <summary>A GIF in the line, its title as the tooltip and as the text
+    /// shown if it can't be loaded.</summary>
+    private static Inline Gif(Uri url, string title)
+    {
+        var view = new EmoteView(url, null, title.Trim('[', ']') + "\nGIF via GIPHY")
+        {
+            EmoteHeight = GifHeight,
+            FallbackText = title,
+            Margin = new Thickness(0, 2),
+        };
+        return new InlineUIContainer(view) { BaselineAlignment = BaselineAlignment.Bottom };
     }
 
     private static Inline Badge(ChatServices.Badge badge)

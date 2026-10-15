@@ -142,4 +142,40 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
         }
         window.Close();
     });
+
+    [Fact]
+    public void AGifInChatIsDrawnAsAPicture() => Ui(() =>
+    {
+        var (window, vm, _) = Open();
+        const string url = "https://media4.giphy.com/media/joSNxeswxuc74Juo8X/giphy.gif";
+        var line = StreamEdge.Chat.ChatMessage.FromIrc(StreamEdge.Chat.IrcMessage.Parse(
+            $"@display-name=Alice;gifs=0-33|joSNxeswxuc74Juo8X|{url};id=g1 :alice!alice@alice.tmi.twitch.tv PRIVMSG #nintendope503 :[Y A Y Yes GIF by Djemilah Birnie]"),
+            DateTimeOffset.Now)!;
+        vm.FrontTab!.Chat.Add(line);
+        Dispatcher.UIThread.RunJobs();
+
+        var entry = vm.FrontTab.Chat.Lines[^1];
+        Assert.Contains(entry.Tokens, t => t.Kind == StreamEdge.Chat.ChatTokenKind.Gif);
+        var view = window.GetVisualDescendants().OfType<EmoteView>().Last();
+        Assert.Equal(100, view.EmoteHeight);
+
+        // Off: just the title.
+        vm.ShowGifs = false;
+        Dispatcher.UIThread.RunJobs();
+        Assert.DoesNotContain(vm.FrontTab.Chat.Lines[^1].Tokens, t => t.Kind == StreamEdge.Chat.ChatTokenKind.Gif);
+        vm.ShowGifs = true;
+        Dispatcher.UIThread.RunJobs();
+
+        if (Environment.GetEnvironmentVariable("STREAMEDGE_SNAPSHOT") is { Length: > 0 } path)
+        {
+            // The real GIF, for eyeballing.
+            EmoteImageCache.GetAsync(new Uri(url)).GetAwaiter().GetResult();
+            vm.FrontTab.Chat.RenderAll();
+            Dispatcher.UIThread.RunJobs();
+#pragma warning disable CS0618
+            window.CaptureRenderedFrame()!.Save(path.Replace(".png", "-gif.png"));
+#pragma warning restore CS0618
+        }
+        window.Close();
+    });
 }
