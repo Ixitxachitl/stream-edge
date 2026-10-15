@@ -35,6 +35,10 @@ public sealed partial class ChatEntry : ObservableObject
     [ObservableProperty]
     private bool _isDeleted;
 
+    /// <summary>The user moderates this channel: the line shows mod icons.</summary>
+    [ObservableProperty]
+    private bool _canModerate;
+
     /// <summary>Someone @-mentioned the signed-in user.</summary>
     public bool IsSelfMention => Tokens.Any(t => t.IsSelfMention);
 
@@ -70,6 +74,16 @@ public sealed partial class ChatViewModel : ObservableObject
     [ObservableProperty]
     private string? _roomId;
 
+    /// <summary>The user is a moderator (or the broadcaster) here, from
+    /// USERSTATE: lines get mod icons and the mod menu shows.</summary>
+    [ObservableProperty]
+    private bool _isModerator;
+
+    partial void OnIsModeratorChanged(bool value)
+    {
+        foreach (var entry in Lines) entry.CanModerate = value;
+    }
+
     [ObservableProperty]
     private string _status = "";
 
@@ -100,7 +114,7 @@ public sealed partial class ChatViewModel : ObservableObject
         // Official Twitch chat doesn't show joins and parts; they're opt-in.
         if (message.Kind == ChatMessageKind.Membership && !_settings.ShowJoinPart) return;
 
-        var entry = new ChatEntry(message, TimeOf(message.Timestamp)) { IsOwn = own };
+        var entry = new ChatEntry(message, TimeOf(message.Timestamp)) { IsOwn = own, CanModerate = IsModerator };
         if (_services is not null)
         {
             entry.Render(_services, RoomId);
@@ -122,7 +136,7 @@ public sealed partial class ChatViewModel : ObservableObject
         foreach (var message in history)
         {
             if (message.Id is { } id && live.Contains(id)) continue;
-            var entry = new ChatEntry(message, TimeOf(message.Timestamp));
+            var entry = new ChatEntry(message, TimeOf(message.Timestamp)) { CanModerate = IsModerator };
             if (_services is not null)
             {
                 entry.Render(_services, RoomId);

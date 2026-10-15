@@ -8,6 +8,10 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Windows PE icon for the executable; the same art is an
+         AvaloniaResource below for the window and taskbar on every OS.
+         Regenerate both from /icon.png with scripts/make-icon.ps1. -->
+    <ApplicationIcon>Assets/icon.ico</ApplicationIcon>
     <!-- LibraryImport (PlayerSurface's window z-order calls). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -22,6 +26,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\StreamEdge.Core\StreamEdge.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/icon.ico" />
+    <AvaloniaResource Include="Assets/icon.png" />
   </ItemGroup>
 
   <!-- libmpv for the player, on Windows only: Linux and macOS use the system

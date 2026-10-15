@@ -9,6 +9,7 @@
         x:Class="StreamEdge.AvaloniaApp.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{Binding WindowTitle}"
+        Icon="avares://StreamEdge/Assets/icon.ico"
         Width="1920" Height="480" MinWidth="960" MinHeight="240">
 
   <v:UltrawideLayout x:Name="Layout" ChatShare="{Binding ChatShare}" ChatOnLeft="{Binding ChatOnLeft}">
@@ -49,6 +50,32 @@
         <DockPanel>
           <Button DockPanel.Dock="Right" Content="✕" ToolTip.Tip="Leave channel"
                   Command="{Binding LeaveChannelCommand}" IsVisible="{Binding HasChannel}" />
+          <!-- Mod menu: only in channels the user moderates. -->
+          <Button DockPanel.Dock="Right" x:Name="ModMenuButton" Content="🛡" ToolTip.Tip="Moderation"
+                  IsVisible="{Binding Chat.IsModerator}">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <StackPanel Width="280" Spacing="8" DataContext="{Binding ModMenu}" x:DataType="vm:ModMenuViewModel">
+                  <TextBlock Text="Chat modes" FontWeight="SemiBold" />
+                  <ToggleSwitch Content="Slow mode (30 s)" IsChecked="{Binding SlowMode}" />
+                  <ToggleSwitch Content="Followers only (10 min)" IsChecked="{Binding FollowersOnly}" />
+                  <ToggleSwitch Content="Subscribers only" IsChecked="{Binding SubscribersOnly}" />
+                  <ToggleSwitch Content="Emote only" IsChecked="{Binding EmoteOnly}" />
+                  <ToggleSwitch Content="Unique chat" IsChecked="{Binding UniqueChat}" />
+                  <ToggleSwitch Content="Shield mode" IsChecked="{Binding ShieldMode}" />
+                  <Separator />
+                  <TextBlock Text="Announcement" FontWeight="SemiBold" />
+                  <TextBox Text="{Binding Announcement}" PlaceholderText="Message" TextWrapping="Wrap" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ComboBox ItemsSource="{Binding AnnouncementColors}" SelectedItem="{Binding AnnouncementColor}" />
+                    <Button Content="Announce" Command="{Binding AnnounceCommand}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{StaticResource SeAccent}"
+                             IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
           <TextBlock DockPanel.Dock="Right" Text="{Binding Chat.Status}" Foreground="{StaticResource SeTextFaint}" Margin="0,0,6,0" />
           <!-- Player controls live here: nothing can be drawn over native video. -->
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="0,0,8,0"

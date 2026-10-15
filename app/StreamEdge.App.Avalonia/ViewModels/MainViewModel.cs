@@ -52,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // Own lines drawn before the user's emotes arrived get them now.
         Services.MyEmotesChanged += () => RenderChats(null);
         EmoteMenu = new EmoteMenuViewModel(Services, () => FrontTab, Account);
+        ModMenu = new ModMenuViewModel(() => FrontTab, Moderation);
         Account.AccountChanged += () => _ = OnAccountChangedAsync();
         Streams.OpenRequested += (login, mode) => OpenChannel(login, mode);
 
@@ -65,6 +66,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public StreamListViewModel Streams { get; }
     public ChatServices Services { get; }
     public EmoteMenuViewModel EmoteMenu { get; }
+    public ModMenuViewModel ModMenu { get; }
     public AccountViewModel Account { get; }
 
     /// <summary>Open channels, in tab order.</summary>
@@ -353,8 +355,64 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnUserState(ChatUserState state)
     {
-        if (state.Channel is { } channel) _userStates[channel] = state;
-        else _globalUserState = state;
+        if (state.Channel is { } channel)
+        {
+            _userStates[channel] = state;
+            // Moderator or broadcaster here: mod icons on lines, the mod menu.
+            if (TabFor(channel) is { } tab)
+                tab.Chat.IsModerator = state.Badges.Any(b => b.StartsWith("moderator/", StringComparison.Ordinal)
+                                                            || b.StartsWith("broadcaster/", StringComparison.Ordinal));
+        }
+        else
+        {
+            _globalUserState = state;
+        }
+    }
+
+    /// <summary>The card for a name clicked in the front tab's chat; starts
+    /// loading the profile (and, for mods, the follow date) in the background.</summary>
+    public UserCardViewModel? OpenUserCard(string login, ChatEntry? clicked)
+    {
+        if (FrontTab is not { } tab) return null;
+        var card = new UserCardViewModel(tab, login, clicked, Moderation, l => OpenChannel(l, OpenMode.NewTab));
+        if (!_options.Demo)
+            _ = card.LoadAsync(_http, _settings.EffectiveClientId,
+                Account.IsSignedIn && Account.CanModerate ? Account.AccessToken : null, _stop.Token);
+        return card;
+    }
+
+    // ----- Moderation -----------------------------------------------------
+
+    /// <summary>Acting as the signed-in user, or null with why not.</summary>
+    private (TwitchModeration? Mod, string? Why) Moderation()
+    {
+        if (!Account.IsSignedIn || Account.AccessToken is not { } token || Account.UserId is not { } me)
+            return (null, "Log in to moderate.");
+        if (!Account.CanModerate)
+            return (null, "Log in again (⚙) to moderate: StreamEdge now asks for moderator permissions.");
+        return (new TwitchModeration(_http, _settings.EffectiveClientId, token, me), null);
+    }
+
+    /// <summary>The icons on a chat line: delete it, time its sender out for
+    /// ten minutes, or ban them. Problems are said in that tab's chat.</summary>
+    public async Task ModerateAsync(ChannelTabViewModel tab, ChatEntry entry, Views.ModAction action)
+    {
+        var (mod, why) = Moderation();
+        var room = tab.RoomId;
+        var m = entry.Message;
+        if (mod is null || room is null || m.UserId is null && action != Views.ModAction.Delete)
+        {
+            tab.Chat.Add(ChatMessage.System(tab.Login, why ?? "Can't moderate this line yet.", DateTimeOffset.Now));
+            return;
+        }
+        var result = action switch
+        {
+            Views.ModAction.Delete when m.Id is { } id => await mod.DeleteMessageAsync(room, id, _stop.Token),
+            Views.ModAction.Timeout => await mod.BanAsync(room, m.UserId!, 600, null, _stop.Token),
+            Views.ModAction.Ban => await mod.BanAsync(room, m.UserId!, null, null, _stop.Token),
+            _ => new ModResult(false, "Nothing to do."),
+        };
+        if (!result.Ok) tab.Chat.Add(ChatMessage.System(tab.Login, "Twitch refused: " + result.Error, DateTimeOffset.Now));
     }
 
     /// <summary>The user's Twitch emotes, for the emote menu and their own

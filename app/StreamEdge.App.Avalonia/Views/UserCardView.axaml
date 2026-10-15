@@ -1,0 +1,100 @@
+<!-- The popup for a clicked name, like twitch.tv's viewer card: who they
+     are, how long they've been around, what they said here, and for
+     moderators, what can be done about it. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
+             xmlns:v="using:StreamEdge.AvaloniaApp.Views"
+             xmlns:em="using:StreamEdge.AvaloniaApp.Views.Emotes"
+             x:Class="StreamEdge.AvaloniaApp.Views.UserCardView"
+             x:DataType="vm:UserCardViewModel"
+             Width="330">
+  <ScrollViewer MaxHeight="430" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="8" Margin="0,0,10,0">
+
+      <!-- Who -->
+      <DockPanel>
+        <Border DockPanel.Dock="Left" Width="64" Height="64" CornerRadius="32" ClipToBounds="True"
+                Background="{StaticResource SeHeaderBg}" Margin="0,0,10,0">
+          <em:RemoteImage Source="{Binding Avatar}" />
+        </Border>
+        <StackPanel VerticalAlignment="Center" Spacing="2">
+          <TextBlock Text="{Binding DisplayName}" Foreground="{Binding NameBrush}" FontSize="18" FontWeight="Bold"
+                     TextTrimming="CharacterEllipsis" />
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="{Binding Login}" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}" />
+            <TextBlock Text="{Binding Pronoun}" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}"
+                       IsVisible="{Binding Pronoun, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Text="{Binding Role}" Foreground="{StaticResource SeAccent}" FontSize="{StaticResource SeSmallFontSize}"
+                       IsVisible="{Binding Role, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+          <ItemsControl ItemsSource="{Binding Badges}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="3" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ChatServices+Badge">
+                <em:EmoteView Source="{Binding Image.ImageUrl}" EmoteHeight="18" ToolTip.Tip="{Binding Image.Title}"
+                              IsVisible="{Binding Image, Converter={x:Static ObjectConverters.IsNotNull}}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </DockPanel>
+
+      <StackPanel Spacing="2">
+        <TextBlock Text="{Binding AccountAge}" Foreground="{StaticResource SeTextDim}"
+                   IsVisible="{Binding AccountAge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Text="{Binding FollowAge}" Foreground="{StaticResource SeTextDim}"
+                   IsVisible="{Binding FollowAge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+                   Foreground="{StaticResource SeText}" FontSize="{StaticResource SeSmallFontSize}" Margin="0,4,0,0"
+                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button Content="@ Mention" Command="{Binding MentionCommand}" />
+        <Button Content="Open channel" Command="{Binding OpenChannelCommand}" ToolTip.Tip="Open their channel in a new tab" />
+      </StackPanel>
+
+      <!-- Moderation: only where the user is a mod or the broadcaster. -->
+      <Border IsVisible="{Binding CanModerate}" Background="{StaticResource SeHeaderBg}" CornerRadius="4" Padding="8">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Moderation" FontWeight="SemiBold" />
+          <TextBox Text="{Binding Reason}" PlaceholderText="Reason (optional; needed to warn)" />
+          <WrapPanel>
+            <Button Classes="mod" Content="1m" Command="{Binding TimeoutCommand}" CommandParameter="60" ToolTip.Tip="Timeout 1 minute" />
+            <Button Classes="mod" Content="10m" Command="{Binding TimeoutCommand}" CommandParameter="600" ToolTip.Tip="Timeout 10 minutes" />
+            <Button Classes="mod" Content="1h" Command="{Binding TimeoutCommand}" CommandParameter="3600" ToolTip.Tip="Timeout 1 hour" />
+            <Button Classes="mod" Content="1d" Command="{Binding TimeoutCommand}" CommandParameter="86400" ToolTip.Tip="Timeout 1 day" />
+            <Button Classes="mod" Content="1w" Command="{Binding TimeoutCommand}" CommandParameter="604800" ToolTip.Tip="Timeout 1 week" />
+          </WrapPanel>
+          <WrapPanel>
+            <Button Classes="mod danger" Content="Ban" Command="{Binding BanCommand}" />
+            <Button Classes="mod" Content="Unban" Command="{Binding UnbanCommand}" />
+            <Button Classes="mod" Content="Warn" Command="{Binding WarnCommand}" />
+            <Button Classes="mod" Content="Delete message" Command="{Binding DeleteClickedCommand}"
+                    IsVisible="{Binding CanDeleteClicked}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{StaticResource SeAccent}"
+                 IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      <!-- What they said here this session. -->
+      <StackPanel Spacing="2" IsVisible="{Binding HasRecentMessages}">
+        <TextBlock Text="Recent messages" FontWeight="SemiBold" Foreground="{StaticResource SeTextDim}"
+                   FontSize="{StaticResource SeSmallFontSize}" />
+        <ItemsControl ItemsSource="{Binding RecentMessages}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ChatEntry">
+              <v:ChatLine Entry="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

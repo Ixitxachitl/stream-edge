@@ -3,6 +3,8 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using StreamEdge.AvaloniaApp.ViewModels;
@@ -142,7 +144,7 @@ public sealed class ChatLine : Border
         Background = Brush(background);
     }
 
-    private static InlineCollection BuildInlines(ChatEntry entry)
+    private InlineCollection BuildInlines(ChatEntry entry)
     {
         var m = entry.Message;
         var inlines = new InlineCollection();
@@ -159,12 +161,23 @@ public sealed class ChatLine : Border
                 return inlines;
         }
 
+        // Mod tools first, as Chatterino puts them: one click, no menu.
+        if (entry.CanModerate && !entry.IsOwn && !entry.IsDeleted && m.Login is not null
+            && m.Kind is ChatMessageKind.Message or ChatMessageKind.Action)
+        {
+            if (m.Id is not null) inlines.Add(ModButton("🗑", "Delete message", ModAction.Delete, entry));
+            inlines.Add(ModButton("⏱", "Timeout 10 minutes", ModAction.Timeout, entry));
+            inlines.Add(ModButton("⛔", "Ban", ModAction.Ban, entry));
+        }
+
         foreach (var badge in entry.Badges) inlines.Add(Badge(badge));
 
         var nameBrush = new SolidColorBrush(Readable(Color.Parse(UserColors.For(m.Login, m.Color))));
         var isAction = m.Kind == ChatMessageKind.Action;
         var isNotice = m.Kind == ChatMessageKind.System;
-        inlines.Add(new Run(m.Sender) { Foreground = nameBrush, FontWeight = FontWeight.Bold });
+        inlines.Add(m.Login is { } login
+            ? Clickable(m.Sender, nameBrush, FontWeight.Bold, () => RaiseUserClicked(login, entry))
+            : new Run(m.Sender) { Foreground = nameBrush, FontWeight = FontWeight.Bold });
         if (entry.Pronoun is { } pronoun)
             inlines.Add(new Run(" (" + pronoun + ")") { Foreground = DimBrush, FontSize = 11.5 });
         if (m.Bits > 0)
@@ -189,15 +202,12 @@ public sealed class ChatLine : Border
                 case ChatTokenKind.Emote when token.Emote is { } emote:
                     inlines.Add(Emote(emote, token.Overlays, token == gigantic ? EmoteHeight * 4 : EmoteHeight));
                     break;
-                case ChatTokenKind.Link:
-                    inlines.Add(new Run(token.Text) { Foreground = LinkBrush, TextDecorations = Avalonia.Media.TextDecorations.Underline });
+                case ChatTokenKind.Link when token.Url is { } url:
+                    inlines.Add(Clickable(token.Text, LinkBrush, FontWeight.Normal, () => UrlLauncher.TryOpen(url.AbsoluteUri), underline: true));
                     break;
-                case ChatTokenKind.Mention:
-                    inlines.Add(new Run(token.Text)
-                    {
-                        Foreground = token.IsSelfMention ? Brushes.White : TextBrush,
-                        FontWeight = FontWeight.Bold,
-                    });
+                case ChatTokenKind.Mention when token.MentionLogin is { } mentioned:
+                    inlines.Add(Clickable(token.Text, token.IsSelfMention ? Brushes.White : TextBrush, FontWeight.Bold,
+                        () => RaiseUserClicked(mentioned, null)));
                     break;
                 default:
                     inlines.Add(new Run(token.Text) { Foreground = textBrush });
@@ -205,6 +215,76 @@ public sealed class ChatLine : Border
             }
         }
         return inlines;
+    }
+
+    // ----- Interaction ----------------------------------------------------
+
+    /// <summary>A name or @mention was clicked: show that user's card. The
+    /// window handles it, anchoring the popup to <see cref="UserClickedEventArgs.Anchor"/>.</summary>
+    public static readonly RoutedEvent<UserClickedEventArgs> UserClickedEvent =
+        RoutedEvent.Register<ChatLine, UserClickedEventArgs>(nameof(UserClicked), RoutingStrategies.Bubble);
+
+    /// <summary>A moderator icon on the line was clicked.</summary>
+    public static readonly RoutedEvent<ModActionEventArgs> ModActionEvent =
+        RoutedEvent.Register<ChatLine, ModActionEventArgs>(nameof(ModActionRequested), RoutingStrategies.Bubble);
+
+    public event EventHandler<UserClickedEventArgs>? UserClicked
+    {
+        add => AddHandler(UserClickedEvent, value);
+        remove => RemoveHandler(UserClickedEvent, value);
+    }
+
+    public event EventHandler<ModActionEventArgs>? ModActionRequested
+    {
+        add => AddHandler(ModActionEvent, value);
+        remove => RemoveHandler(ModActionEvent, value);
+    }
+
+    private Control? _lastClicked;
+
+    private void RaiseUserClicked(string login, ChatEntry? entry) =>
+        RaiseEvent(new UserClickedEventArgs(UserClickedEvent, login, entry, _lastClicked ?? this));
+
+    /// <summary>Text that acts like a link: a name, mention or URL. Inlines
+    /// can't take clicks, so it's a small TextBlock inside the text flow.</summary>
+    private Inline Clickable(string text, IBrush brush, FontWeight weight, Action onClick, bool underline = false)
+    {
+        var block = new TextBlock
+        {
+            Text = text,
+            Foreground = brush,
+            FontWeight = weight,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            TextDecorations = underline ? Avalonia.Media.TextDecorations.Underline : null,
+        };
+        block.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(block).Properties.IsLeftButtonPressed) return;
+            _lastClicked = block;
+            onClick();
+            e.Handled = true;
+        };
+        return new InlineUIContainer(block) { BaselineAlignment = BaselineAlignment.Baseline };
+    }
+
+    private Inline ModButton(string glyph, string tip, ModAction action, ChatEntry entry)
+    {
+        var block = new TextBlock
+        {
+            Text = glyph,
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 4, 0),
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Opacity = 0.75,
+        };
+        ToolTip.SetTip(block, tip);
+        block.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(block).Properties.IsLeftButtonPressed) return;
+            RaiseEvent(new ModActionEventArgs(ModActionEvent, action, entry));
+            e.Handled = true;
+        };
+        return new InlineUIContainer(block) { BaselineAlignment = BaselineAlignment.Center };
     }
 
     private static Inline Emote(Emote emote, IReadOnlyList<Emote> overlays, double height)
@@ -280,4 +360,30 @@ public sealed class ChatLine : Border
             c = Color.FromRgb((byte)(c.R + (255 - c.R) * 0.25), (byte)(c.G + (255 - c.G) * 0.25), (byte)(c.B + (255 - c.B) * 0.25));
         return c;
     }
+}
+
+public enum ModAction
+{
+    Delete,
+    Timeout,
+    Ban,
+}
+
+public sealed class UserClickedEventArgs(RoutedEvent routedEvent, string login, ChatEntry? entry, Control anchor)
+    : RoutedEventArgs(routedEvent)
+{
+    public string Login { get; } = login;
+
+    /// <summary>The line clicked on, when it was the sender's name (null for
+    /// an @mention): lets the card offer "delete this message".</summary>
+    public ChatEntry? Entry { get; } = entry;
+
+    public Control Anchor { get; } = anchor;
+}
+
+public sealed class ModActionEventArgs(RoutedEvent routedEvent, ModAction action, ChatEntry entry)
+    : RoutedEventArgs(routedEvent)
+{
+    public ModAction Action { get; } = action;
+    public ChatEntry Entry { get; } = entry;
 }

@@ -144,6 +144,18 @@
     <Setter Property="Background" Value="Transparent" />
   </Style>
 
+  <!-- User card moderation buttons: compact, ban in red. -->
+  <Style Selector="Button.mod">
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="Margin" Value="0,0,4,4" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+  </Style>
+  <Style Selector="Button.mod.danger">
+    <Setter Property="Background" Value="#9B1C1C" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
   <Style Selector="ToggleButton.cc">
     <Setter Property="Height" Value="20" />
     <Setter Property="MinHeight" Value="0" />

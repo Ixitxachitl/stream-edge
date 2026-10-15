@@ -27,6 +27,11 @@ public partial class MainWindow : Window
         StreamList.DoubleTapped += OnStreamDoubleTapped;
         // The emote menu rebuilds as it opens: sets may have loaded since.
         EmoteButton.Click += (_, _) => _vm?.EmoteMenu.Open();
+        ModMenuButton.Click += (_, _) => _ = _vm?.ModMenu.OpenAsync();
+        // Names, mentions and mod icons in chat lines (and in user cards,
+        // whose recent messages are chat lines too).
+        AddHandler(ChatLine.UserClickedEvent, OnUserClicked);
+        AddHandler(ChatLine.ModActionEvent, OnModAction);
         Opened += (_, _) =>
         {
             if (!_restored) PlaceOnScreen();
@@ -140,6 +145,25 @@ public partial class MainWindow : Window
     }
 
     // ----- Chat -----------------------------------------------------------
+
+    /// <summary>A name or : show that user's card next to it.</summary>
+    private void OnUserClicked(object? sender, UserClickedEventArgs e)
+    {
+        if (_vm?.OpenUserCard(e.Login, e.Entry) is not { } card) return;
+        var flyout = new Flyout
+        {
+            Content = new UserCardView { DataContext = card },
+            Placement = PlacementMode.Bottom,
+        };
+        flyout.ShowAt(e.Anchor);
+        e.Handled = true;
+    }
+
+    private void OnModAction(object? sender, ModActionEventArgs e)
+    {
+        if (_vm?.FrontTab is { } tab) _ = _vm.ModerateAsync(tab, e.Entry, e.Action);
+        e.Handled = true;
+    }
 
     private void WatchChat()
     {

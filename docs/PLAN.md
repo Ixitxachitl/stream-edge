@@ -88,6 +88,10 @@ playlist resolution (with optional auth-token), secrets store.
 - [x] Optional, each switchable in ⚙: pronouns (alejo.io), BTTV, FFZ, 7TV (zero-width emotes stacked on the emote before them)
 - [x] Own messages drawn from USERSTATE (badges, colour) with the user's Twitch emotes (Helix, `user:read:emotes`)
 - [x] Emote menu like twitch.tv's: frequently used, this channel, the user's other channels, Twitch globals, 7TV/BTTV/FFZ sets, search
+- [x] Name popups (viewer cards): avatar, account age (GQL, signed out), follow age (Helix, moderators only), badges, recent messages, mention / open channel
+- [x] Moderation via Helix: per-line delete / 10-minute timeout / ban icons, timeouts / ban / unban / warn with reason in the card, and a 🛡 menu for chat modes, shield mode and announcements
+- [x] Chat history on open: Twitch's recentChatMessages (auth-token), else recent-messages.robotty.de
+- [x] App icon (icon.png → scripts/make-icon.ps1)
 - [ ] 7TV cosmetics (name paints, badges): need its EventAPI websocket
 - [ ] Cheermotes (bits are shown as a count for now)
 - [ ] Recent-message history on join (recent-messages.robotty.de), ended with "### Finished with history logs. ###"

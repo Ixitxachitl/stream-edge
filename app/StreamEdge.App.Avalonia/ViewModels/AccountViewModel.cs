@@ -134,10 +134,16 @@ public sealed partial class AccountViewModel : ObservableObject
     /// before that permission was requested can't, until the user logs in again.</summary>
     public bool CanUseOwnEmotes { get; private set; }
 
+    /// <summary>The token carries the moderation scopes (logins from
+    /// before they were requested don't).</summary>
+    public bool CanModerate { get; private set; }
+
     private void NoteScopes(TwitchAuth.Identity identity)
     {
         CanUseOwnEmotes = identity.Scopes?.Contains(TwitchAuth.EmotesScope) == true;
         OnPropertyChanged(nameof(CanUseOwnEmotes));
+        CanModerate = identity.Scopes?.Contains(TwitchAuth.ModerationScope) == true;
+        OnPropertyChanged(nameof(CanModerate));
     }
 
     public async Task RestoreAsync(CancellationToken ct)
