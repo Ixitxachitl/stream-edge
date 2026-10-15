@@ -6,8 +6,24 @@ using Xunit;
 
 namespace StreamEdge.Tests;
 
-public class LivePlaybackSessionTests
+public sealed class LivePlaybackSessionTests : IDisposable
 {
+    // These tests move the clock by hand, far faster than bytes arrive, which
+    // the no-progress watchdog and the bandwidth rule would rightly call a
+    // stuck or slow stream. Both off by default here; their own tests turn
+    // them back on.
+    public LivePlaybackSessionTests()
+    {
+        LivePlaybackSession.NoProgressTimeout = TimeSpan.FromHours(1);
+        LivePlaybackSession.DeliveryWindow = TimeSpan.FromHours(1);
+    }
+
+    public void Dispose()
+    {
+        LivePlaybackSession.NoProgressTimeout = TimeSpan.FromSeconds(12);
+        LivePlaybackSession.DeliveryWindow = TimeSpan.FromSeconds(8);
+    }
+
     /// <summary>GQL token, usher master playlist, and per-variant media
     /// playlists whose segment bodies name the variant they came from.</summary>
     private sealed class FakeTwitch : HttpMessageHandler
@@ -16,6 +32,9 @@ public class LivePlaybackSessionTests
 
         /// <summary>Segment requests never answer, like a dead CDN edge.</summary>
         public bool StallSegments;
+
+        /// <summary>Milliseconds each (2 s) segment takes to arrive.</summary>
+        public int SegmentDelayMs = 20;
 
         /// <summary>This many token requests time out first.</summary>
         public int TokenTimeouts;
@@ -50,7 +69,7 @@ public class LivePlaybackSessionTests
             else
             {
                 // Pace segments a little, like a live edge does.
-                await Task.Delay(StallSegments ? Timeout.Infinite : 20, ct);
+                await Task.Delay(StallSegments ? Timeout.Infinite : SegmentDelayMs, ct);
                 body = uri.AbsolutePath.Split('/')[1] + ";";
             }
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) };
@@ -120,17 +139,16 @@ public class LivePlaybackSessionTests
         await Until(() => player.Received.Contains("src;"));
 
         var now = DateTimeOffset.UtcNow;
-        // A little behind: speeds up, no reload.
-        player.Stats = new VideoPlayerStats(4, false, false);
+        // Clearly behind: speeds up, no reload.
+        player.Stats = new VideoPlayerStats(6, false, false);
         session.Tick(now);
         Assert.True(player.Speeds[^1] > 1.0);
         Assert.Single(player.Loads);
 
-        // Far behind: reloads at the live edge. (9 s on: past the resync
-        // cooldown, short of the no-progress watchdog, since no real time
-        // passes between these ticks.)
-        player.Stats = new VideoPlayerStats(9, false, false);
-        session.Tick(now + TimeSpan.FromSeconds(9));
+        // Far behind: reloads at the live edge (16 s on: past the resync
+        // cooldown).
+        player.Stats = new VideoPlayerStats(12, false, false);
+        session.Tick(now + TimeSpan.FromSeconds(16));
         Assert.Equal(2, player.Loads.Count);
     }
 
@@ -150,12 +168,15 @@ public class LivePlaybackSessionTests
             session.Tick(t + TimeSpan.FromSeconds(at + 1));
         }
 
-        Stall(0);
-        Stall(5);
+        // Three stalls in a minute, after the startup grace.
+        Stall(11);
+        Stall(16);
+        Stall(21);
         Assert.Equal("720p60", session.Current?.Name);
 
-        Stall(10);
-        Stall(15);
+        Stall(26);
+        Stall(31);
+        Stall(36);
         Assert.Equal("720p60", session.Current?.Name);
     }
 
@@ -238,6 +259,31 @@ public class LivePlaybackSessionTests
         finally
         {
             LivePlaybackSession.NoProgressTimeout = saved;
+        }
+    }
+
+    [Fact]
+    public async Task ASlowConnectionGoesStraightToAQualityThatFits()
+    {
+        var saved = LivePlaybackSession.DeliveryWindow;
+        LivePlaybackSession.DeliveryWindow = TimeSpan.FromSeconds(1);
+        try
+        {
+            // 2 s segments arriving in 4 s: half real time.
+            var player = new FakePlayer();
+            await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch { SegmentDelayMs = 4000 }), player);
+            await session.StartAsync("someone", authToken: null);
+            for (var i = 0; i < 12 && session.Current?.Name == "1080p60"; i++)
+            {
+                await Task.Delay(250);
+                session.Tick(DateTimeOffset.UtcNow);
+            }
+            Assert.Equal("720p60", session.Current?.Name);
+            Assert.True(session.DeliveryRate is null or < 0.85);
+        }
+        finally
+        {
+            LivePlaybackSession.DeliveryWindow = saved;
         }
     }
 

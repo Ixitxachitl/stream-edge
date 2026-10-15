@@ -15,6 +15,8 @@ public class LiveHlsReaderTests
         public long Edge = 10;
         public bool Gone;
         public bool AdAt12;
+        /// <summary>Fragmented MP4: an init segment named in #EXT-X-MAP.</summary>
+        public bool Mp4;
         public readonly List<string> Requests = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -26,6 +28,7 @@ public class LiveHlsReaderTests
                 if (Gone) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
                 var edge = Interlocked.Increment(ref Edge) - 1;
                 var sb = new StringBuilder("#EXTM3U\n#EXT-X-TARGETDURATION:2\n");
+                if (Mp4) sb.Append("#EXT-X-MAP:URI=\"init.mp4\"\n");
                 sb.Append($"#EXT-X-MEDIA-SEQUENCE:{edge - 3}\n");
                 for (var s = edge - 3; s <= edge; s++)
                 {
@@ -64,6 +67,14 @@ public class LiveHlsReaderTests
         // First playlist's newest complete segment is 10; older ones are skipped.
         Assert.StartsWith("seg10.ts;seg11.ts;seg12.ts;", text);
         Assert.DoesNotContain("seg9.ts", text);
+    }
+
+    [Fact]
+    public async Task FragmentedMp4SendsItsInitSegmentFirstAndOnce()
+    {
+        var text = await Run(new FakeTwitch { Mp4 = true }, bytes: 60);
+        Assert.StartsWith("init.mp4;seg10.ts;seg11.ts;", text);
+        Assert.Equal(1, text.Split("init.mp4").Length - 1);
     }
 
     [Fact]

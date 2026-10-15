@@ -61,6 +61,12 @@ internal static class MpvNative
         [MarshalAs(UnmanagedType.LPUTF8Str)] string name, int format, out int data);
 
     [DllImport(Lib)]
+    public static extern IntPtr mpv_get_property_string(IntPtr ctx, [MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+    [DllImport(Lib)]
+    public static extern void mpv_free(IntPtr data);
+
+    [DllImport(Lib)]
     public static extern IntPtr mpv_error_string(int error);
 
     public static string ErrorString(int error) =>

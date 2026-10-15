@@ -50,24 +50,80 @@ public static class EmoteImageCache
     // early rather than hold that much memory per emote.
     private const int MaxFrames = 240;
 
+    // A slow connection (tens of KB/s) can still fetch a 50 KB emote; it
+    // just can't fetch fifty at once inside 20 s, which is what used to happen.
     private static readonly HttpClient Http = CreateHttp();
     private static readonly ConcurrentDictionary<Uri, Lazy<Task<EmoteImage?>>> Loaded = new();
+    private static readonly ConcurrentDictionary<Uri, DateTimeOffset> FailedAt = new();
+
+    /// <summary>Downloads at once. A busy chat asks for dozens of images
+    /// together; started all at once they share the connection, each crawls,
+    /// and many time out. A few at a time, each one finishes.</summary>
+    private static readonly SemaphoreSlim Downloads = new(6);
+
+    /// <summary>A failed image is tried again after this long, rather than
+    /// staying blank until the app restarts.</summary>
+    public static TimeSpan RetryAfter { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>The display's scaling, set by the window: at 1 (100%) or
+    /// 1.25, the 1x images are pixel-exact and two to three times smaller
+    /// than the 2x ones the emote APIs are asked for.</summary>
+    public static double Scale { get; set; } = 1;
 
     private static HttpClient CreateHttp()
     {
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("StreamEdge/0.1");
         return http;
     }
 
     /// <summary>Already decoded, or null (and then <see cref="GetAsync"/>).</summary>
     public static EmoteImage? TryGet(Uri url) =>
-        Loaded.TryGetValue(url, out var lazy) && lazy.IsValueCreated && lazy.Value.IsCompletedSuccessfully
+        Loaded.TryGetValue(ForScale(url, Scale), out var lazy) && lazy.IsValueCreated && lazy.Value.IsCompletedSuccessfully
             ? lazy.Value.Result
             : null;
 
-    public static Task<EmoteImage?> GetAsync(Uri url) =>
-        Loaded.GetOrAdd(url, u => new Lazy<Task<EmoteImage?>>(() => Task.Run(() => LoadAsync(u)))).Value;
+    /// <summary>The image, or null if it can't be had right now; a later
+    /// call (after <see cref="RetryAfter"/>) tries again.</summary>
+    public static async Task<EmoteImage?> GetAsync(Uri url)
+    {
+        url = ForScale(url, Scale);
+        if (FailedAt.TryGetValue(url, out var failed))
+        {
+            if (DateTimeOffset.UtcNow - failed < RetryAfter) return null;
+            FailedAt.TryRemove(url, out _);
+            Loaded.TryRemove(url, out _);
+        }
+        // Not back on the caller's thread: a caller that blocks on this (the
+        // UI thread in a test) would otherwise wait on itself forever.
+        var image = await Loaded.GetOrAdd(url, u => new Lazy<Task<EmoteImage?>>(() => Task.Run(() => LoadAsync(u)))).Value
+            .ConfigureAwait(false);
+        if (image is null) FailedAt[url] = DateTimeOffset.UtcNow;
+        return image;
+    }
+
+    /// <summary>The 1x version of a 2x emote or badge URL, for displays at up
+    /// to 125% scaling. Only rewrites the CDNs whose URL patterns are known;
+    /// anything else is left alone. Public for tests.</summary>
+    public static Uri ForScale(Uri url, double scale)
+    {
+        if (scale > 1.25) return url;
+        var s = url.AbsoluteUri;
+        var rewritten = url.Host switch
+        {
+            // …/emoticons/v2/{id}/{format}/{theme}/2.0 ; badges …/badges/v1/{id}/2
+            "static-cdn.jtvnw.net" => Swap(Swap(s, "/2.0", "/1.0"), "/2", "/1"),
+            "cdn.7tv.app" => Swap(s, "/2x.webp", "/1x.webp"),
+            "cdn.betterttv.net" => Swap(Swap(s, "/2x.webp", "/1x.webp"), "/2x", "/1x"),
+            // …/emote/{id}/2, …/emote/{id}/animated/2.webp, …/badge/{id}/2
+            "cdn.frankerfacez.com" => Swap(Swap(s, "/2.webp", "/1.webp"), "/2", "/1"),
+            _ => s,
+        };
+        return rewritten == s ? url : new Uri(rewritten);
+
+        static string Swap(string s, string end, string with) =>
+            s.EndsWith(end, StringComparison.Ordinal) ? s[..^end.Length] + with : s;
+    }
 
     private static async Task<EmoteImage?> LoadAsync(Uri url)
     {
@@ -90,9 +146,18 @@ public static class EmoteImageCache
         var file = Path.Combine(dir, Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(url.AbsoluteUri))));
         if (File.Exists(file)) return await File.ReadAllBytesAsync(file).ConfigureAwait(false);
 
-        using var response = await Http.GetAsync(url).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) return null;
-        var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+        await Downloads.WaitAsync().ConfigureAwait(false);
+        byte[] bytes;
+        try
+        {
+            using var response = await Http.GetAsync(url).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+            bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            Downloads.Release();
+        }
         var temp = file + ".tmp";
         await File.WriteAllBytesAsync(temp, bytes).ConfigureAwait(false);
         File.Move(temp, file, overwrite: true);

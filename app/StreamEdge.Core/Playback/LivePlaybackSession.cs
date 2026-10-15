@@ -252,19 +252,79 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         if (Variants.Count == 0) return;
         var target = Variants[TierIndex()];
         if (target == Current) return;
-        if (_reader is { } reader && Current is { IsAudioOnly: false } && !target.IsAudioOnly
+        if (_reader is { IsFragmentedMp4: false } reader && Current is { IsAudioOnly: false } && !target.IsAudioOnly
             && Status.State == PlaybackState.Playing)
         {
             Current = target;
             reader.SwitchTo(target.Uri);
+            ResetDelivery();
             Publish(Status with { Quality = target.Name });
             return;
         }
         Reload(now);
     }
 
+    // ----- Bandwidth --------------------------------------------------------
+
+    /// <summary>How long delivery is watched before judging it.</summary>
+    internal static TimeSpan DeliveryWindow { get; set; } = TimeSpan.FromSeconds(8);
+
+    private readonly Queue<(DateTimeOffset At, double Media)> _delivery = new();
+
+    /// <summary>Seconds of video delivered per second of real time over the
+    /// last <see cref="DeliveryWindow"/>, or null until there's a full window.</summary>
+    public double? DeliveryRate { get; private set; }
+
+    private void ResetDelivery()
+    {
+        _delivery.Clear();
+        DeliveryRate = null;
+    }
+
+    /// <summary>The connection can't keep up with this quality: rather than
+    /// wait for a run of stalls and step down one level at a time (a reload
+    /// each, on MP4 channels), go straight to the highest quality that fits
+    /// what's actually arriving. True if it changed quality.</summary>
+    private bool CheckBandwidth(DateTimeOffset now, LiveHlsReader? reader)
+    {
+        if (reader is null || reader.InAdBreak || _tier != PlaybackTier.Full || Current is not { } current)
+        {
+            ResetDelivery();
+            return false;
+        }
+        _delivery.Enqueue((now, reader.MediaSecondsWritten));
+        // Keep one sample from just beyond the window, so a full window always
+        // spans at least the whole period, whatever the tick timing.
+        while (_delivery.Count > 2 && now - _delivery.ElementAt(1).At >= DeliveryWindow) _delivery.Dequeue();
+        var (firstAt, firstMedia) = _delivery.Peek();
+        var span = (now - firstAt).TotalSeconds;
+        if (span < DeliveryWindow.TotalSeconds) return false;
+        var rate = (reader.MediaSecondsWritten - firstMedia) / span;
+        DeliveryRate = rate;
+        if (rate >= 0.85) return false;
+
+        // Bitrate that fits: what this quality needs, scaled by how much of
+        // it is getting through, with headroom.
+        var fits = current.Bandwidth * Math.Max(rate, 0.05) * 0.8;
+        var index = Variants.ToList().IndexOf(current);
+        var target = -1;
+        for (var i = index + 1; i < Variants.Count; i++)
+        {
+            if (Variants[i].IsAudioOnly) continue;
+            target = i;
+            if (Variants[i].Bandwidth <= fits) break;
+        }
+        if (target < 0 || !_controller.SetQualityOffset(target - _preferredIndex, now)) return false;
+
+        _player.ShowMessage($"Slow connection: switching to {Variants[target].Name}");
+        ChangeVariant(now);
+        ResetDelivery();
+        return true;
+    }
+
     private void Reload(DateTimeOffset now)
     {
+        ResetDelivery();
         var index = TierIndex();
         Current = Variants.Count > 0 ? Variants[index] : null;
         if (Current is null) return;
@@ -347,6 +407,8 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             _retryAt = now;
             return;
         }
+
+        if (CheckBandwidth(now, reader)) return;
 
         var decision = _controller.Update(new PlaybackSample(
             now, stats.BufferSeconds, stats.Stalled, reader?.SegmentsBehind ?? 0, reader?.InAdBreak ?? false));

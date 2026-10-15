@@ -70,11 +70,37 @@ public sealed class EmoteView : Control
         if (change.NewValue is Uri url)
         {
             _image = EmoteImageCache.TryGet(url);
-            if (_image is null) _ = LoadAsync(url, i => { if (Source == url) _image = i; });
+            if (_image is null) Load(url);
         }
         InvalidateMeasure();
         InvalidateVisual();
     }
+
+    /// <summary>Shown (dimmed) in place of an image that couldn't be loaded,
+    /// usually the emote's code, so the message still reads.</summary>
+    public string? FallbackText { get; set; }
+
+    private bool _failed;
+
+    private void Load(Uri url) => _ = LoadAsync(url, image =>
+    {
+        if (Source != url) return;
+        _image = image;
+        _failed = image is null;
+        if (image is null)
+            // Try again while still on screen; the cache lets a retry through
+            // once its back-off has passed.
+            DispatcherTimer.RunOnce(() =>
+            {
+                if (IsAttached && Source == url && _image is null) Load(url);
+            }, EmoteImageCache.RetryAfter + TimeSpan.FromSeconds(1));
+    });
+
+    private FormattedText? Fallback() =>
+        _failed && _image is null && FallbackText is { Length: > 0 } text
+            ? new FormattedText(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                Typeface.Default, 13, new SolidColorBrush(Color.Parse("#8E8E99")))
+            : null;
 
     private async Task LoadAsync(Uri url, Action<EmoteImage?> done)
     {
@@ -110,6 +136,7 @@ public sealed class EmoteView : Control
 
     protected override Size MeasureOverride(Size availableSize)
     {
+        if (Fallback() is { } text) return new Size(text.Width + 2, Math.Max(text.Height, EmoteHeight * 0.7));
         var h = EmoteHeight;
         // Overlays are centred on the base emote; a wider overlay widens it.
         var w = Math.Max(WidthFor(_image, h), _overlayImages.Select(o => WidthFor(o, h)).DefaultIfEmpty(0).Max());
@@ -122,6 +149,11 @@ public sealed class EmoteView : Control
 
     public override void Render(DrawingContext context)
     {
+        if (Fallback() is { } text)
+        {
+            context.DrawText(text, new Point(1, (Bounds.Height - text.Height) / 2));
+            return;
+        }
         var now = Animator.ElapsedMs;
         Draw(context, _image, now);
         foreach (var overlay in _overlayImages) Draw(context, overlay, now);

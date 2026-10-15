@@ -15,7 +15,14 @@ public sealed record HlsVariant(string Name, Uri Uri, long Bandwidth, int Height
 /// it is still being encoded, which is where most of the latency win is.</summary>
 public sealed record HlsSegment(long Sequence, Uri Uri, double Duration, DateTimeOffset? ProgramDateTime, bool IsPrefetch, bool IsAd);
 
-public sealed record HlsMediaPlaylist(long MediaSequence, double TargetDuration, IReadOnlyList<HlsSegment> Segments, bool Ended);
+/// <param name="InitSegment">Fragmented-MP4 streams (<c>#EXT-X-MAP</c>): the
+/// header every player needs before the first media segment. Null for
+/// MPEG-TS, whose segments stand alone.</param>
+public sealed record HlsMediaPlaylist(long MediaSequence, double TargetDuration, IReadOnlyList<HlsSegment> Segments, bool Ended,
+    Uri? InitSegment = null)
+{
+    public bool IsFragmentedMp4 => InitSegment is not null;
+}
 
 public static class HlsPlaylist
 {
@@ -83,6 +90,7 @@ public static class HlsPlaylist
     public static HlsMediaPlaylist ParseMedia(string text, Uri baseUri)
     {
         long mediaSequence = 0;
+        Uri? init = null;
         double target = 2;
         var ended = false;
         var segments = new List<HlsSegment>();
@@ -98,6 +106,9 @@ public static class HlsPlaylist
                 long.TryParse(line["#EXT-X-MEDIA-SEQUENCE:".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out mediaSequence);
             else if (line.StartsWith("#EXT-X-TARGETDURATION:", StringComparison.Ordinal))
                 double.TryParse(line["#EXT-X-TARGETDURATION:".Length..], NumberStyles.Float, CultureInfo.InvariantCulture, out target);
+            else if (line.StartsWith("#EXT-X-MAP:", StringComparison.Ordinal)
+                     && Attributes(line["#EXT-X-MAP:".Length..]).TryGetValue("URI", out var mapUri))
+                init = new Uri(baseUri, mapUri);
             else if (line.StartsWith("#EXT-X-ENDLIST", StringComparison.Ordinal))
                 ended = true;
             else if (line.StartsWith("#EXT-X-PROGRAM-DATE-TIME:", StringComparison.Ordinal)
@@ -143,7 +154,7 @@ public static class HlsPlaylist
                 adRangeOpen = false;
             }
         }
-        return new HlsMediaPlaylist(mediaSequence, target, segments, ended);
+        return new HlsMediaPlaylist(mediaSequence, target, segments, ended, init);
     }
 
     private static IEnumerable<string> Lines(string text) =>

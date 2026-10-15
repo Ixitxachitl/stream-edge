@@ -300,6 +300,7 @@ public sealed class ChatLine : Border
         var view = new EmoteView(emote.ImageUrl, [.. overlays.Select(o => o.ImageUrl)], tip)
         {
             EmoteHeight = height,
+            FallbackText = emote.Code,
             // No negative margins to tuck emotes into the text line: they
             // clipped the descenders of names and text on the same line.
             Margin = new Thickness(1, 0, 1, 0),

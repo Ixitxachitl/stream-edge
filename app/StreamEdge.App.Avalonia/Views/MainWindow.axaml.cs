@@ -34,6 +34,8 @@ public partial class MainWindow : Window
         AddHandler(ChatLine.ModActionEvent, OnModAction);
         Opened += (_, _) =>
         {
+            // 1x emote images at up to 125% scaling, 2x above.
+            Emotes.EmoteImageCache.Scale = RenderScaling;
             if (!_restored) PlaceOnScreen();
             _tracking = true;
         };

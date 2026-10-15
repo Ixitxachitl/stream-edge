@@ -125,12 +125,13 @@ Twitch CDN ──HLS + prefetch──▶ LiveHlsReader ──TS bytes──▶ L
   the newest complete segment, streams prefetch segments while they are still
   being encoded, and forwards bytes as they arrive. The player reads them from a
   one-client local HTTP server; reloading that URL is how a resync takes effect.
-- **Catch-up rules (`CatchUpController`, unit-tested):**
-  - Buffer above 2 s: play faster, proportionally, up to 1.25×, until back at the 1 s target.
-  - Buffer above 6 s, or the downloader 3 or more segments behind: drop the buffer and rejoin at the live edge (8 s cooldown).
-  - 2 stalls within 45 s: drop one quality step. The stream never drops to audio-only on its own.
-  - 3 stall-free minutes after a drop: try one step back up, never above the preference.
-  - Stalls during ad breaks don't count.
+- **Catch-up rules (`CatchUpController`, unit-tested), tuned against real runs:**
+  - Decisions use a smoothed buffer (4 s time constant): segments arrive in bursts, so the raw buffer swings by ~2 s every segment, and reacting to that swing was the stutter.
+  - Target 2 s; play 1.08× above 4 s, 1.15× when well behind, back to 1× near the target; never within 30 s of a stall.
+  - Above 10 s, or the downloader 4+ segments behind: rejoin at the live edge (15 s cooldown).
+  - Bandwidth: if less than 0.85 s of video arrives per second (over 8 s), jump straight to the highest quality that fits. Otherwise 3 stalls in 60 s drop one step; stalls in the first 10 s after a load and during ads don't count. Three stall-free minutes: one step back up.
+  - mpv starts and resumes after 1 s buffered (not on the first frames), with a 100 ms audio buffer.
+- Twitch serves MPEG-TS on some channels and fragmented MP4 on others (`#EXT-X-MAP` init segment): the reader sends the init segment first, mpv detects the format, and MP4 quality changes reload (each quality has its own init segment).
 - Ads play, as on twitch.tv, with an "Ad break" label on the video (none at all with the `auth-token` and a sub or Turbo). Skipping them (`SkipAds`, off) left the player's connection silent, and mpv drops a silent connection after ~30 s, mid pre-roll, which reconnected into a fresh pre-roll.
 - Quality changes between video variants are seamless: the reader switches playlists at the next segment on the same connection (Twitch variants share segment numbers and timestamps), so there's no reload or rebuffer.
 - Recovery: every network step has a timeout; a stream with no new bytes for 12 s (outside ad breaks) reconnects with a fresh token; any resolve failure, timeouts included, schedules a retry; ⟳ retries offline tabs at once.

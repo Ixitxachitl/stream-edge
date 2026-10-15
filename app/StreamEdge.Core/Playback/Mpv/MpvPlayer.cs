@@ -56,16 +56,24 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         // mpv's own low-latency preset: no audio buffer, single-threaded
         // decode, minimal demuxer probing, no frame interpolation.
         ("profile", "low-latency"),
-        // The input is always MPEG-TS from LocalStreamServer; skip probing.
-        ("demuxer-lavf-format", "mpegts"),
-        // Keep a demuxer cache so buffered time is measurable, but pause for
-        // it only briefly: a stall should end as soon as there's anything to
-        // show, and CatchUpController treats repeated stalls as a reason to
-        // drop quality rather than to buffer more.
+        // ...but not its zero audio buffer: 100 ms costs nothing noticeable
+        // in latency and stops audio crackling when a burst arrives late.
+        ("audio-buffer", "0.1"),
+        // No forced demuxer: Twitch serves MPEG-TS on some channels and
+        // fragmented MP4 on others, and forcing mpegts made the MP4 ones
+        // undecodable (black, reloading every few seconds).
+
+        // Keep a demuxer cache so buffered time is measurable. After a stall,
+        // resume once a second is buffered: resuming on the first frames
+        // (0.3 s, as before) turned one stall into a run of micro-stutters.
+        // CatchUpController treats repeated stalls as a reason to drop
+        // quality rather than to buffer more.
         ("cache", "yes"),
         ("cache-pause", "yes"),
-        ("cache-pause-initial", "no"),
-        ("cache-pause-wait", "0.3"),
+        // Start once a second is buffered rather than on the first frames,
+        // so playback doesn't begin with no cushion at all.
+        ("cache-pause-initial", "yes"),
+        ("cache-pause-wait", "1.0"),
         // Live has no back-buffer worth keeping.
         ("demuxer-max-back-bytes", "0"),
         // Speed changes keep pitch (scaletempo2) instead of chipmunking.
@@ -164,6 +172,21 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         if (_ctx == IntPtr.Zero) return;
         // osd-msg1 stays on screen at osd-level 1 until replaced.
         MpvNative.mpv_set_property_string(_ctx, "osd-msg1", text ?? "");
+    }
+
+    /// <summary>Any numeric mpv property ("frame-drop-count",
+    /// "decoder-frame-drop-count", "avsync"…), or null; for diagnostics.</summary>
+    public double? Diagnostic(string property) =>
+        _ctx != IntPtr.Zero && MpvNative.mpv_get_property(_ctx, property, MpvNative.FormatDouble, out var v) >= 0 ? v : null;
+
+    /// <summary>A text mpv property ("hwdec-current", "video-params/h"…), or null.</summary>
+    public string? DiagnosticText(string property)
+    {
+        if (_ctx == IntPtr.Zero) return null;
+        var ptr = MpvNative.mpv_get_property_string(_ctx, property);
+        if (ptr == IntPtr.Zero) return null;
+        try { return System.Runtime.InteropServices.Marshal.PtrToStringUTF8(ptr); }
+        finally { MpvNative.mpv_free(ptr); }
     }
 
     /// <summary>For smoke tests: saves the current video frame.</summary>

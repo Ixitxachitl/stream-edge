@@ -45,6 +45,20 @@ public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist, bool skipA
 
     public long BytesWritten { get; private set; }
 
+    /// <summary>Seconds of media fully delivered so far. Against wall-clock
+    /// time this says whether the connection keeps up: about 1.0 at the live
+    /// edge (Twitch can't send faster than it encodes), below that when the
+    /// download is the bottleneck.</summary>
+    public double MediaSecondsWritten { get; private set; }
+
+    /// <summary>The stream is fragmented MP4 (it has an init segment) rather
+    /// than MPEG-TS. Its qualities each have their own init segment, which
+    /// can't be spliced into a running stream, so a quality change needs a
+    /// reload instead of <see cref="SwitchTo"/>.</summary>
+    public bool IsFragmentedMp4 { get; private set; }
+
+    private Uri? _sentInit;
+
     /// <summary>The playlist being followed (changes after <see cref="SwitchTo"/>).</summary>
     public Uri Playlist => _playlist;
 
@@ -131,8 +145,18 @@ public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist, bool skipA
             }
             if (wasAd && !segment.IsAd) Notice?.Invoke("Back to the stream");
 
+            // fMP4 needs its init segment ahead of the first media segment
+            // (and again if Twitch changes it, as it can around ads).
+            IsFragmentedMp4 = playlist.IsFragmentedMp4;
+            if (playlist.InitSegment is { } init && init != _sentInit)
+            {
+                await CopySegmentAsync(new HlsSegment(-1, init, 0, null, false, false), output, buffer, ct).ConfigureAwait(false);
+                _sentInit = init;
+            }
+
             await CopySegmentAsync(segment, output, buffer, ct).ConfigureAwait(false);
             next = segment.Sequence + 1;
+            MediaSecondsWritten += segment.Duration;
             // Re-read the playlist after every segment: by now it lists new
             // prefetch entries, and fetching the next one late costs latency.
         }

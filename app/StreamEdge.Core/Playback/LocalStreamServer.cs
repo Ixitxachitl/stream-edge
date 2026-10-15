@@ -6,7 +6,8 @@ using System.Text;
 namespace StreamEdge.Playback;
 
 /// <summary>A one-client HTTP server on 127.0.0.1 that hands the player a
-/// continuous MPEG-TS stream produced by <see cref="LiveHlsReader"/>.
+/// continuous stream (MPEG-TS or fragmented MP4, whichever the channel
+/// uses) produced by <see cref="LiveHlsReader"/>.
 ///
 /// The player could open Twitch's playlist itself, but then it would follow
 /// standard HLS: wait for whole segments and ignore the prefetch entries.
@@ -91,7 +92,9 @@ public sealed class LocalStreamServer : IAsyncDisposable
             mine = CancellationTokenSource.CreateLinkedTokenSource(stop);
             Interlocked.Exchange(ref _current, mine)?.Cancel();
             var ct = mine.Token;
-            var header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n";
+            // No specific media type: the format (TS or MP4) depends on the
+            // channel, and the player detects it from the bytes.
+            var header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n";
             await stream.WriteAsync(Encoding.ASCII.GetBytes(header), ct).ConfigureAwait(false);
             await _session(stream, ct).ConfigureAwait(false);
         }
