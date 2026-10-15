@@ -20,6 +20,9 @@ public sealed partial class ChatEntry : ObservableObject
     public ChatMessage Message { get; }
     public string Time { get; }
 
+    /// <summary>The user's own line, drawn locally (Twitch doesn't echo it).</summary>
+    public bool IsOwn { get; init; }
+
     [ObservableProperty]
     private IReadOnlyList<ChatToken> _tokens = [];
 
@@ -39,7 +42,7 @@ public sealed partial class ChatEntry : ObservableObject
 
     internal void Render(ChatServices services, string? roomId)
     {
-        Tokens = services.Tokenize(Message, roomId);
+        Tokens = services.Tokenize(Message, roomId, IsOwn);
         Badges = services.BadgesFor(Message, roomId);
     }
 }
@@ -86,13 +89,18 @@ public sealed partial class ChatViewModel : ObservableObject
 
     partial void OnRoomIdChanged(string? value) => RenderAll();
 
-    public void Add(ChatMessage message)
+    /// <summary>A line the user just sent, drawn from what Twitch said about
+    /// them (badges, colour) since the message itself never comes back.</summary>
+    public void AddOwn(ChatMessage message) => Add(message, own: true);
+
+    public void Add(ChatMessage message) => Add(message, own: false);
+
+    private void Add(ChatMessage message, bool own)
     {
         // Official Twitch chat doesn't show joins and parts; they're opt-in.
         if (message.Kind == ChatMessageKind.Membership && !_settings.ShowJoinPart) return;
 
-        var time = _settings.TimestampFormat.Length == 0 ? "" : message.Timestamp.ToString(_settings.TimestampFormat);
-        var entry = new ChatEntry(message, time);
+        var entry = new ChatEntry(message, TimeOf(message.Timestamp)) { IsOwn = own };
         if (_services is not null)
         {
             entry.Render(_services, RoomId);
@@ -102,6 +110,38 @@ public sealed partial class ChatViewModel : ObservableObject
         while (Lines.Count > Math.Max(50, _settings.ChatScrollback))
             Lines.RemoveAt(0);
     }
+
+    /// <summary>Puts recent history above what's arrived live so far (the
+    /// "Joining" line stays on top), ending with the divider Chatty and
+    /// Chatterino use. Lines that already arrived live aren't repeated.</summary>
+    public void InsertHistory(IReadOnlyList<ChatMessage> history, string source)
+    {
+        var live = new HashSet<string>(Lines.Select(l => l.Message.Id).OfType<string>(), StringComparer.Ordinal);
+        var at = Lines.Count > 0 && Lines[0].Message.Kind == ChatMessageKind.System && Lines[0].Message.Login is null ? 1 : 0;
+        var inserted = 0;
+        foreach (var message in history)
+        {
+            if (message.Id is { } id && live.Contains(id)) continue;
+            var entry = new ChatEntry(message, TimeOf(message.Timestamp));
+            if (_services is not null)
+            {
+                entry.Render(_services, RoomId);
+                LoadPronoun(entry);
+            }
+            Lines.Insert(at + inserted++, entry);
+        }
+        if (inserted > 0)
+        {
+            var now = DateTimeOffset.Now;
+            Lines.Insert(at + inserted, new ChatEntry(
+                ChatMessage.System(Channel, $"### Finished with history logs ({source}). ###", now), TimeOf(now)));
+        }
+        while (Lines.Count > Math.Max(50, _settings.ChatScrollback))
+            Lines.RemoveAt(0);
+    }
+
+    private string TimeOf(DateTimeOffset at) =>
+        _settings.TimestampFormat.Length == 0 ? "" : at.ToString(_settings.TimestampFormat);
 
     private void LoadPronoun(ChatEntry entry)
     {

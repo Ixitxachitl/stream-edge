@@ -25,6 +25,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         ChatInput.KeyDown += OnChatInputKeyDown;
         StreamList.DoubleTapped += OnStreamDoubleTapped;
+        // The emote menu rebuilds as it opens: sets may have loaded since.
+        EmoteButton.Click += (_, _) => _vm?.EmoteMenu.Open();
         Opened += (_, _) =>
         {
             if (!_restored) PlaceOnScreen();
@@ -106,12 +108,14 @@ public partial class MainWindow : Window
             mpv = null;
         };
         tab.PropertyChanged += OnTabChanged;
+        tab.Player.PropertyChanged += OnTabPlayerChanged;
         Videos.Children.Add(surface);
     }
 
     private void RemoveVideo(ChannelTabViewModel tab)
     {
         tab.PropertyChanged -= OnTabChanged;
+        tab.Player.PropertyChanged -= OnTabPlayerChanged;
         var surface = Videos.Children.OfType<PlayerSurface>().FirstOrDefault(s => s.DataContext == tab);
         if (surface is not null) Videos.Children.Remove(surface);
     }
@@ -119,6 +123,11 @@ public partial class MainWindow : Window
     private void OnTabChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ChannelTabViewModel.IsFront)) Videos.InvalidateArrange();
+    }
+
+    private void OnTabPlayerChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PlayerViewModel.IsVideoVisible)) Videos.InvalidateArrange();
     }
 
     // ----- Stream list ----------------------------------------------------

@@ -75,6 +75,31 @@ public sealed class EmoteRegistry(HttpClient http)
         return null;
     }
 
+    /// <summary>One provider's emotes for the emote menu.</summary>
+    public sealed record EmoteSet(EmoteProvider Provider, bool IsChannel, IReadOnlyList<Emote> Emotes);
+
+    /// <summary>Every enabled set usable in <paramref name="roomId"/>, for
+    /// the emote menu: the channel's first, then globals, each in lookup
+    /// precedence; sorted by code within a set.</summary>
+    public IReadOnlyList<EmoteSet> SetsFor(string? roomId)
+    {
+        var result = new List<EmoteSet>();
+        lock (_gate)
+        {
+            if (roomId is not null && _channels.TryGetValue(roomId, out var channel))
+                foreach (var p in Precedence)
+                    if (IsEnabled(p) && channel.Sets.TryGetValue(p, out var set) && set.Count > 0)
+                        result.Add(new EmoteSet(p, true, Sorted(set)));
+            foreach (var p in Precedence)
+                if (IsEnabled(p) && _globals.TryGetValue(p, out var set) && set.Count > 0)
+                    result.Add(new EmoteSet(p, false, Sorted(set)));
+        }
+        return result;
+
+        static IReadOnlyList<Emote> Sorted(IReadOnlyDictionary<string, Emote> set) =>
+            [.. set.Values.OrderBy(e => e.Code, StringComparer.OrdinalIgnoreCase)];
+    }
+
     /// <summary>FFZ badges to draw for a sender: their FFZ-wide badges, empty when FFZ is off.</summary>
     public IReadOnlyList<BadgeImage> FfzBadgesFor(string? twitchUserId)
     {

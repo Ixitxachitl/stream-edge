@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:v="using:StreamEdge.AvaloniaApp.Views"
+        xmlns:em="using:StreamEdge.AvaloniaApp.Views.Emotes"
         xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
         mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="480"
         x:Class="StreamEdge.AvaloniaApp.Views.MainWindow"
@@ -56,6 +57,7 @@
                        ToolTip.Tip="Playing faster to catch up to live" Margin="0,0,4,0" />
             <TextBlock Text="{Binding Player.Latency}" Foreground="{StaticResource SeTextDim}"
                        ToolTip.Tip="Approximate delay behind the broadcaster" Margin="0,0,4,0" />
+            <ToggleButton Classes="cc" Content="CC" IsChecked="{Binding Player.Captions}" ToolTip.Tip="Closed captions (when the stream has them)" />
             <Button Content="{Binding Player.MuteGlyph}" Command="{Binding Player.ToggleMuteCommand}" ToolTip.Tip="Mute" />
             <Button Content="{Binding Player.QualityLabel}" ToolTip.Tip="Quality (drops automatically to keep up with live)">
               <Button.Flyout>
@@ -76,9 +78,58 @@
           <TextBlock Text="{Binding Chat.Header}" FontWeight="SemiBold" Foreground="{StaticResource SeText}" />
         </DockPanel>
       </Border>
-      <TextBox DockPanel.Dock="Bottom" x:Name="ChatInput" Margin="4"
-               Text="{Binding Chat.Draft}" IsEnabled="{Binding Chat.CanSend}"
-               PlaceholderText="{Binding Chat.Placeholder}" MinHeight="28" Padding="6,4" />
+      <DockPanel DockPanel.Dock="Bottom" Margin="4">
+        <!-- Emote menu, like twitch.tv's smiley in the chat box. -->
+        <Button DockPanel.Dock="Right" x:Name="EmoteButton" Classes="emoteMenu" Content="☺"
+                ToolTip.Tip="Emotes" Margin="4,0,0,0">
+          <Button.Flyout>
+            <Flyout Placement="TopEdgeAlignedRight">
+              <DockPanel Width="344" DataContext="{Binding EmoteMenu}" x:DataType="vm:EmoteMenuViewModel">
+                <TextBox DockPanel.Dock="Top" x:Name="EmoteSearch" Text="{Binding Search}" PlaceholderText="Search emotes" />
+                <TextBlock DockPanel.Dock="Top" Text="{Binding Notice}" TextWrapping="Wrap" Margin="2,6"
+                           Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}"
+                           IsVisible="{Binding Notice, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                <ListBox ItemsSource="{Binding Rows}" Classes="emoteRows" Height="300" Margin="0,6,0,0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                  <ListBox.DataTemplates>
+                    <DataTemplate DataType="vm:EmoteMenuHeader">
+                      <StackPanel Orientation="Horizontal" Spacing="6" Margin="2,8,0,2">
+                        <em:RemoteImage Source="{Binding Icon}" Width="18" Height="18"
+                                        IsVisible="{Binding Icon, Converter={x:Static ObjectConverters.IsNotNull}}">
+                          <em:RemoteImage.Clip>
+                            <EllipseGeometry Rect="0,0,18,18" />
+                          </em:RemoteImage.Clip>
+                        </em:RemoteImage>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="{StaticResource SeSmallFontSize}"
+                                   Foreground="{StaticResource SeTextDim}" />
+                      </StackPanel>
+                    </DataTemplate>
+                    <DataTemplate DataType="vm:EmoteMenuEmotes">
+                      <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:EmoteMenuItem">
+                            <Button Classes="emoteCell" Command="{Binding Insert}" CommandParameter="{Binding Emote}"
+                                    ToolTip.Tip="{Binding Tip}">
+                              <em:EmoteView Source="{Binding Emote.ImageUrl}" EmoteHeight="28" />
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </DataTemplate>
+                  </ListBox.DataTemplates>
+                </ListBox>
+              </DockPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+        <TextBox x:Name="ChatInput" Text="{Binding Chat.Draft}" IsEnabled="{Binding Chat.CanSend}"
+                 PlaceholderText="{Binding Chat.Placeholder}" MinHeight="28" Padding="6,4" />
+      </DockPanel>
       <ScrollViewer x:Name="ChatScroll" HorizontalScrollBarVisibility="Disabled">
         <ItemsControl x:Name="ChatItems" ItemsSource="{Binding Chat.Lines}">
           <ItemsControl.Styles>
@@ -98,15 +149,31 @@
 
     <!-- ===== Player ===== -->
     <Panel x:Name="PlayerPane" Background="Black">
-      <!-- Shown when there's no video: what's selected and why it isn't playing. -->
-      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="6" MaxWidth="600">
+      <!-- Offline: the channel's own offline banner, as on twitch.tv. -->
+      <em:RemoteImage Source="{Binding Player.OfflineImage}" IsVisible="{Binding Player.ShowsBanner}" />
+      <!-- Shown when there's no video: what's selected and why it isn't
+           playing. Over a banner it moves to the bottom-left on a backdrop. -->
+      <StackPanel Classes="playerInfo" Spacing="6" MaxWidth="600"
+                  Classes.overBanner="{Binding Player.ShowsBanner}">
+        <em:RemoteImage Source="{Binding Player.ProfileImage}" Width="88" Height="88" Stretch="UniformToFill"
+                        HorizontalAlignment="Center" Margin="0,0,0,4">
+          <em:RemoteImage.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.And}">
+              <Binding Path="Player.IsOffline" />
+              <Binding Path="!Player.HasOfflineImage" />
+            </MultiBinding>
+          </em:RemoteImage.IsVisible>
+          <em:RemoteImage.Clip>
+            <EllipseGeometry Rect="0,0,88,88" />
+          </em:RemoteImage.Clip>
+        </em:RemoteImage>
         <TextBlock Text="{Binding Player.Channel}" FontSize="22" FontWeight="SemiBold"
-                   Foreground="{StaticResource SeText}" HorizontalAlignment="Center" />
-        <TextBlock Text="{Binding Player.Title}" Foreground="{StaticResource SeTextDim}"
-                   TextWrapping="Wrap" TextAlignment="Center" />
-        <TextBlock Text="{Binding Player.Game}" Foreground="{StaticResource SeAccent}" HorizontalAlignment="Center" />
+                   Foreground="{StaticResource SeText}" />
+        <TextBlock Text="{Binding Player.Title}" IsVisible="{Binding Player.Title, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" Foreground="{StaticResource SeTextDim}"
+                   TextWrapping="Wrap" />
+        <TextBlock Text="{Binding Player.Game}" IsVisible="{Binding Player.Game, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" Foreground="{StaticResource SeAccent}" />
         <TextBlock Text="{Binding Player.Status}" Foreground="{StaticResource SeTextFaint}"
-                   FontSize="{StaticResource SeSmallFontSize}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" />
+                   FontSize="{StaticResource SeSmallFontSize}" TextWrapping="Wrap" />
       </StackPanel>
       <!-- One native video surface per tab (added in code): the front one
            fills the pane at 16:9 and covers the text above while playing;
@@ -132,11 +199,14 @@
                 <TextBlock Text="Chat" FontWeight="SemiBold" />
                 <CheckBox Content="Timestamps" IsChecked="{Binding ShowTimestamps}" />
                 <CheckBox Content="Join and part messages" IsChecked="{Binding ShowJoinPart}" />
+                <CheckBox Content="Chat history when a channel opens" IsChecked="{Binding LoadChatHistory}"
+                          ToolTip.Tip="Twitch's own history needs the auth-token (below)" />
                 <TextBlock Text="Third-party (each optional)" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}" />
                 <CheckBox Content="Pronouns (pronouns.alejo.io)" IsChecked="{Binding ShowPronouns}" />
                 <CheckBox Content="BetterTTV emotes" IsChecked="{Binding UseBttv}" />
                 <CheckBox Content="FrankerFaceZ emotes and badges" IsChecked="{Binding UseFfz}" />
                 <CheckBox Content="7TV emotes" IsChecked="{Binding UseSevenTv}" />
+                <CheckBox Content="History without an auth-token (recent-messages.robotty.de)" IsChecked="{Binding UseRecentMessages}" />
                 <Separator />
                 <StackPanel Spacing="8" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
                   <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" />
@@ -160,6 +230,7 @@
             </Button.Flyout>
           </Button>
           <Button DockPanel.Dock="Right" Content="⇅" ToolTip.Tip="Change sort" Command="{Binding Streams.CycleSortCommand}" />
+          <Button DockPanel.Dock="Right" Content="⟳" ToolTip.Tip="Refresh the live list (and retry offline tabs)" Command="{Binding RefreshCommand}" />
           <TextBlock Text="{Binding Streams.Header}" />
         </DockPanel>
       </Border>

@@ -36,6 +36,9 @@ public sealed class TwitchChatClient : IAsyncDisposable
     /// <summary>CLEARMSG / CLEARCHAT: lines to remove from the view.</summary>
     public event Action<ChatModeration>? ModerationReceived;
 
+    /// <summary>USERSTATE / GLOBALUSERSTATE: how we appear (badges, colour).</summary>
+    public event Action<ChatUserState>? UserStateReceived;
+
     public void Start()
     {
         _loop ??= Task.Run(() => RunAsync(_stop.Token));
@@ -148,6 +151,9 @@ public sealed class TwitchChatClient : IAsyncDisposable
                 // Twitch asks us to move to another server; dropping the
                 // socket sends RunAsync round its reconnect loop.
                 _socket?.Abort();
+                return;
+            case "USERSTATE" or "GLOBALUSERSTATE":
+                if (ChatUserState.FromIrc(irc) is { } state) UserStateReceived?.Invoke(state);
                 return;
             case "ROOMSTATE":
                 // Mode changes (slow, sub-only) resend ROOMSTATE too; listeners

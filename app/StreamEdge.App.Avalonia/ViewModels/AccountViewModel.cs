@@ -83,6 +83,7 @@ public sealed partial class AccountViewModel : ObservableObject
                 Message = "Twitch rejected the new token.";
                 return;
             }
+            NoteScopes(who);
             SecretStore.Set(SecretStore.OAuthToken, tokens.AccessToken);
             SecretStore.Set(SecretStore.RefreshToken, tokens.RefreshToken);
             _settings.AccountLogin = who.Login;
@@ -129,18 +130,33 @@ public sealed partial class AccountViewModel : ObservableObject
 
     /// <summary>Re-checks the stored token at start-up (Twitch requires it),
     /// refreshing it if it has expired. Signs out if neither works.</summary>
+    /// <summary>The token can read the user's own emotes. Sign-ins from
+    /// before that permission was requested can't, until the user logs in again.</summary>
+    public bool CanUseOwnEmotes { get; private set; }
+
+    private void NoteScopes(TwitchAuth.Identity identity)
+    {
+        CanUseOwnEmotes = identity.Scopes?.Contains(TwitchAuth.EmotesScope) == true;
+        OnPropertyChanged(nameof(CanUseOwnEmotes));
+    }
+
     public async Task RestoreAsync(CancellationToken ct)
     {
         if (AccessToken is not { } token) return;
         var auth = new TwitchAuth(_http, _settings.EffectiveClientId);
         try
         {
-            if (await auth.ValidateAsync(token, ct) is not null) return;
+            if (await auth.ValidateAsync(token, ct) is { } valid)
+            {
+                NoteScopes(valid);
+                return;
+            }
             if (SecretStore.Get(SecretStore.RefreshToken) is { } refresh
                 && await auth.RefreshAsync(refresh, ct) is { } fresh)
             {
                 SecretStore.Set(SecretStore.OAuthToken, fresh.AccessToken);
                 SecretStore.Set(SecretStore.RefreshToken, fresh.RefreshToken ?? refresh);
+                if (await auth.ValidateAsync(fresh.AccessToken, ct) is { } renewed) NoteScopes(renewed);
                 return;
             }
         }

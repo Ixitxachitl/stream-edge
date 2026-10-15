@@ -14,10 +14,19 @@ public class LivePlaybackSessionTests
     {
         private long _edge = 100;
 
+        /// <summary>Segment requests never answer, like a dead CDN edge.</summary>
+        public bool StallSegments;
+
+        /// <summary>This many token requests time out first.</summary>
+        public int TokenTimeouts;
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var uri = request.RequestUri!;
             string body;
+            if (uri.Host == "gql.twitch.tv" && Interlocked.Decrement(ref TokenTimeouts) >= 0)
+                // What HttpClient throws when its Timeout passes.
+                throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
             if (uri.Host == "gql.twitch.tv")
                 body = """{"data":{"streamPlaybackAccessToken":{"value":"{}","signature":"sig"}}}""";
             else if (uri.Host == "usher.ttvnw.net")
@@ -41,7 +50,7 @@ public class LivePlaybackSessionTests
             else
             {
                 // Pace segments a little, like a live edge does.
-                await Task.Delay(20, ct);
+                await Task.Delay(StallSegments ? Timeout.Infinite : 20, ct);
                 body = uri.AbsolutePath.Split('/')[1] + ";";
             }
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) };
@@ -84,6 +93,8 @@ public class LivePlaybackSessionTests
         public void SetVolume(int percent) { }
         public void SetMute(bool mute) { }
         public void SetStatusText(string? text) { }
+        public bool CaptionsOn;
+        public void SetCaptions(bool on) => CaptionsOn = on;
     }
 
     private static async Task Until(Func<bool> condition)
@@ -115,9 +126,11 @@ public class LivePlaybackSessionTests
         Assert.True(player.Speeds[^1] > 1.0);
         Assert.Single(player.Loads);
 
-        // Far behind: reloads at the live edge.
+        // Far behind: reloads at the live edge. (9 s on: past the resync
+        // cooldown, short of the no-progress watchdog, since no real time
+        // passes between these ticks.)
         player.Stats = new VideoPlayerStats(9, false, false);
-        session.Tick(now + TimeSpan.FromSeconds(30));
+        session.Tick(now + TimeSpan.FromSeconds(9));
         Assert.Equal(2, player.Loads.Count);
     }
 
@@ -146,31 +159,99 @@ public class LivePlaybackSessionTests
         Assert.Equal("720p60", session.Current?.Name);
     }
 
-    [Fact]
-    public async Task TiersPickTheirVariantAndReturnToTheChoice()
+    private static async Task<(FakePlayer, LivePlaybackSession)> Playing(FakeTwitch? twitch = null)
     {
         var player = new FakePlayer();
-        await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch()), player);
+        var session = new LivePlaybackSession(new HttpClient(twitch ?? new FakeTwitch()), player);
         await session.StartAsync("someone", authToken: null);
-
-        session.Tier = PlaybackTier.AudioOnly;
-        Assert.True(session.Current?.IsAudioOnly);
-        session.Tier = PlaybackTier.Thumbnail;
-        Assert.Equal("720p60", session.Current?.Name);
-        session.Tier = PlaybackTier.Full;
-        Assert.Equal("1080p60", session.Current?.Name);
-        // Each change reloads at the live edge.
-        Assert.Equal(4, player.Loads.Count);
+        // Wait for the reader to be running, as it is in normal playback.
+        await Until(() => player.Received.Length > 0);
+        return (player, session);
     }
 
     [Fact]
-    public async Task ManualQualityPickBecomesTheBaseline()
+    public async Task VideoQualityChangesDontReload()
+    {
+        var (player, session) = await Playing();
+        await using var _ = session;
+
+        session.SelectQuality(1);
+
+        Assert.Equal("720p60", session.Current?.Name);
+        Assert.Single(player.Loads);
+        // The same connection carries on from the 720p playlist.
+        await Until(() => player.Received.Contains("720;"));
+    }
+
+    [Fact]
+    public async Task AudioOnlyChangesReloadAndVideoTiersSwitchInPlace()
+    {
+        var (player, session) = await Playing();
+        await using var _ = session;
+
+        session.Tier = PlaybackTier.AudioOnly;
+        Assert.True(session.Current?.IsAudioOnly);
+        Assert.Equal(2, player.Loads.Count);
+
+        session.Tier = PlaybackTier.Thumbnail;
+        Assert.Equal("720p60", session.Current?.Name);
+        Assert.Equal(3, player.Loads.Count);
+
+        await Until(() => player.Received.Contains("720;"));
+        session.Tier = PlaybackTier.Full;
+        Assert.Equal("1080p60", session.Current?.Name);
+        Assert.Equal(3, player.Loads.Count);
+    }
+
+    [Fact]
+    public async Task ATokenTimeoutIsRetriedNotLeftStuck()
     {
         var player = new FakePlayer();
-        await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch()), player);
+        await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch { TokenTimeouts = 1 }), player);
         await session.StartAsync("someone", authToken: null);
-        session.SelectQuality(1);
-        Assert.Equal("720p60", session.Current?.Name);
-        Assert.Equal(2, player.Loads.Count);
+        Assert.Equal(PlaybackState.Error, session.Status.State);
+
+        session.Tick(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5));
+        await Until(() => session.Status.State == PlaybackState.Playing);
+        Assert.Single(player.Loads);
+    }
+
+    [Fact]
+    public async Task AStreamThatStopsDeliveringReconnects()
+    {
+        var saved = LivePlaybackSession.NoProgressTimeout;
+        LivePlaybackSession.NoProgressTimeout = TimeSpan.FromSeconds(2);
+        try
+        {
+            var player = new FakePlayer();
+            await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch { StallSegments = true }), player);
+            await session.StartAsync("someone", authToken: null);
+            var t = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+
+            session.Tick(t);                              // past the load grace: watching
+            session.Tick(t + TimeSpan.FromSeconds(3));    // no bytes for 3 s: reconnect
+            Assert.Equal(PlaybackState.Error, session.Status.State);
+
+            session.Tick(t + TimeSpan.FromSeconds(4));    // the retry: resolve and load again
+            await Until(() => player.Loads.Count == 2);
+        }
+        finally
+        {
+            LivePlaybackSession.NoProgressTimeout = saved;
+        }
+    }
+
+    [Fact]
+    public async Task CaptionsAreOnlyForTheFrontTier()
+    {
+        var (player, session) = await Playing();
+        await using var _ = session;
+
+        session.Captions = true;
+        Assert.True(player.CaptionsOn);
+        session.Tier = PlaybackTier.Thumbnail;
+        Assert.False(player.CaptionsOn);
+        session.Tier = PlaybackTier.Full;
+        Assert.True(player.CaptionsOn);
     }
 }

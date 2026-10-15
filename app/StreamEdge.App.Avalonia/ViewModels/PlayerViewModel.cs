@@ -18,6 +18,7 @@ public sealed partial class PlayerViewModel : ObservableObject
     /// <summary>Set by MainViewModel; null in demo mode or before mpv exists.</summary>
     internal Action<int>? SelectQualityHandler { get; set; }
     internal Action<bool>? MuteHandler { get; set; }
+    internal Action<bool>? CaptionsHandler { get; set; }
 
     [ObservableProperty]
     private string _channel = "";
@@ -35,6 +36,25 @@ public sealed partial class PlayerViewModel : ObservableObject
     /// play, so the placeholder text underneath is visible.</summary>
     [ObservableProperty]
     private bool _isVideoVisible;
+
+    /// <summary>The channel isn't live: show its offline banner.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsBanner))]
+    private bool _isOffline;
+
+    /// <summary>The channel's offline banner, or null if it has none (the
+    /// avatar is shown instead).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOfflineImage), nameof(ShowsBanner))]
+    private Uri? _offlineImage;
+
+    [ObservableProperty]
+    private Uri? _profileImage;
+
+    public bool HasOfflineImage => OfflineImage is not null;
+
+    /// <summary>Offline with a banner to show (the text moves aside for it).</summary>
+    public bool ShowsBanner => IsOffline && HasOfflineImage;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(QualityLabel))]
@@ -57,6 +77,13 @@ public sealed partial class PlayerViewModel : ObservableObject
 
     public string QualityLabel => (Quality ?? "Quality") + " ▾";
     public string MuteGlyph => Muted ? "🔇" : "🔊";
+
+    /// <summary>Closed captions (the CC button). Shown only when the stream
+    /// carries them; many don't.</summary>
+    [ObservableProperty]
+    private bool _captions;
+
+    partial void OnCaptionsChanged(bool value) => CaptionsHandler?.Invoke(value);
 
     public ObservableCollection<QualityOption> Qualities { get; } = [];
 
@@ -86,6 +113,7 @@ public sealed partial class PlayerViewModel : ObservableObject
         // Only the settled states change visibility: a restart passes through
         // Stopped, and hiding the surface for that blink could tear down the
         // native window mpv is drawing into.
+        IsOffline = status.State == PlaybackState.Offline;
         if (status.State == PlaybackState.Offline) IsVideoVisible = false;
         else if (status.State == PlaybackState.Playing) IsVideoVisible = true;
 

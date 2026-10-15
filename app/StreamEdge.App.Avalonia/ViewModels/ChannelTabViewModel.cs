@@ -23,6 +23,12 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
         Player = new PlayerViewModel { Channel = login };
         Player.MuteHandler = muted => Video?.SetMute(muted);
         Player.SelectQualityHandler = index => Session?.SelectQuality(index);
+        Player.Captions = settings.Captions;
+        Player.CaptionsHandler = on =>
+        {
+            settings.Captions = on;
+            if (Session is { } s) s.Captions = on;
+        };
         Player.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(PlayerViewModel.Channel)) OnPropertyChanged(nameof(Title));
@@ -30,6 +36,9 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
     }
 
     public string Login { get; }
+
+    /// <summary>"LofiGirl" for "lofigirl", once known.</summary>
+    public string? DisplayName { get; set; }
     public ChatViewModel Chat { get; }
     public PlayerViewModel Player { get; }
 
@@ -73,6 +82,7 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
         session.StatusChanged += () => Player.Apply(session.Status, session.Variants, session.Current);
         // Reader notices ("Ad break…") arrive on the pool; mpv's OSD is thread-safe.
         session.Notice += player.ShowMessage;
+        session.Captions = settings.Captions;
         Session = session;
         Player.Status = "Resolving stream…";
         _ = session.StartAsync(Login, authToken);

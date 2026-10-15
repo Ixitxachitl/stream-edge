@@ -18,6 +18,12 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
 
         if (windowId is { } wid) Option("wid", wid.ToString(CultureInfo.InvariantCulture));
         foreach (var (name, value) in Options) Option(name, value);
+        // Debugging aid: STREAMEDGE_MPV_LOG=<file> writes mpv's own log there.
+        if (Environment.GetEnvironmentVariable("STREAMEDGE_MPV_LOG") is { Length: > 0 } log)
+        {
+            Option("log-file", log);
+            Option("msg-level", "all=v");
+        }
 
         var rc = MpvNative.mpv_initialize(_ctx);
         if (rc < 0) throw new InvalidOperationException("mpv_initialize: " + MpvNative.ErrorString(rc));
@@ -67,6 +73,15 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         // Drop late frames rather than fall further behind.
         ("framedrop", "vo"),
 
+        // Twitch carries closed captions as CEA-608 inside the H.264 stream;
+        // this gives every video a caption track up front, so turning CC on
+        // is just selecting it (sid), with nothing to wait for.
+        ("sub-create-cc-track", "yes"),
+        ("sid", "no"),
+        // Readable on a 480-pixel-tall bar, with a backing box like twitch.tv.
+        ("sub-font-size", "34"),
+        ("sub-border-style", "background-box"),
+        ("sub-back-color", "#C0000000"),
         ("osd-level", "1"),
         ("osd-font-size", "26"),
         ("osd-duration", "1500"),
@@ -135,6 +150,14 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
     }
 
     public void ShowMessage(string text) => Command("show-text " + Quote(text) + " 1500");
+
+    public void SetCaptions(bool on)
+    {
+        if (_ctx == IntPtr.Zero) return;
+        // Setting the property also sets the option, so it holds across the
+        // reloads a resync does.
+        MpvNative.mpv_set_property_string(_ctx, "sid", on ? "1" : "no");
+    }
 
     public void SetStatusText(string? text)
     {

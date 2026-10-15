@@ -81,7 +81,16 @@ public sealed class VideoStage : Panel
     {
         var surfaces = Children.OfType<PlayerSurface>().ToList();
         var fronts = surfaces.Select(s => s.DataContext is ChannelTabViewModel { IsFront: true }).ToList();
-        var rects = Place(finalSize, Aspect, ShowPip, fronts);
+        // Nothing to show (offline, failed, not started): the native window
+        // stays hidden, or it would cover the offline banner in black. Only
+        // the videos with something to show get places, so thumbnails don't
+        // leave gaps.
+        var showing = Enumerable.Range(0, surfaces.Count)
+            .Where(i => surfaces[i].DataContext is ChannelTabViewModel { Player.IsVideoVisible: true })
+            .ToList();
+        var placed = Place(finalSize, Aspect, ShowPip, [.. showing.Select(i => fronts[i])]);
+        var rects = new Rect[surfaces.Count];
+        for (var k = 0; k < showing.Count; k++) rects[showing[k]] = placed[k];
         for (var i = 0; i < surfaces.Count; i++) surfaces[i].Arrange(rects[i]);
         // Thumbnails overlap the main video; native windows don't follow
         // Avalonia's drawing order, so put them on top explicitly.

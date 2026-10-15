@@ -9,7 +9,8 @@ namespace StreamEdge.AvaloniaApp.Views.Emotes;
 
 /// <summary>Draws an emote or badge at a fixed height, animating it if it
 /// has frames, with zero-width emotes (7TV/BTTV overlays) drawn on top,
-/// centred. Sits inside chat lines as an InlineUIContainer.
+/// centred. Sits inside chat lines as an InlineUIContainer, and in the emote
+/// menu (via <see cref="Source"/>).
 ///
 /// One shared timer drives every animated emote on screen, rather than a
 /// timer each: a busy chat can show hundreds.</summary>
@@ -18,24 +19,29 @@ public sealed class EmoteView : Control
     public static readonly StyledProperty<double> EmoteHeightProperty =
         AvaloniaProperty.Register<EmoteView, double>(nameof(EmoteHeight), 28);
 
+    /// <summary>The image, for XAML use; code passes it to the constructor.</summary>
+    public static readonly StyledProperty<Uri?> SourceProperty =
+        AvaloniaProperty.Register<EmoteView, Uri?>(nameof(Source));
+
     static EmoteView()
     {
         AffectsMeasure<EmoteView>(EmoteHeightProperty);
     }
 
-    private readonly Uri _url;
-    private readonly IReadOnlyList<Uri> _overlays;
+    private IReadOnlyList<Uri> _overlays;
     private EmoteImage? _image;
     private EmoteImage?[] _overlayImages;
 
-    public EmoteView(Uri url, IReadOnlyList<Uri>? overlays = null, string? tooltip = null)
+    public EmoteView() : this(null)
     {
-        _url = url;
+    }
+
+    public EmoteView(Uri? url, IReadOnlyList<Uri>? overlays = null, string? tooltip = null)
+    {
         _overlays = overlays ?? [];
         _overlayImages = new EmoteImage?[_overlays.Count];
         if (tooltip is not null) ToolTip.SetTip(this, tooltip);
-        _image = EmoteImageCache.TryGet(url);
-        if (_image is null) _ = LoadAsync(url, i => _image = i);
+        if (url is not null) Source = url;
         for (var k = 0; k < _overlays.Count; k++)
         {
             var index = k;
@@ -48,6 +54,26 @@ public sealed class EmoteView : Control
     {
         get => GetValue(EmoteHeightProperty);
         set => SetValue(EmoteHeightProperty, value);
+    }
+
+    public Uri? Source
+    {
+        get => GetValue(SourceProperty);
+        set => SetValue(SourceProperty, value);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property != SourceProperty) return;
+        _image = null;
+        if (change.NewValue is Uri url)
+        {
+            _image = EmoteImageCache.TryGet(url);
+            if (_image is null) _ = LoadAsync(url, i => { if (Source == url) _image = i; });
+        }
+        InvalidateMeasure();
+        InvalidateVisual();
     }
 
     private async Task LoadAsync(Uri url, Action<EmoteImage?> done)
@@ -87,6 +113,10 @@ public sealed class EmoteView : Control
         var h = EmoteHeight;
         // Overlays are centred on the base emote; a wider overlay widens it.
         var w = Math.Max(WidthFor(_image, h), _overlayImages.Select(o => WidthFor(o, h)).DefaultIfEmpty(0).Max());
+        // In a fixed-width cell (the emote menu), a wide emote scales down
+        // to fit rather than overflow.
+        if (double.IsFinite(availableSize.Width) && w > availableSize.Width && w > 0)
+            return new Size(availableSize.Width, h * availableSize.Width / w);
         return new Size(w, h);
     }
 
@@ -100,8 +130,15 @@ public sealed class EmoteView : Control
     private void Draw(DrawingContext context, EmoteImage? image, long now)
     {
         if (image is null) return;
-        var w = WidthFor(image, EmoteHeight);
-        var rect = new Rect((Bounds.Width - w) / 2, 0, w, EmoteHeight);
+        // Scaled to the space actually given (smaller in a narrow cell).
+        var h = Math.Min(EmoteHeight, Bounds.Height);
+        var w = WidthFor(image, h);
+        if (w > Bounds.Width && w > 0)
+        {
+            h *= Bounds.Width / w;
+            w = Bounds.Width;
+        }
+        var rect = new Rect((Bounds.Width - w) / 2, (Bounds.Height - h) / 2, w, h);
         var frame = image.FrameAt(now);
         context.DrawImage(frame, new Rect(frame.Size), rect);
     }

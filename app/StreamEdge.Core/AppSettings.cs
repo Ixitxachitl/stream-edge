@@ -49,6 +49,13 @@ public sealed class AppSettings
     public int Volume { get; set; } = 100;
     public bool Muted { get; set; }
 
+    /// <summary>Closed captions on the front tab, when the stream has them.</summary>
+    public bool Captions { get; set; }
+
+    /// <summary>Emotes picked from the emote menu, most recent first, for its
+    /// "Frequently used" row.</summary>
+    public List<RecentEmote> RecentEmotes { get; set; } = [];
+
     /// <summary>Default layout is list | player | chat; this puts chat on the
     /// left instead.</summary>
     public bool ChatOnLeft { get; set; }
@@ -96,6 +103,13 @@ public sealed class AppSettings
     /// <summary>JOIN/PART lines. Off by default: official chat doesn't show
     /// them and in busy channels they drown the conversation.</summary>
     public bool ShowJoinPart { get; set; }
+
+    /// <summary>Show recent chat when a channel opens: Twitch's own (needs
+    /// the auth-token), else the third-party service below.</summary>
+    public bool LoadChatHistory { get; set; } = true;
+
+    /// <summary>recent-messages.robotty.de, for history without an auth-token.</summary>
+    public bool UseRecentMessages { get; set; } = true;
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -145,3 +159,7 @@ public sealed class AppSettings
         File.Move(temp, path, overwrite: true);
     }
 }
+
+/// <summary>An emote the user picked from the menu, stored with enough to
+/// draw and send it again.</summary>
+public sealed record RecentEmote(string Code, Uri ImageUrl, StreamEdge.Chat.Emotes.EmoteProvider Provider);

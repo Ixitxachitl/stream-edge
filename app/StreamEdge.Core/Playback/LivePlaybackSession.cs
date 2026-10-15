@@ -47,6 +47,9 @@ public sealed class LivePlaybackSession : IAsyncDisposable
 {
     private static readonly TimeSpan LoadGrace = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan OfflineRetry = TimeSpan.FromSeconds(30);
+    /// <summary>Playing with no new bytes for this long counts as stuck.
+    /// Generous: a prefetch segment alone can take a few seconds to start.</summary>
+    internal static TimeSpan NoProgressTimeout { get; set; } = TimeSpan.FromSeconds(12);
 
     private readonly HttpClient _http;
     private readonly IVideoPlayer _player;
@@ -68,13 +71,21 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         _http = http;
         _player = player;
         _controller = new CatchUpController(options ?? new CatchUpOptions());
-        _server = new LocalStreamServer(ServeAsync);
+        // Only the newest load's request is served (see LocalStreamServer).
+        _server = new LocalStreamServer(ServeAsync,
+            target => target.EndsWith("?n=" + Volatile.Read(ref _loadCount), StringComparison.Ordinal));
     }
 
     /// <summary>"source", "720p60", "480p"…; matched loosely.</summary>
     public string? PreferredQuality { get; set; }
 
-    public bool SkipAds { get; set; } = true;
+    /// <summary>Drop ad segments instead of playing them. Off: skipping
+    /// leaves the connection to the player silent for the whole break, and
+    /// mpv abandons a silent connection after about 30 s, mid pre-roll; the
+    /// reconnect then gets a fresh pre-roll, and so on. Ads play as on
+    /// twitch.tv (none at all with an auth-token and a sub or Turbo), with an
+    /// "Ad break" label on the video.</summary>
+    public bool SkipAds { get; set; }
 
     public IReadOnlyList<HlsVariant> Variants { get; private set; } = [];
 
@@ -117,8 +128,31 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         _preferredIndex = index;
         _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
         _controller.MaxDowngrade = MaxDowngradeFrom(index);
-        Reload(DateTimeOffset.UtcNow);
+        ChangeVariant(DateTimeOffset.UtcNow);
     }
+
+    /// <summary>Retry an offline or failed channel now, rather than at the
+    /// next scheduled attempt; a playing one rejoins the live edge.</summary>
+    public void RetryNow()
+    {
+        if (_login is null) return;
+        if (Status.State is PlaybackState.Offline or PlaybackState.Error) _retryAt = DateTimeOffset.UtcNow;
+        else if (Status.State == PlaybackState.Playing) Reload(DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>Closed captions (CEA-608 carried in the video). Only the
+    /// front tab shows them; a thumbnail is too small to read.</summary>
+    public bool Captions
+    {
+        get => _captions;
+        set
+        {
+            _captions = value;
+            _player.SetCaptions(value && _tier == PlaybackTier.Full);
+        }
+    }
+
+    private bool _captions;
 
     private async Task ResolveAsync()
     {
@@ -158,9 +192,15 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
-            ScheduleRetry(DateTimeOffset.UtcNow, "Network error: " + ex.Message);
+            // Anything else, including HttpClient's timeout (which surfaces
+            // as a cancellation nobody asked for), must schedule a retry: the
+            // retry timer is already cleared, so returning here would leave
+            // the tab stuck for good.
+            ScheduleRetry(DateTimeOffset.UtcNow, ex is OperationCanceledException
+                ? "Timed out reaching Twitch, retrying…"
+                : "Network error: " + ex.Message);
         }
     }
 
@@ -182,7 +222,8 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             // tiers already sit at the bottom. Jumping to live still applies.
             _controller.Reset(DateTimeOffset.UtcNow, keepQuality: value == PlaybackTier.Full);
             _controller.MaxDowngrade = MaxDowngradeFrom(_preferredIndex);
-            if (Variants.Count > 0 && Status.State == PlaybackState.Playing) Reload(DateTimeOffset.UtcNow);
+            _player.SetCaptions(_captions && value == PlaybackTier.Full);
+            if (Variants.Count > 0 && Status.State == PlaybackState.Playing) ChangeVariant(DateTimeOffset.UtcNow);
         }
     }
 
@@ -199,6 +240,27 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             PlaybackTier.AudioOnly or PlaybackTier.Thumbnail => lastVideo,
             _ => Math.Min(_preferredIndex + _controller.QualityOffset, Math.Max(0, Variants.Count - 1)),
         };
+    }
+
+    /// <summary>Moves to the variant the tier and catch-up call for. Between
+    /// two video variants that's seamless: the running reader carries on
+    /// from the new playlist at the next segment, and the player only sees
+    /// the resolution change. To or from audio-only the video track appears
+    /// or vanishes, which needs a reload.</summary>
+    private void ChangeVariant(DateTimeOffset now)
+    {
+        if (Variants.Count == 0) return;
+        var target = Variants[TierIndex()];
+        if (target == Current) return;
+        if (_reader is { } reader && Current is { IsAudioOnly: false } && !target.IsAudioOnly
+            && Status.State == PlaybackState.Playing)
+        {
+            Current = target;
+            reader.SwitchTo(target.Uri);
+            Publish(Status with { Quality = target.Name });
+            return;
+        }
+        Reload(now);
     }
 
     private void Reload(DateTimeOffset now)
@@ -269,6 +331,23 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             return;
         }
 
+        // Watchdog: playing, but no bytes for a while (a stalled connection,
+        // a CDN edge that stopped answering, a token that quietly expired).
+        // Reconnect from scratch, with a fresh token.
+        var bytes = reader?.BytesWritten ?? 0;
+        if (bytes != _lastBytes || now - _loadedAt < LoadGrace)
+        {
+            _lastBytes = bytes;
+            _lastProgressAt = now;
+        }
+        else if (now - _lastProgressAt > NoProgressTimeout && !(reader?.InAdBreak ?? false))
+        {
+            _server.Disconnect();
+            ScheduleRetry(now, "Stream stalled, reconnecting…");
+            _retryAt = now;
+            return;
+        }
+
         var decision = _controller.Update(new PlaybackSample(
             now, stats.BufferSeconds, stats.Stalled, reader?.SegmentsBehind ?? 0, reader?.InAdBreak ?? false));
 
@@ -276,9 +355,11 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         switch (decision.Action)
         {
             case CatchUpAction.Resync:
+                Reload(now);
+                break;
             case CatchUpAction.QualityDown:
             case CatchUpAction.QualityUp:
-                Reload(now);
+                ChangeVariant(now);
                 break;
             default:
                 if (Math.Abs(decision.Speed - Status.Speed) > 0.001) _player.SetSpeed(decision.Speed);
@@ -308,6 +389,8 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     }
 
     private bool _showingAd;
+    private long _lastBytes = -1;
+    private DateTimeOffset _lastProgressAt;
 
     private void GoOffline()
     {

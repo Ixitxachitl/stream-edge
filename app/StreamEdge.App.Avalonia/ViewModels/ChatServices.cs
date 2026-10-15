@@ -6,9 +6,16 @@ using StreamEdge.Ui;
 namespace StreamEdge.AvaloniaApp.ViewModels;
 
 /// <summary>What every tab's chat shares: third-party emotes, Twitch and FFZ
-/// badges, pronouns, settings, and who "me" is for mention highlighting.</summary>
+/// badges, pronouns, the user's own Twitch emotes, settings, and who "me" is
+/// for mention highlighting.</summary>
 public sealed class ChatServices
 {
+    private const int MaxRecent = 24;
+
+    private readonly object _gate = new();
+    private Dictionary<string, UserEmote> _mine = new(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, EmoteOwner> _owners = new Dictionary<string, EmoteOwner>();
+
     public ChatServices(HttpClient http, AppSettings settings, IUiDispatcher ui, Func<string?> selfLogin)
     {
         Settings = settings;
@@ -26,6 +33,53 @@ public sealed class ChatServices
     public EmoteRegistry Emotes { get; }
     public TwitchBadges Badges { get; }
     public PronounService Pronouns { get; }
+
+    /// <summary>Raised after the user's own emotes change (on the UI thread).</summary>
+    public event Action? MyEmotesChanged;
+
+    /// <summary>The user's Twitch emotes (subs, follower emotes, globals).</summary>
+    public IReadOnlyList<UserEmote> MyEmotes
+    {
+        get { lock (_gate) return [.. _mine.Values]; }
+    }
+
+    public IReadOnlyDictionary<string, EmoteOwner> Owners
+    {
+        get { lock (_gate) return _owners; }
+    }
+
+    /// <summary>Adds to (or, with <paramref name="replace"/>, replaces) the
+    /// user's emotes. Call on the UI thread.</summary>
+    public void SetMyEmotes(IEnumerable<UserEmote> emotes, IReadOnlyDictionary<string, EmoteOwner>? owners, bool replace)
+    {
+        lock (_gate)
+        {
+            var next = replace ? new Dictionary<string, UserEmote>(StringComparer.Ordinal) : new(_mine, StringComparer.Ordinal);
+            foreach (var e in emotes) next[e.Emote.Code] = e;
+            _mine = next;
+            if (owners is not null)
+            {
+                var merged = replace ? new Dictionary<string, EmoteOwner>() : new Dictionary<string, EmoteOwner>(_owners);
+                foreach (var (id, owner) in owners) merged[id] = owner;
+                _owners = merged;
+            }
+        }
+        MyEmotesChanged?.Invoke();
+    }
+
+    public Emote? MyEmote(string code)
+    {
+        lock (_gate) return _mine.TryGetValue(code, out var e) ? e.Emote : null;
+    }
+
+    /// <summary>Remembers an emote picked from the menu.</summary>
+    public void NoteUsed(Emote emote)
+    {
+        var recent = Settings.RecentEmotes;
+        recent.RemoveAll(r => r.Code == emote.Code && r.Provider == emote.Provider);
+        recent.Insert(0, new RecentEmote(emote.Code, emote.ImageUrl, emote.Provider));
+        if (recent.Count > MaxRecent) recent.RemoveRange(MaxRecent, recent.Count - MaxRecent);
+    }
 
     /// <summary>One badge to draw: its image when known, else the set name
     /// for a placeholder chip (Twitch's badge API needs a signed-in user).</summary>
@@ -54,6 +108,11 @@ public sealed class ChatServices
         return list;
     }
 
-    public IReadOnlyList<ChatToken> Tokenize(ChatMessage message, string? roomId) =>
-        ChatTokenizer.Tokenize(message, code => Emotes.Lookup(roomId, code), SelfLogin());
+    /// <param name="own">The user's own line: Twitch never sends it back with
+    /// emote tags, so their Twitch emotes are matched by code. Not for other
+    /// people's lines, which may contain codes they can't use.</param>
+    public IReadOnlyList<ChatToken> Tokenize(ChatMessage message, string? roomId, bool own = false) =>
+        ChatTokenizer.Tokenize(message,
+            own ? code => MyEmote(code) ?? Emotes.Lookup(roomId, code) : code => Emotes.Lookup(roomId, code),
+            SelfLogin());
 }

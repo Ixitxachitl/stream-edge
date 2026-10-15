@@ -22,6 +22,9 @@ public interface IVideoPlayer
 
     void SetMute(bool mute);
 
+    /// <summary>Closed captions on or off (CEA-608/708 in the video stream).</summary>
+    void SetCaptions(bool on);
+
     /// <summary>Text that stays on the video until cleared (null), e.g.
     /// "Ad break" while ads are being skipped and the picture is black.</summary>
     void SetStatusText(string? text);

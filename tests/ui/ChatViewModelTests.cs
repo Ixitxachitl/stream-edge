@@ -76,6 +76,31 @@ public class ChatViewModelTests
     }
 
     [Fact]
+    public void HistoryGoesAboveLiveLinesWithoutRepeatsAndEndsWithADivider()
+    {
+        var chat = Chat();
+        chat.Add(ChatMessage.System("chan", "### Joining #chan ###", T));
+        chat.Add(Irc("@id=live1 :bob!bob@bob PRIVMSG #chan :live"));
+
+        chat.InsertHistory(
+        [
+            Irc("@id=old1 :amy!amy@amy PRIVMSG #chan :older"),
+            Irc("@id=live1 :bob!bob@bob PRIVMSG #chan :live"),
+        ], "Twitch");
+
+        Assert.Equal(["### Joining #chan ###", "older", "### Finished with history logs (Twitch). ###", "live"],
+            chat.Lines.Select(l => l.Message.Text));
+    }
+
+    [Fact]
+    public void NoHistoryMeansNoDivider()
+    {
+        var chat = Chat();
+        chat.InsertHistory([], "Twitch");
+        Assert.Empty(chat.Lines);
+    }
+
+    [Fact]
     public void BadgesWithoutArtFallBackToTheirSetName()
     {
         var chat = Chat();

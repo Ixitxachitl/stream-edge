@@ -89,6 +89,69 @@
     <Setter Property="Padding" Value="3,0" />
     <Setter Property="Foreground" Value="{StaticResource SeTextFaint}" />
   </Style>
+  <!-- Channel name and status over an offline banner: bottom-left, on a
+       backdrop so it reads on any artwork. -->
+  <Style Selector="StackPanel.playerInfo">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel.playerInfo > TextBlock">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="TextAlignment" Value="Center" />
+  </Style>
+  <!-- The status line, a little apart from the name and title. -->
+  <Style Selector="StackPanel.playerInfo > TextBlock:nth-last-child(1)">
+    <Setter Property="Margin" Value="0,8,0,0" />
+  </Style>
+  <!-- Declared after playerInfo, so it wins when both apply. -->
+  <Style Selector="StackPanel.overBanner">
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Margin" Value="12" />
+    <Setter Property="Background" Value="#B0000000" />
+  </Style>
+  <Style Selector="StackPanel.overBanner > TextBlock:nth-last-child(1)">
+    <Setter Property="Margin" Value="10,0,10,8" />
+  </Style>
+  <Style Selector="StackPanel.overBanner > TextBlock">
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="TextAlignment" Value="Left" />
+    <Setter Property="Margin" Value="10,0" />
+  </Style>
+
+  <!-- Emote menu: a smiley button, a grid of 40 px cells, and rows that
+       aren't selectable (it's a picker, not a list). -->
+  <Style Selector="Button.emoteMenu">
+    <Setter Property="FontSize" Value="18" />
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.emoteCell">
+    <Setter Property="Width" Value="40" />
+    <Setter Property="Height" Value="38" />
+    <Setter Property="Padding" Value="3" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ListBox.emoteRows ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="ListBox.emoteRows ListBoxItem:selected /template/ ContentPresenter, ListBox.emoteRows ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="ToggleButton.cc">
+    <Setter Property="Height" Value="20" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="5,0" />
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
   <Style Selector="ToggleButton.pip">
     <Setter Property="Height" Value="22" />
     <Setter Property="MinHeight" Value="0" />

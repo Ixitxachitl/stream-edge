@@ -13,8 +13,12 @@ namespace StreamEdge.Auth;
 /// (<see cref="TwitchApp"/>), so tokens refresh without a secret.</remarks>
 public sealed class TwitchAuth(HttpClient http, string clientId)
 {
-    /// <summary>Followed live streams, plus reading and sending chat.</summary>
-    public const string Scopes = "user:read:follows chat:read chat:edit";
+    /// <summary>Followed live streams, reading and sending chat, and the
+    /// user's own emotes (for the emote menu and their own messages).</summary>
+    public const string Scopes = "user:read:follows chat:read chat:edit user:read:emotes";
+
+    /// <summary>Added after the first release; tokens from before lack it.</summary>
+    public const string EmotesScope = "user:read:emotes";
 
     public sealed record DeviceCode(
         [property: JsonPropertyName("device_code")] string Code,
@@ -31,7 +35,8 @@ public sealed class TwitchAuth(HttpClient http, string clientId)
     public sealed record Identity(
         [property: JsonPropertyName("login")] string Login,
         [property: JsonPropertyName("user_id")] string UserId,
-        [property: JsonPropertyName("expires_in")] int ExpiresIn);
+        [property: JsonPropertyName("expires_in")] int ExpiresIn,
+        [property: JsonPropertyName("scopes")] IReadOnlyList<string>? Scopes = null);
 
     private sealed record ErrorBody([property: JsonPropertyName("message")] string? Message);
 

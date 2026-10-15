@@ -86,6 +86,8 @@ playlist resolution (with optional auth-token), secrets store.
 - [x] Badges from Helix (signed in) with coloured placeholder chips otherwise; FFZ user badges and custom mod/VIP art
 - [x] Twitch styling: reply context, highlighted / first-time / mention / sub-and-raid rows, paid message effects, gigantified emotes, deleted messages and timeouts (CLEARMSG/CLEARCHAT); JOIN/PART off by default
 - [x] Optional, each switchable in ⚙: pronouns (alejo.io), BTTV, FFZ, 7TV (zero-width emotes stacked on the emote before them)
+- [x] Own messages drawn from USERSTATE (badges, colour) with the user's Twitch emotes (Helix, `user:read:emotes`)
+- [x] Emote menu like twitch.tv's: frequently used, this channel, the user's other channels, Twitch globals, 7TV/BTTV/FFZ sets, search
 - [ ] 7TV cosmetics (name paints, badges): need its EventAPI websocket
 - [ ] Cheermotes (bits are shown as a count for now)
 - [ ] Recent-message history on join (recent-messages.robotty.de), ended with "### Finished with history logs. ###"
@@ -125,7 +127,11 @@ Twitch CDN ──HLS + prefetch──▶ LiveHlsReader ──TS bytes──▶ L
   - 2 stalls within 45 s: drop one quality step. The stream never drops to audio-only on its own.
   - 3 stall-free minutes after a drop: try one step back up, never above the preference.
   - Stalls during ad breaks don't count.
-- Ads: stitched ad segments are skipped (`SkipAds`). With the `auth-token` and a sub or Turbo there are none.
+- Ads play, as on twitch.tv, with an "Ad break" label on the video (none at all with the `auth-token` and a sub or Turbo). Skipping them (`SkipAds`, off) left the player's connection silent, and mpv drops a silent connection after ~30 s, mid pre-roll, which reconnected into a fresh pre-roll.
+- Quality changes between video variants are seamless: the reader switches playlists at the next segment on the same connection (Twitch variants share segment numbers and timestamps), so there's no reload or rebuffer.
+- Recovery: every network step has a timeout; a stream with no new bytes for 12 s (outside ad breaks) reconnects with a fresh token; any resolve failure, timeouts included, schedules a retry; ⟳ retries offline tabs at once.
+- Closed captions (CEA-608 in the video) via mpv's caption track, toggled with CC; front tab only.
+- Offline channels show their offline banner (or avatar), from GQL.
 - Token expiry or a dropped stream: the player goes idle, and the session re-resolves with backoff. Offline channels are re-checked every 30 s.
 - Controls sit in the chat header (quality menu, mute, latency, catch-up speed),
   because nothing can be drawn over a native video window. Transient notices use mpv's OSD.

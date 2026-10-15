@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StreamEdge.Auth;
 using StreamEdge.Chat;
+using StreamEdge.Chat.Emotes;
 using StreamEdge.Demo;
 using StreamEdge.Playback;
 using StreamEdge.Streams;
@@ -48,6 +49,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // redrawn when they arrive (null room = globals: every tab).
         Services.Emotes.Changed += room => _ui.Post(() => RenderChats(room));
         Services.Badges.Changed += room => _ui.Post(() => RenderChats(room));
+        // Own lines drawn before the user's emotes arrived get them now.
+        Services.MyEmotesChanged += () => RenderChats(null);
+        EmoteMenu = new EmoteMenuViewModel(Services, () => FrontTab, Account);
         Account.AccountChanged += () => _ = OnAccountChangedAsync();
         Streams.OpenRequested += (login, mode) => OpenChannel(login, mode);
 
@@ -60,6 +64,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public StreamListViewModel Streams { get; }
     public ChatServices Services { get; }
+    public EmoteMenuViewModel EmoteMenu { get; }
     public AccountViewModel Account { get; }
 
     /// <summary>Open channels, in tab order.</summary>
@@ -153,6 +158,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await Account.RestoreAsync(_stop.Token);
         _ = Services.Emotes.LoadGlobalsAsync(_stop.Token);
         _ = LoadTwitchBadgesAsync();
+        _ = LoadMyEmotesAsync();
         _chat = CreateChatClient();
         if (_options.Channel is { Length: > 0 } wanted)
         {
@@ -180,6 +186,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         client.MessageReceived += m => _ui.Post(() => TabFor(m.Channel)?.Chat.Add(m));
         client.ModerationReceived += m => _ui.Post(() => TabFor(m.Channel)?.Chat.Apply(m));
         client.RoomStateReceived += (channel, roomId) => _ui.Post(() => OnRoomState(channel, roomId));
+        client.UserStateReceived += state => _ui.Post(() => OnUserState(state));
         client.StatusChanged += s => _ui.Post(() =>
         {
             foreach (var tab in Tabs) tab.Chat.Status = s;
@@ -202,6 +209,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var tab in Tabs) await _chat.JoinAsync(tab.Login);
         await LoadTwitchBadgesAsync();
         RenderChats(null);
+        await LoadMyEmotesAsync();
         await RefreshStreamsAsync();
     }
 
@@ -239,6 +247,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Tabs.Insert(Math.Min(index, Tabs.Count), tab);
         _ = _chat?.JoinAsync(login);
         ShowChannelInfo(tab);
+        if (!_options.Demo)
+        {
+            _ = LoadChannelLookAsync(tab);
+            _ = LoadHistoryAsync(tab);
+        }
 
         if (mode != OpenMode.Background || FrontTab is null) SetFront(tab);
         else ApplyTiers();
@@ -250,6 +263,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void SetFront(ChannelTabViewModel? tab)
     {
         FrontTab = tab;
+        // The CC choice is one setting; each tab's button shows it when in front.
+        if (tab is not null) tab.Player.Captions = _settings.Captions;
         foreach (var t in Tabs) t.IsFront = t == tab;
         ApplyTiers();
         if (tab is not null) ShowChannelInfo(tab);
@@ -310,9 +325,118 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (text.Length == 0 || _chat is null || !tab.Chat.CanSend) return;
         tab.Chat.Draft = "";
         await _chat.SendMessageAsync(tab.Login, text);
-        // Twitch doesn't echo our own PRIVMSG back; show it locally.
-        tab.Chat.Add(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, tab.Login,
-            Account.Login, Account.Login, null, [], text));
+
+        // Twitch doesn't echo our own PRIVMSG back, so draw it here, the way
+        // Twitch would: from the USERSTATE it sent for this channel (badges,
+        // colour, display name). Other /commands aren't chat lines.
+        var kind = ChatMessageKind.Message;
+        if (text.StartsWith("/me ", StringComparison.OrdinalIgnoreCase))
+        {
+            kind = ChatMessageKind.Action;
+            text = text[4..];
+        }
+        else if (text.StartsWith('/'))
+        {
+            return;
+        }
+        var state = _userStates.GetValueOrDefault(tab.Login);
+        tab.Chat.AddOwn(new ChatMessage(DateTimeOffset.Now, kind, tab.Login, Account.Login,
+            state?.DisplayName ?? _globalUserState?.DisplayName ?? Account.Login,
+            state?.Color ?? _globalUserState?.Color, state?.Badges ?? [], text)
+        {
+            UserId = _globalUserState?.UserId ?? Account.UserId,
+        });
+    }
+
+    private readonly Dictionary<string, ChatUserState> _userStates = new(StringComparer.OrdinalIgnoreCase);
+    private ChatUserState? _globalUserState;
+
+    private void OnUserState(ChatUserState state)
+    {
+        if (state.Channel is { } channel) _userStates[channel] = state;
+        else _globalUserState = state;
+    }
+
+    /// <summary>The user's Twitch emotes, for the emote menu and their own
+    /// lines. Needs the emotes permission, which logins from before it was
+    /// added don't have.</summary>
+    private async Task LoadMyEmotesAsync(string? roomId = null)
+    {
+        if (!Account.IsSignedIn || !Account.CanUseOwnEmotes || Account.UserId is not { } userId
+            || Account.AccessToken is not { } token) return;
+        try
+        {
+            var clientId = _settings.EffectiveClientId;
+            var emotes = await TwitchUserEmotes.FetchAsync(_http, clientId, token, userId, roomId, _stop.Token);
+            var owners = await TwitchUserEmotes.FetchOwnersAsync(_http, clientId, token,
+                emotes.Select(e => e.OwnerId).Where(id => !Services.Owners.ContainsKey(id)), _stop.Token);
+            _ui.Post(() => Services.SetMyEmotes(emotes, owners, replace: roomId is null));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            System.Diagnostics.Trace.WriteLine("user emotes: " + ex.Message);
+        }
+    }
+
+    /// <summary>Recent chat for a tab just opened: Twitch's own history with
+    /// the user's auth-token, else (if allowed) recent-messages.robotty.de.</summary>
+    private async Task LoadHistoryAsync(ChannelTabViewModel tab)
+    {
+        if (!_settings.LoadChatHistory) return;
+        try
+        {
+            IReadOnlyList<ChatMessage>? history = null;
+            var source = "Twitch";
+            if (SecretStore.Get(SecretStore.PlaybackAuthToken) is { } authToken)
+                history = await ChatHistory.FetchTwitchAsync(_http, tab.Login, authToken, _stop.Token);
+            if (history is null && _settings.UseRecentMessages)
+            {
+                history = await ChatHistory.FetchRecentMessagesAsync(_http, tab.Login, 200, _stop.Token);
+                source = "recent-messages";
+            }
+            if (history is { Count: > 0 } lines)
+                _ui.Post(() =>
+                {
+                    if (Tabs.Contains(tab)) tab.Chat.InsertHistory(lines, source);
+                });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            // History is a nicety; the chat just starts with live messages.
+        }
+    }
+
+    public bool LoadChatHistory
+    {
+        get => _settings.LoadChatHistory;
+        set => SetProperty(_settings.LoadChatHistory, value, _settings, (s, v) => s.LoadChatHistory = v);
+    }
+
+    public bool UseRecentMessages
+    {
+        get => _settings.UseRecentMessages;
+        set => SetProperty(_settings.UseRecentMessages, value, _settings, (s, v) => s.UseRecentMessages = v);
+    }
+
+    /// <summary>Name, offline banner and avatar, for the player pane when
+    /// the channel isn't live. Signed out works too (GQL).</summary>
+    private async Task LoadChannelLookAsync(ChannelTabViewModel tab)
+    {
+        try
+        {
+            if (await ChannelInfo.FetchAsync(_http, tab.Login, _stop.Token) is not { } info) return;
+            _ui.Post(() =>
+            {
+                tab.DisplayName = info.DisplayName;
+                tab.Player.OfflineImage = info.OfflineImage;
+                tab.Player.ProfileImage = info.ProfileImage;
+                ShowChannelInfo(tab);
+            });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            // Cosmetic: without it the pane just says "Offline".
+        }
     }
 
     // ----- Chat extras ----------------------------------------------------
@@ -327,6 +451,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = Services.Emotes.LoadChannelAsync(roomId, _stop.Token);
         if (Account.IsSignedIn && Account.AccessToken is { } token)
             _ = Services.Badges.LoadChannelAsync(_http, _settings.EffectiveClientId, token, roomId, _stop.Token);
+        // Follower emotes are only listed when asked for by channel.
+        _ = LoadMyEmotesAsync(roomId);
     }
 
     /// <summary>Twitch's badge art needs a signed-in user's token; without
@@ -433,13 +559,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var now = DateTimeOffset.Now;
         var stream = Streams.Items.Select(i => i.Stream)
             .FirstOrDefault(s => string.Equals(s.Login, tab.Login, StringComparison.OrdinalIgnoreCase));
-        tab.Player.Channel = stream?.DisplayName ?? tab.Login;
+        tab.Player.Channel = stream?.DisplayName ?? tab.DisplayName ?? tab.Login;
         tab.Player.Title = stream?.Title ?? "";
         tab.Player.Game = stream?.Game ?? "";
         if (tab != FrontTab) return;
         WindowTitle = stream is null
             ? $"#{tab.Login} - StreamEdge"
             : $"#{tab.Login} {UiFormats.TitleStats(stream.Viewers, stream.Uptime(now))} - {stream.Title}";
+    }
+
+    /// <summary>The ⟳ button: reload the live list now, and retry any tab
+    /// that's offline or stuck, rather than waiting for the timers.</summary>
+    [RelayCommand]
+    private async Task RefreshAsync()
+    {
+        foreach (var tab in Tabs) tab.Session?.RetryNow();
+        await RefreshStreamsAsync();
     }
 
     private async Task RefreshStreamsAsync()
