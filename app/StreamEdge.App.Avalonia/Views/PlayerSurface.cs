@@ -112,8 +112,16 @@ public sealed partial class PlayerSurface : NativeControlHost
     private const int SmCyDoubleClk = 37;
     private static readonly IntPtr VkEscape = 0x1B;
 
+    /// <summary>SetWindowLongPtrW only exists in 64-bit user32; 32-bit
+    /// Windows has SetWindowLongW, which the header's macro maps it to.</summary>
+    private static IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr value) =>
+        IntPtr.Size == 8 ? SetWindowLongPtr64(hWnd, index, value) : (IntPtr)SetWindowLong32(hWnd, index, value.ToInt32());
+
     [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
-    private static partial IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr value);
+    private static partial IntPtr SetWindowLongPtr64(IntPtr hWnd, int index, IntPtr value);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static partial int SetWindowLong32(IntPtr hWnd, int index, int value);
 
     [LibraryImport("user32.dll", EntryPoint = "CallWindowProcW")]
     private static partial IntPtr CallWindowProc(IntPtr previous, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);

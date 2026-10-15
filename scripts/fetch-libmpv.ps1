@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Downloads libmpv for Windows into third_party/libmpv/win-x64/.
+    Downloads libmpv for Windows into third_party/libmpv/win-<arch>/.
 
 .DESCRIPTION
     The player needs libmpv at runtime. On Linux and macOS it comes from the
@@ -10,21 +10,26 @@
     player pane explaining what's missing.
 
     The build is pinned, so every machine and CI run plays through the same
-    mpv. Bump -Tag/-Asset together to update.
+    mpv. Bump -Tag and -Build together to update.
 
 .EXAMPLE
     pwsh scripts/fetch-libmpv.ps1
+    pwsh scripts/fetch-libmpv.ps1 -Arch x86
 #>
 [CmdletBinding()]
 param(
+    # x64, or x86 for the 32-bit Windows build.
+    [ValidateSet('x64', 'x86')]
+    [string]$Arch  = 'x64',
     [string]$Tag   = '20261015',
-    [string]$Asset = 'mpv-dev-x86_64-20261015-git-492bae0768.7z',
+    [string]$Build = '20261015-git-492bae0768',
     [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$dest     = Join-Path $repoRoot 'third_party/libmpv/win-x64'
+$Asset    = "mpv-dev-$(if ($Arch -eq 'x86') { 'i686' } else { 'x86_64' })-$Build.7z"
+$dest     = Join-Path $repoRoot "third_party/libmpv/win-$Arch"
 $dll      = Join-Path $dest 'libmpv-2.dll'
 
 if ((Test-Path $dll) -and -not $Force) {

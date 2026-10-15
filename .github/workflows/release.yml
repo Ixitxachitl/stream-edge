@@ -57,6 +57,7 @@ jobs:
           # Hashtable splat: array splatting binds positionally.
           $params = @{}
           if ('${{ inputs.version }}') { $params.Version = '${{ inputs.version }}' }
+          if ('${{ matrix.arch }}') { $params.Arch = '${{ matrix.arch }}' }
           ./scripts/build-release.ps1 @params
 
       - uses: actions/upload-artifact@v4

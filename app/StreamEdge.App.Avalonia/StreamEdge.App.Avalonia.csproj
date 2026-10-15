@@ -34,10 +34,15 @@
   </ItemGroup>
 
   <!-- libmpv for the player, on Windows only: Linux and macOS use the system
-       package. Fetched by scripts/fetch-libmpv.ps1; optional, since the app
-       runs without it (the player pane says what's missing). -->
-  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\third_party\libmpv\win-x64\libmpv-2.dll')">
-    <None Include="..\..\third_party\libmpv\win-x64\libmpv-2.dll" Link="libmpv-2.dll"
+       package. Fetched by scripts/fetch-libmpv.ps1 (-Arch x86 for the 32-bit
+       build); optional, since the app runs without it (the player pane says
+       what's missing). Plain builds use the 64-bit one. -->
+  <PropertyGroup>
+    <LibmpvDir>win-x64</LibmpvDir>
+    <LibmpvDir Condition="'$(RuntimeIdentifier)' == 'win-x86'">win-x86</LibmpvDir>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\third_party\libmpv\$(LibmpvDir)\libmpv-2.dll')">
+    <None Include="..\..\third_party\libmpv\$(LibmpvDir)\libmpv-2.dll" Link="libmpv-2.dll"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 

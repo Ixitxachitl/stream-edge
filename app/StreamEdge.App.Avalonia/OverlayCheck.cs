@@ -11,7 +11,8 @@ namespace StreamEdge.AvaloniaApp;
 /// or PIP does. It injects some seconds after start, so this is polled.</summary>
 internal static partial class OverlayCheck
 {
-    private const string RivaTunerHooks = "RTSSHooks64.dll";
+    // RivaTuner injects its 64- or 32-bit hooks to match the process.
+    private static string RivaTunerHooks => IntPtr.Size == 8 ? "RTSSHooks64.dll" : "RTSSHooks.dll";
 
     private const string RivaTunerAdvice =
         "RivaTuner Statistics Server (MSI Afterburner's overlay) is hooked into StreamEdge, and its hook " +

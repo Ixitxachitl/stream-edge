@@ -10,15 +10,20 @@
       2. Packages the staged folder: .zip on Windows/macOS, .tar.gz on Linux.
 
     The version defaults to <VersionPrefix> in Directory.Build.props. Pass -Tag
-    to also create an annotated git tag (v<version>).
+    to also create an annotated git tag (v<version>). -Arch x86 builds the
+    32-bit Windows release on a 64-bit Windows machine.
 
 .EXAMPLE
     pwsh scripts/build-release.ps1
+    pwsh scripts/build-release.ps1 -Arch x86
     pwsh scripts/build-release.ps1 -Version 0.2.0 -Tag
 #>
 [CmdletBinding()]
 param(
     [string]$Version,
+    # The host's architecture unless given; x86 is for Windows only.
+    [ValidateSet('', 'x64', 'x86', 'arm64')]
+    [string]$Arch = '',
     [switch]$Tag
 )
 
@@ -26,11 +31,14 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 Set-Location $repoRoot
 
-$arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }
+$arch = if ($Arch) { $Arch }
+        elseif ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' }
+        else { 'x64' }
 if ($IsWindows -or $PSVersionTable.PSVersion.Major -le 5) { $platform = 'windows'; $rid = "win-$arch";   $archive = 'zip' }
 elseif ($IsLinux)                                        { $platform = 'linux';   $rid = "linux-$arch"; $archive = 'tar.gz' }
 elseif ($IsMacOS)                                        { $platform = 'macos';   $rid = "osx-$arch";   $archive = 'zip' }
 else { throw 'Unsupported host platform.' }
+if ($arch -eq 'x86' -and $platform -ne 'windows') { throw 'x86 builds are for Windows only.' }
 
 if (-not $Version) {
     $Version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.VersionPrefix |
@@ -44,7 +52,7 @@ if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 # The player needs libmpv. On Windows it ships beside the executable;
 # elsewhere it is a system package the user installs (see README).
 if ($platform -eq 'windows') {
-    & (Join-Path $PSScriptRoot 'fetch-libmpv.ps1')
+    & (Join-Path $PSScriptRoot 'fetch-libmpv.ps1') -Arch $arch
 }
 
 Write-Host "Publishing $name ($rid)..."
