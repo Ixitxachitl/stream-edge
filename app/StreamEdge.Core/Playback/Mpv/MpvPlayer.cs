@@ -47,10 +47,11 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         ("ytdl", "no"),
         ("audio-client-name", "StreamEdge"),
         ("hwdec", "auto-safe"),
-        // OpenGL rather than mpv's default D3D11 on Windows. Several players
-        // rendering into child windows that get moved and raised (tabs, PIP)
-        // crashed inside dxgi.dll, intermittently, with D3D11 in both flip
-        // and blit modes. OpenGL is mpv's default elsewhere anyway.
+        // OpenGL, mpv's default elsewhere. On Windows mpv runs it through
+        // ANGLE, so it is still Direct3D 11 underneath. The dxgi.dll crashes
+        // once blamed on D3D11 came from RivaTuner's overlay hooking the
+        // swap chain resize as videos switch between full size and PIP
+        // (see OverlayCheck); with it out of the process, either API is fine.
         ("gpu-api", "opengl"),
 
         // mpv's own low-latency preset: no audio buffer, single-threaded

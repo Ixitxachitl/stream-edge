@@ -13,23 +13,13 @@ namespace StreamEdge.AvaloniaApp.Views;
 
 public partial class MainWindow : Window
 {
-    /// <summary>How close to the bottom (in pixels) still counts as "following"
-    /// chat. Scrolled further up, new lines don't yank the view down.</summary>
-    private const double FollowSlack = 24;
-
     private MainViewModel? _vm;
-    private ObservableCollection<ChatEntry>? _watchedLines;
 
     public MainWindow()
     {
         InitializeComponent();
-        ChatInput.KeyDown += OnChatInputKeyDown;
         StreamList.DoubleTapped += OnStreamDoubleTapped;
-        // The emote menu rebuilds as it opens: sets may have loaded since.
-        EmoteButton.Click += (_, _) => _vm?.EmoteMenu.Open();
-        ModMenuButton.Click += (_, _) => _ = _vm?.ModMenu.OpenAsync();
-        PointsButton.Click += (_, _) => _vm?.RefreshPoints();
-        RedeemButton.Click += (_, _) => _vm?.RedeemOnTwitchCommand.Execute(null);
+        WatchTabDrags();
         // Names, mentions and mod icons in chat lines (and in user cards,
         // whose recent messages are chat lines too).
         AddHandler(ChatLine.UserClickedEvent, OnUserClicked);
@@ -65,17 +55,12 @@ public partial class MainWindow : Window
         RestorePlacement();
         // Tabs opened before the window existed (demo, or restored at start-up).
         foreach (var tab in _vm.Tabs) AddVideo(tab);
-        WatchChat();
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
-            case nameof(MainViewModel.Chat):
-                WatchChat();
-                Dispatcher.UIThread.Post(() => ChatScroll.ScrollToEnd(), DispatcherPriority.Background);
-                break;
             case nameof(MainViewModel.FrontTab):
             case nameof(MainViewModel.ShowPip):
                 Videos.InvalidateArrange();
@@ -201,29 +186,10 @@ public partial class MainWindow : Window
 
     private void OnModAction(object? sender, ModActionEventArgs e)
     {
-        if (_vm?.FrontTab is { } tab) _ = _vm.ModerateAsync(tab, e.Entry, e.Action);
-        e.Handled = true;
-    }
-
-    private void WatchChat()
-    {
-        if (_watchedLines is not null) _watchedLines.CollectionChanged -= OnChatLinesChanged;
-        _watchedLines = _vm?.Chat.Lines;
-        if (_watchedLines is not null) _watchedLines.CollectionChanged += OnChatLinesChanged;
-    }
-
-    private void OnChatLinesChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (e.Action != NotifyCollectionChangedAction.Add) return;
-        var following = ChatScroll.Offset.Y >= ChatScroll.Extent.Height - ChatScroll.Viewport.Height - FollowSlack;
-        if (following)
-            Dispatcher.UIThread.Post(() => ChatScroll.ScrollToEnd(), DispatcherPriority.Background);
-    }
-
-    private void OnChatInputKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter || DataContext is not MainViewModel vm) return;
-        vm.SendCommand.Execute(null);
+        // The line's own channel: it may be in any column.
+        var tab = _vm?.Tabs.FirstOrDefault(t => string.Equals(t.Login, e.Entry.Message.Channel, StringComparison.OrdinalIgnoreCase))
+            ?? _vm?.ActiveTab;
+        if (tab is not null) _ = _vm!.ModerateAsync(tab, e.Entry, e.Action);
         e.Handled = true;
     }
 

@@ -156,7 +156,7 @@ public class LayoutTests(HeadlessAvalonia ui) : UiTest(ui)
         var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
         window.Show();
         Dispatcher.UIThread.RunJobs();
-        var button = window.FindControl<Button>("PointsButton")!;
+        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "PointsButton");
         Assert.True(button.IsVisible);
 
         button.Flyout!.ShowAt(button);

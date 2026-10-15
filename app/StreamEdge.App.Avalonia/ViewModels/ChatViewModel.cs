@@ -144,10 +144,6 @@ public sealed partial class ChatViewModel : ObservableObject
 
     public string Placeholder => CanSend ? "Send a message" : "Log in to chat";
 
-    public string Header => Channel.Length == 0 ? "Chat" : "#" + Channel;
-
-    partial void OnChannelChanged(string value) => OnPropertyChanged(nameof(Header));
-
     partial void OnRoomIdChanged(string? value) => RenderAll();
 
     /// <summary>A line the user just sent, drawn from what Twitch said about

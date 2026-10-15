@@ -72,6 +72,18 @@ public sealed class ChatServices
         lock (_gate) return _mine.TryGetValue(code, out var e) ? e.Emote : null;
     }
 
+    /// <summary>An emote the user can send by typing <paramref name="code"/>
+    /// in this room: their own Twitch emotes, then the channel's and global
+    /// third-party ones. What the chat box draws as an image.</summary>
+    public Emote? SendableEmote(string code, string? roomId) => MyEmote(code) ?? Emotes.Lookup(roomId, code);
+
+    /// <summary>Suggestions for a word being typed in the chat box (see
+    /// <see cref="EmoteCompletion.Rank"/>).</summary>
+    public IReadOnlyList<Emote> CompleteEmote(string typed, string? roomId, bool contains, int max = 10) =>
+        EmoteCompletion.Rank(
+            MyEmotes.Select(m => m.Emote).Concat(Emotes.SetsFor(roomId).SelectMany(s => s.Emotes)),
+            typed, [.. Settings.RecentEmotes.Select(r => r.Code)], contains, max);
+
     /// <summary>Remembers an emote picked from the menu.</summary>
     public void NoteUsed(Emote emote)
     {

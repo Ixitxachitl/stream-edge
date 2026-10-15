@@ -46,8 +46,13 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
     /// <summary>The name shown on the tab: display name once known.</summary>
     public string Title => Player.Channel.Length > 0 ? Player.Channel : Login;
 
+    /// <summary>On video (the full-size player); the rest are PIP or audio.</summary>
     [ObservableProperty]
     private bool _isFront;
+
+    /// <summary>The tab its chat column shows.</summary>
+    [ObservableProperty]
+    private bool _isSelected;
 
     /// <summary>When channel points were last asked for.</summary>
     internal DateTimeOffset PointsLoadedAt { get; set; }

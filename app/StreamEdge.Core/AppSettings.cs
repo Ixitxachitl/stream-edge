@@ -34,6 +34,10 @@ public sealed class AppSettings
     /// the one in front.</summary>
     public List<string> OpenTabs { get; set; } = [];
 
+    /// <summary>Chat columns, left to right: each one's tabs and the one it
+    /// shows. Empty (older files) means one column of <see cref="OpenTabs"/>.</summary>
+    public List<ChatColumnState> ChatColumns { get; set; } = [];
+
     /// <summary>Show background tabs as small live videos over the player
     /// (off: background tabs are audio only).</summary>
     public bool ShowPip { get; set; } = true;
@@ -167,3 +171,10 @@ public sealed class AppSettings
 /// <summary>An emote the user picked from the menu, stored with enough to
 /// draw and send it again.</summary>
 public sealed record RecentEmote(string Code, Uri ImageUrl, StreamEdge.Chat.Emotes.EmoteProvider Provider);
+
+/// <summary>A chat column as saved: its tabs in order and the selected one.</summary>
+public sealed class ChatColumnState
+{
+    public List<string> Tabs { get; set; } = [];
+    public string? Selected { get; set; }
+}

@@ -52,8 +52,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Services.Badges.Changed += room => _ui.Post(() => RenderChats(room));
         // Own lines drawn before the user's emotes arrived get them now.
         Services.MyEmotesChanged += () => RenderChats(null);
-        EmoteMenu = new EmoteMenuViewModel(Services, () => FrontTab, Account);
-        ModMenu = new ModMenuViewModel(() => FrontTab, Moderation);
+        EmoteMenu = new EmoteMenuViewModel(Services, () => ActiveTab, Account);
+        ModMenu = new ModMenuViewModel(() => ActiveTab, Moderation);
+        Columns.CollectionChanged += (_, _) =>
+        {
+            for (var i = 0; i < Columns.Count; i++) Columns[i].IsLast = i == Columns.Count - 1;
+        };
+        Activate(AddColumn(0));
         Account.AccountChanged += () => _ = OnAccountChangedAsync();
         Streams.OpenRequested += (login, mode) => OpenChannel(login, mode);
 
@@ -70,17 +75,32 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ModMenuViewModel ModMenu { get; }
     public AccountViewModel Account { get; }
 
-    /// <summary>Open channels, in tab order.</summary>
+    /// <summary>Every open channel, in the order opened. Each is in exactly
+    /// one of <see cref="Columns"/>, which hold the order shown.</summary>
     public ObservableCollection<ChannelTabViewModel> Tabs { get; } = [];
 
-    /// <summary>The tab filling the player and chat panes.</summary>
+    /// <summary>Chat columns, left to right; always at least one.</summary>
+    public ObservableCollection<ChatColumnViewModel> Columns { get; } = [];
+
+    /// <summary>Most columns side by side.</summary>
+    public const int MaxColumns = 4;
+
+    /// <summary>The tab on video (full size); the rest are PIP or audio.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Chat), nameof(Player), nameof(HasChannel))]
+    [NotifyPropertyChangedFor(nameof(Player), nameof(HasChannel))]
     private ChannelTabViewModel? _frontTab;
 
-    /// <summary>The front tab's chat (an empty one with no tabs), so the chat
-    /// pane binds to one path whatever is open.</summary>
-    public ChatViewModel Chat => FrontTab?.Chat ?? _idleChat;
+    /// <summary>The column last clicked or typed in: where new channels open
+    /// and what the chat box, emote and mod menus act on.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Chat), nameof(ActiveTab))]
+    private ChatColumnViewModel? _activeColumn;
+
+    /// <summary>The active column's selected tab.</summary>
+    public ChannelTabViewModel? ActiveTab => ActiveColumn?.Selected;
+
+    /// <summary>The active column's chat (an empty one with no tabs).</summary>
+    public ChatViewModel Chat => ActiveTab?.Chat ?? _idleChat;
 
     public PlayerViewModel Player => FrontTab?.Player ?? _idlePlayer;
 
@@ -171,11 +191,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         else if (_settings.ReopenLastChannel)
         {
-            // Every tab in its saved order, then the saved front one forward
-            // (an already-open channel is only brought to the front).
+            // Every column's tabs in their saved order, then the saved front
+            // one forward (an already-open channel is only brought forward).
             var front = _settings.Channel;
-            foreach (var login in _settings.OpenTabs.ToList()) OpenChannel(login, OpenMode.Background);
-            if (front is { Length: > 0 }) OpenChannel(front, OpenMode.NewTab);
+            var columns = _settings.ChatColumns.Count > 0
+                ? _settings.ChatColumns.ToList()
+                : [new ChatColumnState { Tabs = [.. _settings.OpenTabs], Selected = front }];
+            for (var i = 0; i < columns.Count; i++)
+            {
+                if (columns[i].Tabs.Count == 0) continue;
+                var column = Columns[^1].Tabs.Count == 0 ? Columns[^1] : AddColumn(Columns.Count);
+                Activate(column);
+                foreach (var login in columns[i].Tabs.ToList()) OpenChannel(login, OpenMode.Background);
+                if (TabFor(columns[i].Selected ?? "") is { } selected && column.Tabs.Contains(selected))
+                    column.Selected = selected;
+            }
+            if (TabFor(front ?? "") is { } frontTab) SelectTab(frontTab);
+            else if (front is { Length: > 0 }) OpenChannel(front, OpenMode.NewTab);
         }
         await RefreshStreamsAsync();
     }
@@ -228,19 +260,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (TabFor(login) is { } existing)
         {
-            if (mode != OpenMode.Background) SetFront(existing);
+            if (mode != OpenMode.Background) SelectTab(existing);
             return existing;
         }
 
-        var index = Tabs.Count;
-        if (mode == OpenMode.Front && FrontTab is { } replaced)
+        var column = ActiveColumn ?? Columns[0];
+        var index = column.Tabs.Count;
+        if (mode == OpenMode.Front && column.Selected is { } replaced)
         {
-            // Double-click swaps the channel in the front tab, in place.
-            index = Tabs.IndexOf(replaced);
+            // Double-click swaps the channel in the active column's tab, in place.
+            index = column.Tabs.IndexOf(replaced);
             CloseTab(replaced, pickNewFront: false);
         }
 
-        var tab = new ChannelTabViewModel(login, _settings, Services, SetFront, t => CloseTab(t))
+        var tab = new ChannelTabViewModel(login, _settings, Services, SelectTab, t => CloseTab(t))
         {
             IsFront = false,
         };
@@ -248,7 +281,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         tab.Chat.Status = _chat is null ? "" : "Connected";
         tab.Chat.Add(ChatMessage.System(login, $"### Joining #{login} ###", DateTimeOffset.Now));
         if (PlayerUnavailable is { } why) tab.Player.Status = why;
-        Tabs.Insert(Math.Min(index, Tabs.Count), tab);
+        Tabs.Add(tab);
+        column.Tabs.Insert(Math.Min(index, column.Tabs.Count), tab);
+        if (mode != OpenMode.Background || column.Selected is null) column.Selected = tab;
         _ = _chat?.JoinAsync(login);
         ShowChannelInfo(tab);
         if (!_options.Demo)
@@ -265,12 +300,133 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return tab;
     }
 
+    /// <summary>A tab clicked: shown in its column, which becomes active, and
+    /// put on video.</summary>
+    private void SelectTab(ChannelTabViewModel tab)
+    {
+        if (ColumnOf(tab) is not { } column) return;
+        column.Selected = tab;
+        Activate(column);
+        SetFront(tab);
+    }
+
+    /// <summary>The chat box, emote and mod menus now act on this column.</summary>
+    public void Activate(ChatColumnViewModel column)
+    {
+        if (!Columns.Contains(column)) return;
+        ActiveColumn = column;
+        foreach (var c in Columns) c.IsActive = c == column;
+    }
+
+    public ChatColumnViewModel? ColumnOf(ChannelTabViewModel tab) => Columns.FirstOrDefault(c => c.Tabs.Contains(tab));
+
+    private ChatColumnViewModel AddColumn(int at)
+    {
+        var column = new ChatColumnViewModel(this, _idleChat);
+        // The active column's selection is what the chat box acts on.
+        column.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ChatColumnViewModel.Selected) && column == ActiveColumn)
+            {
+                OnPropertyChanged(nameof(ActiveTab));
+                OnPropertyChanged(nameof(Chat));
+            }
+        };
+        Columns.Insert(Math.Clamp(at, 0, Columns.Count), column);
+        return column;
+    }
+
+    /// <summary>Drag and drop within or between tab strips: the tab moves to
+    /// <paramref name="index"/> in <paramref name="target"/> (counted before
+    /// the move) and is shown there. What's on video doesn't change.</summary>
+    public void MoveTab(ChannelTabViewModel tab, ChatColumnViewModel target, int index)
+    {
+        if (ColumnOf(tab) is not { } source || !Columns.Contains(target)) return;
+        if (source == target)
+        {
+            var from = source.Tabs.IndexOf(tab);
+            // Dropping after itself: the gap it leaves shifts the rest left.
+            if (index > from) index--;
+            index = Math.Clamp(index, 0, source.Tabs.Count - 1);
+            if (index != from) source.Tabs.Move(from, index);
+        }
+        else
+        {
+            TakeOut(tab, source);
+            target.Tabs.Insert(Math.Clamp(index, 0, target.Tabs.Count), tab);
+            DropEmptyColumn(source);
+        }
+        target.Selected = tab;
+        Activate(target);
+        UpdateColumnFlags();
+        SaveTabs();
+    }
+
+    /// <summary>Whether dropping on a column edge, making a new column at
+    /// <paramref name="at"/>, would do anything: a tab alone in its column
+    /// moves that column (not beside itself); any other needs a free slot.</summary>
+    public bool CanSplit(ChannelTabViewModel tab, int at)
+    {
+        if (ColumnOf(tab) is not { } source) return false;
+        var from = Columns.IndexOf(source);
+        return source.Tabs.Count == 1 ? at != from && at != from + 1 : Columns.Count < MaxColumns;
+    }
+
+    /// <summary>Drop on a column's edge: the tab becomes a new column there
+    /// (<paramref name="at"/> counts columns as they are before the move).
+    /// A tab alone in its column takes the column with it.</summary>
+    public void MoveTabToNewColumn(ChannelTabViewModel tab, int at)
+    {
+        if (!CanSplit(tab, at) || ColumnOf(tab) is not { } source) return;
+        if (source.Tabs.Count == 1)
+        {
+            var from = Columns.IndexOf(source);
+            Columns.Move(from, at > from ? at - 1 : at);
+            Activate(source);
+        }
+        else
+        {
+            var column = AddColumn(at);
+            TakeOut(tab, source);
+            column.Tabs.Add(tab);
+            column.Selected = tab;
+            Activate(column);
+        }
+        UpdateColumnFlags();
+        SaveTabs();
+    }
+
+    /// <summary>Removes a tab from its column, selecting a neighbour there.</summary>
+    private static void TakeOut(ChannelTabViewModel tab, ChatColumnViewModel column)
+    {
+        var index = column.Tabs.IndexOf(tab);
+        column.Tabs.RemoveAt(index);
+        if (column.Selected == tab)
+            column.Selected = column.Tabs.Count == 0 ? null : column.Tabs[Math.Min(index, column.Tabs.Count - 1)];
+        tab.IsSelected = false;
+    }
+
+    /// <summary>An emptied column goes, unless it's the last one.</summary>
+    private void DropEmptyColumn(ChatColumnViewModel column)
+    {
+        if (column.Tabs.Count > 0 || Columns.Count <= 1) return;
+        var index = Columns.IndexOf(column);
+        Columns.Remove(column);
+        if (ActiveColumn == column) Activate(Columns[Math.Min(index, Columns.Count - 1)]);
+    }
+
+    private void UpdateColumnFlags()
+    {
+        foreach (var c in Columns) c.HasFront = FrontTab is not null && c.Tabs.Contains(FrontTab);
+    }
+
     private void SetFront(ChannelTabViewModel? tab)
     {
         FrontTab = tab;
         // The CC choice is one setting; each tab's button shows it when in front.
         if (tab is not null) tab.Player.Captions = _settings.Captions;
         foreach (var t in Tabs) t.IsFront = t == tab;
+        UpdateColumnFlags();
         ApplyTiers();
         if (tab is not null) ShowChannelInfo(tab);
         else WindowTitle = "StreamEdge";
@@ -279,9 +435,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void CloseTab(ChannelTabViewModel tab, bool pickNewFront = true)
     {
-        var index = Tabs.IndexOf(tab);
-        if (index < 0) return;
-        Tabs.RemoveAt(index);
+        var column = ColumnOf(tab);
+        if (!Tabs.Remove(tab)) return;
+        if (column is not null) TakeOut(tab, column);
         _ = _chat?.PartAsync(tab.Login);
         if (tab.RoomId is { } room && Tabs.All(t => t.RoomId != room))
         {
@@ -289,25 +445,36 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Services.Badges.UnloadChannel(room);
         }
         _ = tab.DisposeAsync().AsTask();
+        // Replacing in place keeps the column for the tab that's coming.
+        if (pickNewFront && column is not null) DropEmptyColumn(column);
         if (FrontTab == tab)
         {
             FrontTab = null;
-            if (pickNewFront) SetFront(Tabs.Count == 0 ? null : Tabs[Math.Min(index, Tabs.Count - 1)]);
+            // Video goes to what that column now shows, else the active one's.
+            if (pickNewFront)
+                SetFront(column is { Selected: { } next } && Columns.Contains(column) ? next
+                    : ActiveTab ?? Columns.Select(c => c.Selected).FirstOrDefault(t => t is not null));
         }
+        UpdateColumnFlags();
         SaveTabs();
         OnPropertyChanged(nameof(HasTabs));
     }
 
-    /// <summary>Closes the front tab (the ✕ in the chat header).</summary>
+    /// <summary>Closes the active column's tab (the ✕ in its chat header).</summary>
     [RelayCommand]
     private void LeaveChannel()
     {
-        if (FrontTab is { } tab) CloseTab(tab);
+        if (ActiveTab is { } tab) CloseTab(tab);
     }
 
     private void SaveTabs()
     {
-        _settings.OpenTabs = [.. Tabs.Select(t => t.Login)];
+        _settings.OpenTabs = [.. Columns.SelectMany(c => c.Tabs).Select(t => t.Login)];
+        _settings.ChatColumns = [.. Columns.Where(c => c.Tabs.Count > 0).Select(c => new ChatColumnState
+        {
+            Tabs = [.. c.Tabs.Select(t => t.Login)],
+            Selected = c.Selected?.Login,
+        })];
         _settings.Channel = FrontTab?.Login;
     }
 
@@ -325,7 +492,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task SendAsync()
     {
-        if (FrontTab is not { } tab) return;
+        if (ActiveTab is not { } tab) return;
         var text = tab.Chat.Draft.Trim();
         if (text.Length == 0 || _chat is null || !tab.Chat.CanSend) return;
         tab.Chat.Draft = "";
@@ -376,7 +543,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// loading the profile (and, for mods, the follow date) in the background.</summary>
     public UserCardViewModel? OpenUserCard(string login, ChatEntry? clicked)
     {
-        if (FrontTab is not { } tab) return null;
+        // The tab the name was clicked in: its line says which channel.
+        var tab = (clicked is null ? null : TabFor(clicked.Message.Channel)) ?? ActiveTab;
+        if (tab is null) return null;
         var card = new UserCardViewModel(tab, login, clicked, Moderation, l => OpenChannel(l, OpenMode.NewTab));
         if (!_options.Demo)
             _ = card.LoadAsync(_http, _settings.EffectiveClientId,
@@ -526,14 +695,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private void RedeemOnTwitch()
     {
-        if (FrontTab is { } front) UrlLauncher.TryOpen($"https://www.twitch.tv/popout/{Uri.EscapeDataString(front.Login)}/chat");
+        if (ActiveTab is { } front) UrlLauncher.TryOpen($"https://www.twitch.tv/popout/{Uri.EscapeDataString(front.Login)}/chat");
     }
 
     /// <summary>The points menu opening: a fresh balance if the last is
     /// more than a few seconds old.</summary>
     public void RefreshPoints()
     {
-        if (!_options.Demo && FrontTab is { } front && DateTimeOffset.Now - front.PointsLoadedAt >= TimeSpan.FromSeconds(10))
+        if (!_options.Demo && ActiveTab is { } front && DateTimeOffset.Now - front.PointsLoadedAt >= TimeSpan.FromSeconds(10))
             _ = LoadPointsAsync(front);
     }
 
@@ -657,7 +826,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 VideoOnly = !VideoOnly;
                 break;
             case VideoInput.Click or VideoInput.DoubleClick when !tab.IsFront:
-                SetFront(tab);
+                SelectTab(tab);
                 break;
             case VideoInput.WheelUp:
                 tab.ChangeVolume(+5, _settings);
@@ -730,15 +899,33 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private bool _overlayWarned;
+
+    /// <summary>Says once, in every open chat, if an overlay known to crash
+    /// the players has hooked into the app.</summary>
+    private void WarnAboutOverlays()
+    {
+        if (_overlayWarned || _options.Demo) return;
+        var advice = OverlayCheck.Loaded().ToList();
+        if (advice.Count == 0) return;
+        _overlayWarned = true;
+        foreach (var tab in Tabs)
+            foreach (var line in advice)
+                tab.Chat.Add(ChatMessage.System(tab.Login, "⚠ " + line, DateTimeOffset.Now));
+    }
+
     private void Tick()
     {
         var now = DateTimeOffset.Now;
+        WarnAboutOverlays();
         Streams.Tick(now);
         foreach (var tab in Tabs) ShowChannelInfo(tab);
         if (!_options.Demo && now - _lastStreamRefresh >= StreamRefresh) _ = RefreshStreamsAsync();
         // The balance changes as the user redeems or earns elsewhere; only
-        // the front tab's is on screen.
-        if (!_options.Demo && FrontTab is { } front && now - front.PointsLoadedAt >= PointsRefresh) _ = LoadPointsAsync(front);
+        // the columns' shown tabs have theirs on screen.
+        if (!_options.Demo)
+            foreach (var shown in Columns.Select(c => c.Selected).OfType<ChannelTabViewModel>())
+                if (now - shown.PointsLoadedAt >= PointsRefresh) _ = LoadPointsAsync(shown);
         // Not just at exit: a crash or power cut should cost at most this
         // tick's worth of layout, tabs and window placement.
         _settings.Save();
