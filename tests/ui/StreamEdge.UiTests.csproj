@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- Renders offscreen through the real Skia pipeline, so what these tests
+         sample is what the app draws. Avalonia's own xunit integration is not
+         referenced: at 12.1 it targets xunit v3 while this repo is on v2.
+         HeadlessAvalonia drives the dispatcher instead. -->
+    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\app\StreamEdge.App.Avalonia\StreamEdge.App.Avalonia.csproj" />
+  </ItemGroup>
+</Project>

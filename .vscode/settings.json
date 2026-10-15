@@ -1,0 +1,44 @@
+{
+  "VsCodeTaskButtons.showCounter": false,
+  "VsCodeTaskButtons.tasks": [
+    {
+      "label": "$(rocket) Build & Run",
+      "task": "Build & Run",
+      "tooltip": "Build the Avalonia app, then launch it"
+    },
+    {
+      "label": "$(eye) Demo",
+      "task": "Run Demo",
+      "tooltip": "Launch with sample chat and stream data (no network)"
+    },
+    {
+      "label": "$(tools) Build",
+      "task": "Build App",
+      "tooltip": "Build the Avalonia app"
+    },
+    {
+      "label": "$(play) Run",
+      "task": "Run App",
+      "tooltip": "Launch the Avalonia app (no rebuild)"
+    },
+    {
+      "label": "$(beaker) Test",
+      "tooltip": "Run the test suites",
+      "tasks": [
+        { "label": "Test Core (dotnet test)", "task": "Test Managed" },
+        { "label": "Test UI (headless)", "task": "Test UI" },
+        { "label": "Test All", "task": "Test All" }
+      ]
+    },
+    {
+      "label": "$(package) Release",
+      "task": "Build Release",
+      "tooltip": "Package a release into dist/ via scripts/build-release.ps1"
+    },
+    {
+      "label": "$(trash) Clean",
+      "task": "Clean",
+      "tooltip": "Clean dotnet build outputs"
+    }
+  ]
+}

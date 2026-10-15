@@ -1,0 +1,128 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:v="using:StreamEdge.AvaloniaApp.Views"
+        xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="1920" d:DesignHeight="480"
+        x:Class="StreamEdge.AvaloniaApp.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding WindowTitle}"
+        Width="1920" Height="480" MinWidth="960" MinHeight="240">
+
+  <v:UltrawideLayout x:Name="Layout" ChatShare="{Binding ChatShare}">
+
+    <!-- ===== Chat ===== -->
+    <DockPanel x:Name="ChatPane" Background="{StaticResource SePanelBg}">
+      <Border DockPanel.Dock="Top" Classes="paneHeader">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Right" Text="{Binding Chat.Status}" Foreground="{StaticResource SeTextFaint}" />
+          <TextBlock Text="{Binding Chat.Header}" FontWeight="SemiBold" Foreground="{StaticResource SeText}" />
+        </DockPanel>
+      </Border>
+      <TextBox DockPanel.Dock="Bottom" x:Name="ChatInput" Margin="4"
+               Text="{Binding Chat.Draft}" IsEnabled="{Binding Chat.CanSend}"
+               PlaceholderText="Sign in to chat" MinHeight="28" Padding="6,4" />
+      <ScrollViewer x:Name="ChatScroll" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl x:Name="ChatItems" ItemsSource="{Binding Chat.Lines}">
+          <ItemsControl.Styles>
+            <!-- Alternating rows, as in Chatty, so wrapped lines stay
+                 attributable at a glance. -->
+            <Style Selector="ContentPresenter:nth-child(2n)">
+              <Setter Property="Background" Value="{StaticResource SePanelAltBg}" />
+            </Style>
+          </ItemsControl.Styles>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ChatEntry">
+              <v:ChatLine Entry="{Binding}" Padding="6,3" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </DockPanel>
+
+    <!-- ===== Player ===== -->
+    <Panel x:Name="PlayerPane" Background="Black">
+      <!-- Video surface goes here (phase 3). Until then, what would play. -->
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="6" MaxWidth="600">
+        <TextBlock Text="{Binding Player.Channel}" FontSize="22" FontWeight="SemiBold"
+                   Foreground="{StaticResource SeText}" HorizontalAlignment="Center" />
+        <TextBlock Text="{Binding Player.Title}" Foreground="{StaticResource SeTextDim}"
+                   TextWrapping="Wrap" TextAlignment="Center" />
+        <TextBlock Text="{Binding Player.Game}" Foreground="{StaticResource SeAccent}" HorizontalAlignment="Center" />
+        <TextBlock Text="{Binding Player.Status}" Foreground="{StaticResource SeTextFaint}"
+                   FontSize="{StaticResource SeSmallFontSize}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" />
+      </StackPanel>
+    </Panel>
+
+    <!-- ===== Live streams ===== -->
+    <DockPanel x:Name="StreamsPane" Background="{StaticResource SePanelBg}">
+      <Border DockPanel.Dock="Top" Classes="paneHeader">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="⚙" ToolTip.Tip="Account and playback">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <StackPanel Width="320" Spacing="8" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
+                  <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" />
+                  <TextBox Text="{Binding ClientId}" PlaceholderText="Twitch app Client ID (Public client)" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="Sign in" Command="{Binding SignInCommand}" IsVisible="{Binding !IsSignedIn}" />
+                    <Button Content="Sign out" Command="{Binding SignOutCommand}" IsVisible="{Binding IsSignedIn}" />
+                  </StackPanel>
+                  <SelectableTextBlock Text="{Binding UserCode}" FontSize="24" FontWeight="Bold"
+                                       IsVisible="{Binding UserCode, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                  <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}"
+                             IsVisible="{Binding Message.Length}" />
+                  <Separator />
+                  <TextBlock Text="Ad-free playback (optional)" FontWeight="SemiBold" />
+                  <TextBlock TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}"
+                             Text="Paste the auth-token cookie from a browser signed in to twitch.tv. It is stored encrypted and sent only to gql.twitch.tv when resolving a stream." />
+                  <TextBox Text="{Binding PlaybackTokenDraft}" PasswordChar="•" PlaceholderText="auth-token" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="Save token" Command="{Binding SavePlaybackTokenCommand}" />
+                    <Button Content="Clear" Command="{Binding ClearPlaybackTokenCommand}" IsEnabled="{Binding HasPlaybackToken}" />
+                    <TextBlock Text="✓ token set" Foreground="{StaticResource SeAccent}" VerticalAlignment="Center"
+                               IsVisible="{Binding HasPlaybackToken}" />
+                  </StackPanel>
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <Button DockPanel.Dock="Right" Content="⇅" ToolTip.Tip="Change sort" Command="{Binding Streams.CycleSortCommand}" />
+          <TextBlock Text="{Binding Streams.Header}" />
+        </DockPanel>
+      </Border>
+      <Panel>
+        <TextBlock Text="{Binding Streams.EmptyText}" IsVisible="{Binding Streams.IsEmpty}"
+                   Foreground="{StaticResource SeTextFaint}" TextWrapping="Wrap" TextAlignment="Center"
+                   VerticalAlignment="Center" Margin="16" />
+        <ListBox x:Name="StreamList" ItemsSource="{Binding Streams.Items}" SelectedItem="{Binding Streams.Selected}"
+                 Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem">
+              <Setter Property="Padding" Value="8,4" />
+            </Style>
+          </ListBox.Styles>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:StreamItemViewModel">
+              <StackPanel Spacing="1">
+                <!-- ──── ★ Name (viewers | uptime) ──── -->
+                <Grid ColumnDefinitions="*,Auto,*">
+                  <Rectangle Height="1" Fill="{StaticResource SeRule}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="★" Foreground="{StaticResource SeFavorite}" IsVisible="{Binding IsFavorite}" />
+                    <TextBlock Text="{Binding Header}" FontWeight="SemiBold" Foreground="{StaticResource SeText}" />
+                  </StackPanel>
+                  <Rectangle Grid.Column="2" Height="1" Fill="{StaticResource SeRule}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                </Grid>
+                <TextBlock Text="{Binding Title}" TextWrapping="Wrap" Foreground="{StaticResource SeText}" />
+                <TextBlock Text="{Binding Game}" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Panel>
+    </DockPanel>
+
+  </v:UltrawideLayout>
+</Window>

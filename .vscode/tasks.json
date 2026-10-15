@@ -1,0 +1,80 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build App",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["build", "app/StreamEdge.App.Avalonia/StreamEdge.App.Avalonia.csproj", "-c", "Debug", "--nologo"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$msCompile"],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Run App",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["run", "--project", "app/StreamEdge.App.Avalonia/StreamEdge.App.Avalonia.csproj", "-c", "Debug", "--no-build"],
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Run Demo",
+      "type": "shell",
+      "dependsOn": "Build App",
+      "command": "dotnet",
+      "args": ["run", "--project", "app/StreamEdge.App.Avalonia/StreamEdge.App.Avalonia.csproj", "-c", "Debug", "--no-build", "--", "--demo"],
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Build & Run",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Build App", "Run App"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Test Managed",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["test", "tests/managed/StreamEdge.Tests.csproj", "--nologo"],
+      "group": "test",
+      "problemMatcher": ["$msCompile"],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Test UI",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["test", "tests/ui/StreamEdge.UiTests.csproj", "--nologo"],
+      "group": "test",
+      "problemMatcher": ["$msCompile"],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Test All",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Test Managed", "Test UI"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      // build-release.ps1 detects the host OS and picks the RID and archive
+      // format itself.
+      "label": "Build Release",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/build-release.ps1"],
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Clean",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["clean", "StreamEdge.sln", "--nologo"],
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    }
+  ]
+}

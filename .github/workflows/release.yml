@@ -1,0 +1,85 @@
+# Builds StreamEdge for every supported platform and attaches the artifacts to
+# a draft GitHub release. Each platform publishes on its own runner.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build (defaults to VersionPrefix in Directory.Build.props)
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact: dist/*.zip
+          - os: ubuntu-latest
+            platform: linux
+            artifact: dist/*.tar.gz
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            artifact: dist/*.tar.gz
+          - os: macos-latest
+            platform: macos
+            artifact: dist/*.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # A mismatch fails here rather than producing artifacts whose names
+      # disagree with the release they are attached to.
+      - name: Check tag matches the declared version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $declared = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.VersionPrefix |
+                        Where-Object { $_ } | Select-Object -First 1
+          $tag = '${{ github.ref_name }}' -replace '^v', ''
+          if ($declared -ne $tag) { throw "Tag v$tag does not match VersionPrefix $declared." }
+
+      - name: Build release
+        shell: pwsh
+        run: |
+          # Hashtable splat: array splatting binds positionally.
+          $params = @{}
+          if ('${{ inputs.version }}') { $params.Version = '${{ inputs.version }}' }
+          ./scripts/build-release.ps1 @params
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: streamedge-${{ matrix.platform }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Check something was built
+        run: |
+          count=$(find artifacts -type f | wc -l)
+          if [ "$count" -eq 0 ]; then echo "::error::No artifacts were produced."; exit 1; fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          draft: true
+          generate_release_notes: true

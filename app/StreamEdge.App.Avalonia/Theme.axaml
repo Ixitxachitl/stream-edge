@@ -1,0 +1,46 @@
+<!-- Colours and shared styles. Everything is sized for a short display
+     (a 1920x480 or 1920x440 bar panel): compact fonts, thin headers, no
+     menu bar. -->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="SeWindowBg" Color="#0E0E10" />
+    <SolidColorBrush x:Key="SePanelBg" Color="#18181B" />
+    <SolidColorBrush x:Key="SePanelAltBg" Color="#1F1F23" />
+    <SolidColorBrush x:Key="SeHeaderBg" Color="#26262C" />
+    <SolidColorBrush x:Key="SeRule" Color="#3A3A3D" />
+    <SolidColorBrush x:Key="SeText" Color="#EFEFF1" />
+    <SolidColorBrush x:Key="SeTextDim" Color="#ADADB8" />
+    <SolidColorBrush x:Key="SeTextFaint" Color="#7A7A85" />
+    <SolidColorBrush x:Key="SeAccent" Color="#A970FF" />
+    <SolidColorBrush x:Key="SeFavorite" Color="#F5B800" />
+    <SolidColorBrush x:Key="SeLink" Color="#BF94FF" />
+    <x:Double x:Key="SeFontSize">13</x:Double>
+    <x:Double x:Key="SeSmallFontSize">11.5</x:Double>
+  </Styles.Resources>
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{StaticResource SeWindowBg}" />
+    <Setter Property="FontSize" Value="{StaticResource SeFontSize}" />
+  </Style>
+
+  <!-- Thin title strip at the top of each pane: replaces the menu bar and
+       window chrome, which a 480-pixel-tall display can't spare. -->
+  <Style Selector="Border.paneHeader">
+    <Setter Property="Background" Value="{StaticResource SeHeaderBg}" />
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="MinHeight" Value="24" />
+  </Style>
+  <Style Selector="Border.paneHeader TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.paneHeader Button">
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+</Styles>
