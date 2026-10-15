@@ -81,10 +81,13 @@ Repo layout, build/test tasks, CI, release script, three-pane layout, demo mode,
 anonymous IRC chat, device-code sign-in, Helix followed streams, GQL + usher
 playlist resolution (with optional auth-token), secrets store.
 
-### Phase 1: chat that reads like Chatty
-- [ ] Emotes: Twitch (from the `emotes` tag) plus BTTV / FFZ / 7TV, as `InlineUIContainer` images with a disk cache
-- [ ] Real badge images (Helix `chat/badges` + `chat/badges/global`)
-- [ ] Pronouns next to names (pronouns.alejo.io), as in the reference
+### Phase 1: chat that reads like official Twitch
+- [x] Twitch emotes from the `emotes` tag (code-point offsets), animated GIF/WebP decoded with SkiaSharp, cached on disk, one shared animation clock
+- [x] Badges from Helix (signed in) with coloured placeholder chips otherwise; FFZ user badges and custom mod/VIP art
+- [x] Twitch styling: reply context, highlighted / first-time / mention / sub-and-raid rows, paid message effects, gigantified emotes, deleted messages and timeouts (CLEARMSG/CLEARCHAT); JOIN/PART off by default
+- [x] Optional, each switchable in ⚙: pronouns (alejo.io), BTTV, FFZ, 7TV (zero-width emotes stacked on the emote before them)
+- [ ] 7TV cosmetics (name paints, badges): need its EventAPI websocket
+- [ ] Cheermotes (bits are shown as a count for now)
 - [ ] Recent-message history on join (recent-messages.robotty.de), ended with "### Finished with history logs. ###"
 - [ ] Mention and highlight rules, name click → user card flyout
 - [ ] Virtualised list for busy channels and a "scroll to resume" pill when paused
@@ -140,7 +143,8 @@ Still to do:
 - [ ] Player show/hide toggle
 - [ ] Screen picker in the flyout (`ScreenIndex`), borderless/fullscreen toggle, always-on-top
 - [ ] Font-size scale for tiny high-DPI bars, and layout presets (1920×480, 1920×440, 2560×720, 3840×1100)
-- [ ] Multi-channel chat tabs in the chat pane
+- [x] Channel tabs: double-click opens, right-click opens in a new or background tab; background tabs keep playing as audio only, or as PIP thumbnails over the player (lowest quality); selecting a tab brings it forward
+- [ ] PIP z-order on Linux/macOS (Windows raises thumbnails explicitly); clicking a PIP thumbnail to bring it forward
 
 ### Phase 5: packaging
 - [ ] App icon, macOS `.app` bundle and signing notes, Linux `.desktop` entry

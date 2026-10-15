@@ -1,24 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-using System.Text.RegularExpressions;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
 using StreamEdge.AvaloniaApp.ViewModels;
+using StreamEdge.AvaloniaApp.Views.Emotes;
 using StreamEdge.Chat;
+using StreamEdge.Chat.Emotes;
 
 namespace StreamEdge.AvaloniaApp.Views;
 
-/// <summary>One chat line as a single wrapping text run sequence:
-/// time, badges, coloured name, message, links underlined.
-/// Built in code because inlines can't be bound from XAML.</summary>
-public sealed partial class ChatLine : SelectableTextBlock
+/// <summary>One chat line drawn the way twitch.tv draws it: badges, the
+/// sender's colour, emotes inline (animated, with zero-width overlays),
+/// reply context, and the highlight styles for mentions, highlighted and
+/// first-time messages, subs and raids, and paid message effects.
+/// Built in code because inlines can't be bound from XAML; rebuilt whenever
+/// the entry changes (pronouns arriving, emotes loading, a deletion).</summary>
+public sealed class ChatLine : Border
 {
     public static readonly StyledProperty<ChatEntry?> EntryProperty =
         AvaloniaProperty.Register<ChatLine, ChatEntry?>(nameof(Entry));
-
-    protected override Type StyleKeyOverride => typeof(SelectableTextBlock);
 
     public ChatEntry? Entry
     {
@@ -26,113 +29,250 @@ public sealed partial class ChatLine : SelectableTextBlock
         set => SetValue(EntryProperty, value);
     }
 
+    private const double EmoteHeight = 28;
+    private const double BadgeHeight = 18;
+
+    private static readonly IBrush TimeBrush = Brush("#ADADB8");
+    private static readonly IBrush DimBrush = Brush("#8E8E99");
+    private static readonly IBrush TextBrush = Brush("#EFEFF1");
+    private static readonly IBrush LinkBrush = Brush("#BF94FF");
+    private static readonly IBrush SystemBrush = Brush("#ADADB8");
+
+    private static IBrush Brush(string color) => new SolidColorBrush(Color.Parse(color));
+
     public ChatLine()
     {
-        TextWrapping = TextWrapping.Wrap;
+        Padding = new Thickness(10, 4, 8, 4);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == EntryProperty) Rebuild();
+        if (change.Property != EntryProperty) return;
+        if (change.OldValue is ChatEntry old) old.PropertyChanged -= OnEntryChanged;
+        if (change.NewValue is ChatEntry now) now.PropertyChanged += OnEntryChanged;
+        Rebuild();
     }
 
-    private static readonly IBrush TimeBrush = new SolidColorBrush(Color.Parse("#7A7A85"));
-    private static readonly IBrush DimBrush = new SolidColorBrush(Color.Parse("#8E8E99"));
-    private static readonly IBrush TextBrush = new SolidColorBrush(Color.Parse("#EFEFF1"));
-    private static readonly IBrush LinkBrush = new SolidColorBrush(Color.Parse("#BF94FF"));
-    private static readonly IBrush SystemBrush = new SolidColorBrush(Color.Parse("#7FE0C4"));
-
-    [GeneratedRegex(@"https?://\S+", RegexOptions.IgnoreCase)]
-    private static partial Regex UrlPattern();
+    private void OnEntryChanged(object? sender, PropertyChangedEventArgs e) => Rebuild();
 
     private void Rebuild()
     {
-        var inlines = new InlineCollection();
-        if (Entry is not { } entry)
-        {
-            Inlines = inlines;
-            return;
-        }
+        Child = null;
+        // Cleared, not set to null: a local null would beat the hover style.
+        ClearValue(BackgroundProperty);
+        ClearValue(BorderThicknessProperty);
+        ClearValue(BorderBrushProperty);
+        if (Entry is not { } entry) return;
         var m = entry.Message;
 
+        var stack = new StackPanel { Spacing = 2 };
+        StyleRow(entry, stack);
+
+        if (m.IsReply && !entry.IsDeleted)
+            stack.Children.Add(new TextBlock
+            {
+                Text = $"↪ Replying to @{m.ReplyParentName}: {m.ReplyParentBody}",
+                Foreground = DimBrush,
+                FontSize = 11.5,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+
+        var text = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
+        text.Inlines = BuildInlines(entry);
+        stack.Children.Add(text);
+        Child = stack;
+    }
+
+    /// <summary>Row background and left bar for the special message types,
+    /// in Twitch's colours.</summary>
+    private void StyleRow(ChatEntry entry, StackPanel stack)
+    {
+        var m = entry.Message;
+        if (entry.IsSelfMention)
+        {
+            Bar("#E91916", "#3B1416");
+        }
+        else if (m.MsgId == "highlighted-message")
+        {
+            Bar("#9147FF", "#2D2245");
+        }
+        else if (m.Kind == ChatMessageKind.System && m.Login is not null)
+        {
+            // USERNOTICE: subs, resubs, gifts, raids, announcements.
+            Bar("#9147FF", "#1F1F23");
+        }
+        else if (m.IsFirstMessage)
+        {
+            Bar("#00C8AF", "#12302C");
+            stack.Children.Add(new TextBlock
+            {
+                Text = "✦ First-time chat",
+                Foreground = Brush("#00C8AF"),
+                FontSize = 11.5,
+                FontWeight = FontWeight.SemiBold,
+            });
+        }
+
+        // Paid "message effects": a tinted gradient behind the line.
+        if (m.AnimationId is { } effect && !entry.IsDeleted)
+        {
+            string[] stops = effect switch
+            {
+                "simmer" => ["#55FF7B00", "#55FFD000"],
+                "rainbow-eclipse" => ["#55FF0055", "#55FFC800", "#5500D084", "#550088FF", "#55A100FF"],
+                "cosmic-abyss" => ["#55301A8A", "#552B6BD6", "#55130A3D"],
+                _ => ["#55772CE8", "#5500C8AF"],
+            };
+            var gradient = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
+            };
+            for (var i = 0; i < stops.Length; i++)
+                gradient.GradientStops.Add(new GradientStop(Color.Parse(stops[i]), i / (double)(stops.Length - 1)));
+            Background = gradient;
+        }
+    }
+
+    private void Bar(string bar, string background)
+    {
+        BorderBrush = Brush(bar);
+        BorderThickness = new Thickness(4, 0, 0, 0);
+        Background = Brush(background);
+    }
+
+    private static InlineCollection BuildInlines(ChatEntry entry)
+    {
+        var m = entry.Message;
+        var inlines = new InlineCollection();
         if (entry.Time.Length > 0)
-            inlines.Add(new Run(entry.Time + " ") { Foreground = TimeBrush });
+            inlines.Add(new Run(entry.Time + " ") { Foreground = TimeBrush, FontSize = 12 });
 
         switch (m.Kind)
         {
             case ChatMessageKind.Membership:
                 inlines.Add(new Run(m.Text) { Foreground = DimBrush });
-                break;
+                return inlines;
             case ChatMessageKind.System when m.Login is null:
-                inlines.Add(new Run(m.Text) { Foreground = SystemBrush });
-                break;
-            default:
+                inlines.Add(new Run(m.Text) { Foreground = SystemBrush, FontStyle = FontStyle.Italic });
+                return inlines;
+        }
+
+        foreach (var badge in entry.Badges) inlines.Add(Badge(badge));
+
+        var nameBrush = new SolidColorBrush(Readable(Color.Parse(UserColors.For(m.Login, m.Color))));
+        var isAction = m.Kind == ChatMessageKind.Action;
+        var isNotice = m.Kind == ChatMessageKind.System;
+        inlines.Add(new Run(m.Sender) { Foreground = nameBrush, FontWeight = FontWeight.Bold });
+        if (entry.Pronoun is { } pronoun)
+            inlines.Add(new Run(" (" + pronoun + ")") { Foreground = DimBrush, FontSize = 11.5 });
+        if (m.Bits > 0)
+            inlines.Add(new Run($" ♦{m.Bits:N0}") { Foreground = Brush("#BF94FF"), FontWeight = FontWeight.SemiBold });
+        inlines.Add(new Run(isAction ? " " : isNotice ? " · " : ": ") { Foreground = TextBrush });
+
+        if (entry.IsDeleted)
+        {
+            inlines.Add(new Run("<message deleted>") { Foreground = DimBrush, FontStyle = FontStyle.Italic });
+            return inlines;
+        }
+
+        var textBrush = isAction ? nameBrush : isNotice ? SystemBrush : TextBrush;
+        // Twitch's "gigantify an emote" power-up enlarges the last emote.
+        var gigantic = m.MsgId == "gigantified-emote-message"
+            ? entry.Tokens.LastOrDefault(t => t.Kind == ChatTokenKind.Emote)
+            : null;
+        foreach (var token in entry.Tokens)
+        {
+            switch (token.Kind)
             {
-                foreach (var badge in m.Badges)
-                    inlines.Add(Badge(badge));
-                var nameBrush = new SolidColorBrush(Readable(Color.Parse(UserColors.For(m.Login, m.Color))));
-                var isAction = m.Kind == ChatMessageKind.Action;
-                inlines.Add(new Run(isAction ? "* " + m.Sender + " " : m.Sender)
-                {
-                    Foreground = nameBrush,
-                    FontWeight = FontWeight.SemiBold,
-                });
-                if (!isAction) inlines.Add(new Run(": ") { Foreground = TextBrush });
-                AddText(inlines, m.Text, isAction ? nameBrush : m.Kind == ChatMessageKind.System ? SystemBrush : TextBrush);
-                break;
+                case ChatTokenKind.Emote when token.Emote is { } emote:
+                    inlines.Add(Emote(emote, token.Overlays, token == gigantic ? EmoteHeight * 4 : EmoteHeight));
+                    break;
+                case ChatTokenKind.Link:
+                    inlines.Add(new Run(token.Text) { Foreground = LinkBrush, TextDecorations = Avalonia.Media.TextDecorations.Underline });
+                    break;
+                case ChatTokenKind.Mention:
+                    inlines.Add(new Run(token.Text)
+                    {
+                        Foreground = token.IsSelfMention ? Brushes.White : TextBrush,
+                        FontWeight = FontWeight.Bold,
+                    });
+                    break;
+                default:
+                    inlines.Add(new Run(token.Text) { Foreground = textBrush });
+                    break;
             }
         }
-        Inlines = inlines;
+        return inlines;
     }
 
-    private static void AddText(InlineCollection inlines, string text, IBrush brush)
+    private static Inline Emote(Emote emote, IReadOnlyList<Emote> overlays, double height)
     {
-        var at = 0;
-        foreach (Match url in UrlPattern().Matches(text))
+        var tip = emote.Code + "\n" + emote.Provider switch
         {
-            if (url.Index > at) inlines.Add(new Run(text[at..url.Index]) { Foreground = brush });
-            inlines.Add(new Run(url.Value) { Foreground = LinkBrush, TextDecorations = Avalonia.Media.TextDecorations.Underline });
-            at = url.Index + url.Length;
-        }
-        if (at < text.Length) inlines.Add(new Run(text[at..]) { Foreground = brush });
-    }
-
-    /// <summary>Placeholder badge: a coloured chip with the set's initial.
-    /// Real badge images come from Helix chat/badges (see docs/PLAN.md).</summary>
-    private static Inline Badge(string badge)
-    {
-        var set = badge.Split('/')[0];
-        var (color, glyph) = set switch
-        {
-            "broadcaster" => ("#E91916", "B"),
-            "moderator" => ("#00AD03", "M"),
-            "vip" => ("#E005B9", "V"),
-            "subscriber" => ("#8205B4", "S"),
-            "partner" or "verified" => ("#9147FF", "✓"),
-            _ => ("#53535F", set.Length > 0 ? set[..1].ToUpperInvariant() : "?"),
+            EmoteProvider.Bttv => "BTTV emote",
+            EmoteProvider.Ffz => "FFZ emote",
+            EmoteProvider.SevenTv => "7TV emote",
+            _ => "Twitch emote",
         };
-        return new InlineUIContainer(new Border
+        if (overlays.Count > 0) tip += "\n+ " + string.Join(", ", overlays.Select(o => o.Code));
+        var view = new EmoteView(emote.ImageUrl, [.. overlays.Select(o => o.ImageUrl)], tip)
         {
-            Background = new SolidColorBrush(Color.Parse(color)),
-            CornerRadius = new CornerRadius(3),
-            Width = 16,
-            Height = 16,
-            Margin = new Thickness(0, 0, 3, -3),
-            Child = new TextBlock
-            {
-                Text = glyph,
-                FontSize = 10,
-                FontWeight = FontWeight.Bold,
-                Foreground = Brushes.White,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            },
-        });
+            EmoteHeight = height,
+            // No negative margins to tuck emotes into the text line: they
+            // clipped the descenders of names and text on the same line.
+            Margin = new Thickness(1, 0, 1, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        return new InlineUIContainer(view) { BaselineAlignment = BaselineAlignment.Center };
     }
 
-    /// <summary>Lifts names users chose for a light background (pure blue,
-    /// dark green) until they read on the dark chat pane.</summary>
+    private static Inline Badge(ChatServices.Badge badge)
+    {
+        Control child;
+        if (badge.Image is { } image)
+        {
+            child = new EmoteView(image.ImageUrl, null, image.Title) { EmoteHeight = BadgeHeight };
+            if (image.BackgroundColor is { } bg)
+                child = new Border { Background = Brush(bg), CornerRadius = new CornerRadius(2), Child = child };
+        }
+        else
+        {
+            // No badge art (not signed in): a coloured chip with the initial.
+            var (color, glyph) = badge.Set switch
+            {
+                "broadcaster" => ("#E91916", "B"),
+                "moderator" => ("#00AD03", "M"),
+                "vip" => ("#E005B9", "V"),
+                "subscriber" or "founder" => ("#8205B4", "S"),
+                "partner" or "verified" => ("#9147FF", "✓"),
+                _ => ("#53535F", badge.Set.Length > 0 ? badge.Set[..1].ToUpperInvariant() : "?"),
+            };
+            child = new Border
+            {
+                Background = Brush(color),
+                CornerRadius = new CornerRadius(3),
+                Width = BadgeHeight,
+                Height = BadgeHeight,
+                Child = new TextBlock
+                {
+                    Text = glyph,
+                    FontSize = 10,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = Brushes.White,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+            };
+            ToolTip.SetTip(child, badge.Set);
+        }
+        child.Margin = new Thickness(0, 0, 3, 0);
+        return new InlineUIContainer(child) { BaselineAlignment = BaselineAlignment.Center };
+    }
+
+    /// <summary>Lifts names chosen for a light background (pure blue, dark
+    /// green) until they read on the dark chat, as twitch.tv's dark theme does.</summary>
     internal static Color Readable(Color c)
     {
         static double Lum(Color c) => (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255;

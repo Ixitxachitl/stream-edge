@@ -83,6 +83,7 @@ public class LivePlaybackSessionTests
         public void ShowMessage(string text) { }
         public void SetVolume(int percent) { }
         public void SetMute(bool mute) { }
+        public void SetStatusText(string? text) { }
     }
 
     private static async Task Until(Func<bool> condition)
@@ -143,6 +144,23 @@ public class LivePlaybackSessionTests
         Stall(10);
         Stall(15);
         Assert.Equal("720p60", session.Current?.Name);
+    }
+
+    [Fact]
+    public async Task TiersPickTheirVariantAndReturnToTheChoice()
+    {
+        var player = new FakePlayer();
+        await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch()), player);
+        await session.StartAsync("someone", authToken: null);
+
+        session.Tier = PlaybackTier.AudioOnly;
+        Assert.True(session.Current?.IsAudioOnly);
+        session.Tier = PlaybackTier.Thumbnail;
+        Assert.Equal("720p60", session.Current?.Name);
+        session.Tier = PlaybackTier.Full;
+        Assert.Equal("1080p60", session.Current?.Name);
+        // Each change reloads at the live edge.
+        Assert.Equal(4, player.Loads.Count);
     }
 
     [Fact]

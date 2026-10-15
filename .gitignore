@@ -32,3 +32,6 @@ Thumbs.db
 
 # Native player library, fetched by scripts/fetch-libmpv.ps1
 third_party/libmpv/
+
+# Claude Code agent worktrees
+.claude/

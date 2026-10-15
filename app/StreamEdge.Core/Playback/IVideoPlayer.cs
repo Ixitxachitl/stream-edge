@@ -21,6 +21,10 @@ public interface IVideoPlayer
     void SetVolume(int percent);
 
     void SetMute(bool mute);
+
+    /// <summary>Text that stays on the video until cleared (null), e.g.
+    /// "Ad break" while ads are being skipped and the picture is black.</summary>
+    void SetStatusText(string? text);
 }
 
 /// <param name="BufferSeconds">Media buffered ahead of the playhead.</param>

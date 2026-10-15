@@ -29,6 +29,41 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
+    public void OldFilesGetChatExtraDefaults()
+    {
+        // A settings.json from before the chat-extras toggles existed.
+        File.WriteAllText(AppData.PathFor(AppSettings.FileName), """{ "Channel": "foo", "Volume": 40 }""");
+        var loaded = AppSettings.Load();
+        Assert.Equal("foo", loaded.Channel);
+        Assert.True(loaded.ShowPronouns);
+        Assert.True(loaded.UseBttv);
+        Assert.True(loaded.UseFfz);
+        Assert.True(loaded.UseSevenTv);
+        Assert.False(loaded.ShowJoinPart);
+    }
+
+    [Fact]
+    public void ChatExtraTogglesRoundTrip()
+    {
+        new AppSettings { ShowPronouns = false, UseBttv = false, UseFfz = false, UseSevenTv = false, ShowJoinPart = true }.Save();
+        var loaded = AppSettings.Load();
+        Assert.False(loaded.ShowPronouns);
+        Assert.False(loaded.UseBttv);
+        Assert.False(loaded.UseFfz);
+        Assert.False(loaded.UseSevenTv);
+        Assert.True(loaded.ShowJoinPart);
+    }
+
+    [Fact]
+    public void WindowPlacementAndProportionsRoundTrip()
+    {
+        new AppSettings { Window = new WindowPlacement(1920, 0, 1920, 480, WindowMode.Maximized), ChatShare = 0.3 }.Save();
+        var loaded = AppSettings.Load();
+        Assert.Equal(new WindowPlacement(1920, 0, 1920, 480, WindowMode.Maximized), loaded.Window);
+        Assert.Equal(0.3, loaded.ChatShare);
+    }
+
+    [Fact]
     public void CorruptFileFallsBackToDefaultsAndIsKept()
     {
         File.WriteAllText(AppData.PathFor(AppSettings.FileName), "{ not json");

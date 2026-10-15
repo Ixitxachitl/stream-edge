@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -15,44 +17,126 @@ public partial class MainWindow : Window
     /// chat. Scrolled further up, new lines don't yank the view down.</summary>
     private const double FollowSlack = 24;
 
+    private MainViewModel? _vm;
+    private ObservableCollection<ChatEntry>? _watchedLines;
+
     public MainWindow()
     {
         InitializeComponent();
         ChatInput.KeyDown += OnChatInputKeyDown;
-        Opened += (_, _) => PlaceOnScreen();
-        Video.HandleCreated += OnVideoHandleCreated;
-        Video.HandleDestroying += OnVideoHandleDestroying;
-    }
-
-    private MpvPlayer? _mpv;
-
-    private void OnVideoHandleCreated(long windowId)
-    {
-        if (DataContext is not MainViewModel vm) return;
-        try
+        StreamList.DoubleTapped += OnStreamDoubleTapped;
+        Opened += (_, _) =>
         {
-            _mpv = new MpvPlayer(windowId);
-            vm.AttachPlayer(_mpv);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+            if (!_restored) PlaceOnScreen();
+            _tracking = true;
+        };
+        PositionChanged += (_, _) => Remember();
+        Closing += (_, _) =>
         {
-            vm.PlayerFailed(ex.Message);
-        }
-    }
-
-    private void OnVideoHandleDestroying()
-    {
-        // mpv must let go of the window before it is destroyed.
-        (DataContext as MainViewModel)?.AttachPlayer(null);
-        _mpv?.Dispose();
-        _mpv = null;
+            _rememberTimer?.Stop();
+            RememberNow();
+            _vm?.SaveSettings();
+        };
     }
 
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (DataContext is MainViewModel vm)
-            vm.Chat.Lines.CollectionChanged += OnChatLinesChanged;
+        if (_vm is not null)
+        {
+            _vm.PropertyChanged -= OnViewModelChanged;
+            _vm.Tabs.CollectionChanged -= OnTabsChanged;
+        }
+        _vm = DataContext as MainViewModel;
+        if (_vm is null) return;
+        _vm.PropertyChanged += OnViewModelChanged;
+        _vm.Tabs.CollectionChanged += OnTabsChanged;
+        RestorePlacement();
+        // Tabs opened before the window existed (demo, or restored at start-up).
+        foreach (var tab in _vm.Tabs) AddVideo(tab);
+        WatchChat();
+    }
+
+    private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(MainViewModel.Chat):
+                WatchChat();
+                Dispatcher.UIThread.Post(() => ChatScroll.ScrollToEnd(), DispatcherPriority.Background);
+                break;
+            case nameof(MainViewModel.FrontTab):
+            case nameof(MainViewModel.ShowPip):
+                Videos.InvalidateArrange();
+                break;
+        }
+    }
+
+    // ----- Video surfaces: one per tab ------------------------------------
+
+    private void OnTabsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        foreach (ChannelTabViewModel tab in e.OldItems ?? Array.Empty<ChannelTabViewModel>()) RemoveVideo(tab);
+        foreach (ChannelTabViewModel tab in e.NewItems ?? Array.Empty<ChannelTabViewModel>()) AddVideo(tab);
+        Videos.InvalidateArrange();
+    }
+
+    private void AddVideo(ChannelTabViewModel tab)
+    {
+        if (_vm is not { PlaybackEnabled: true } vm) return;
+        var surface = new PlayerSurface { DataContext = tab };
+        MpvPlayer? mpv = null;
+        surface.HandleCreated += wid =>
+        {
+            try
+            {
+                mpv = new MpvPlayer(wid);
+                vm.AttachPlayer(tab, mpv);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+            {
+                vm.PlayerFailed(tab, ex.Message);
+            }
+        };
+        surface.HandleDestroying += () =>
+        {
+            // mpv must let go of the window before it is destroyed.
+            vm.AttachPlayer(tab, null);
+            mpv?.Dispose();
+            mpv = null;
+        };
+        tab.PropertyChanged += OnTabChanged;
+        Videos.Children.Add(surface);
+    }
+
+    private void RemoveVideo(ChannelTabViewModel tab)
+    {
+        tab.PropertyChanged -= OnTabChanged;
+        var surface = Videos.Children.OfType<PlayerSurface>().FirstOrDefault(s => s.DataContext == tab);
+        if (surface is not null) Videos.Children.Remove(surface);
+    }
+
+    private void OnTabChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ChannelTabViewModel.IsFront)) Videos.InvalidateArrange();
+    }
+
+    // ----- Stream list ----------------------------------------------------
+
+    /// <summary>Double-click opens; a single click only selects, so browsing
+    /// the list never interrupts what's playing.</summary>
+    private void OnStreamDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (StreamList.SelectedItem is StreamItemViewModel item) item.OpenCommand.Execute(null);
+    }
+
+    // ----- Chat -----------------------------------------------------------
+
+    private void WatchChat()
+    {
+        if (_watchedLines is not null) _watchedLines.CollectionChanged -= OnChatLinesChanged;
+        _watchedLines = _vm?.Chat.Lines;
+        if (_watchedLines is not null) _watchedLines.CollectionChanged += OnChatLinesChanged;
     }
 
     private void OnChatLinesChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -68,6 +152,77 @@ public partial class MainWindow : Window
         if (e.Key != Key.Enter || DataContext is not MainViewModel vm) return;
         vm.SendCommand.Execute(null);
         e.Handled = true;
+    }
+
+    // ----- Remembered placement -------------------------------------------
+
+    private bool _restored;
+    // Off until the window is open, so the restore itself and the platform's
+    // first layout don't overwrite what was saved.
+    private bool _tracking;
+
+    /// <summary>Puts the window back where it was last time, before it is
+    /// first shown. Skipped for --screen, and when the saved spot is no
+    /// longer on any screen (a monitor was unplugged).</summary>
+    private void RestorePlacement()
+    {
+        if (_vm is not { HasExplicitScreen: false, SavedWindow: { } saved }) return;
+        var screens = Screens.All;
+        var scaling = Screens.ScreenFromPoint(new PixelPoint(saved.X, saved.Y))?.Scaling ?? 1;
+        var areas = screens.Select(s => (s.WorkingArea.X, s.WorkingArea.Y, s.WorkingArea.Width, s.WorkingArea.Height));
+        if (!saved.IsVisibleOn(areas, scaling)) return;
+
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Position = new PixelPoint(saved.X, saved.Y);
+        Width = Math.Max(MinWidth, saved.Width);
+        Height = Math.Max(MinHeight, saved.Height);
+        WindowState = saved.Mode switch
+        {
+            WindowMode.Maximized => WindowState.Maximized,
+            WindowMode.FullScreen => WindowState.FullScreen,
+            _ => WindowState.Normal,
+        };
+        _restored = true;
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ClientSizeProperty || change.Property == WindowStateProperty) Remember();
+    }
+
+    private DispatcherTimer? _rememberTimer;
+
+    /// <summary>Records the placement once it has settled. Maximizing
+    /// changes the size a moment before the state; recording straight away
+    /// saved the maximized size as the one to return to.</summary>
+    private void Remember()
+    {
+        if (!_tracking) return;
+        _rememberTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(400), DispatcherPriority.Background, (_, _) =>
+        {
+            _rememberTimer!.Stop();
+            RememberNow();
+        });
+        _rememberTimer.Stop();
+        _rememberTimer.Start();
+    }
+
+    /// <summary>Bounds only update while the window is normal-sized, so
+    /// maximizing keeps the size to return to.</summary>
+    private void RememberNow()
+    {
+        if (!_tracking || _vm is null || WindowState == WindowState.Minimized) return;
+        var mode = WindowState switch
+        {
+            WindowState.Maximized => WindowMode.Maximized,
+            WindowState.FullScreen => WindowMode.FullScreen,
+            _ => WindowMode.Normal,
+        };
+        var saved = _vm.SavedWindow;
+        _vm.SavedWindow = mode == WindowMode.Normal || saved is null
+            ? new WindowPlacement(Position.X, Position.Y, ClientSize.Width, ClientSize.Height, mode)
+            : saved with { Mode = mode };
     }
 
     /// <summary>Moves the window onto the configured monitor, the small

@@ -12,6 +12,17 @@ public enum PlaybackState
     Error,
 }
 
+/// <summary>How much of a stream a tab needs, which picks the variant.</summary>
+public enum PlaybackTier
+{
+    /// <summary>The tab in front: the user's quality, with catch-up steps.</summary>
+    Full,
+    /// <summary>A picture-in-picture thumbnail: the smallest video variant.</summary>
+    Thumbnail,
+    /// <summary>A background tab nobody can see: audio only, if offered.</summary>
+    AudioOnly,
+}
+
 /// <summary>A snapshot for the UI.</summary>
 public sealed record PlaybackStatus(
     PlaybackState State,
@@ -156,11 +167,43 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     /// <summary>Video variants below <paramref name="index"/>; audio-only
     /// is never chosen automatically.</summary>
     private int MaxDowngradeFrom(int index) =>
-        Math.Max(0, Variants.Count(v => !v.IsAudioOnly) - 1 - index);
+        _tier != PlaybackTier.Full ? 0 : Math.Max(0, Variants.Count(v => !v.IsAudioOnly) - 1 - index);
+
+    /// <summary>Front, thumbnail or background. Changing it reloads at the
+    /// live edge in the matching variant (a second or so of silence).</summary>
+    public PlaybackTier Tier
+    {
+        get => _tier;
+        set
+        {
+            if (_tier == value) return;
+            _tier = value;
+            // Quality steps only make sense for the tab being watched; other
+            // tiers already sit at the bottom. Jumping to live still applies.
+            _controller.Reset(DateTimeOffset.UtcNow, keepQuality: value == PlaybackTier.Full);
+            _controller.MaxDowngrade = MaxDowngradeFrom(_preferredIndex);
+            if (Variants.Count > 0 && Status.State == PlaybackState.Playing) Reload(DateTimeOffset.UtcNow);
+        }
+    }
+
+    private PlaybackTier _tier;
+
+    /// <summary>Variant index for the current tier.</summary>
+    private int TierIndex()
+    {
+        var lastVideo = Variants.Count - 1;
+        while (lastVideo > 0 && Variants[lastVideo].IsAudioOnly) lastVideo--;
+        return _tier switch
+        {
+            PlaybackTier.AudioOnly when Variants.ToList().FindIndex(v => v.IsAudioOnly) is >= 0 and var audio => audio,
+            PlaybackTier.AudioOnly or PlaybackTier.Thumbnail => lastVideo,
+            _ => Math.Min(_preferredIndex + _controller.QualityOffset, Math.Max(0, Variants.Count - 1)),
+        };
+    }
 
     private void Reload(DateTimeOffset now)
     {
-        var index = Math.Min(_preferredIndex + _controller.QualityOffset, Math.Max(0, Variants.Count - 1));
+        var index = TierIndex();
         Current = Variants.Count > 0 ? Variants[index] : null;
         if (Current is null) return;
         _playlistGone = false;
@@ -253,7 +296,18 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             Quality = Current?.Name,
             Message = decision.Notice ?? (stats.Stalled ? "Buffering…" : reader?.InAdBreak == true ? "Ad break" : ""),
         });
+
+        // Skipped ads leave the picture black; say why, on the video itself
+        // (it's the only thing visible in a PIP thumbnail).
+        var inAd = reader?.InAdBreak == true;
+        if (inAd != _showingAd)
+        {
+            _showingAd = inAd;
+            _player.SetStatusText(inAd ? "Ad break" : null);
+        }
     }
+
+    private bool _showingAd;
 
     private void GoOffline()
     {

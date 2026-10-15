@@ -28,6 +28,14 @@ public sealed class TwitchChatClient : IAsyncDisposable
     public event Action<ChatMessage>? MessageReceived;
     public event Action<string>? StatusChanged;
 
+    /// <summary>ROOMSTATE for a joined channel: (channel login, room id).
+    /// The room id is the broadcaster's user id, which the emote and badge
+    /// services key on; it arrives right after each JOIN.</summary>
+    public event Action<string, string>? RoomStateReceived;
+
+    /// <summary>CLEARMSG / CLEARCHAT: lines to remove from the view.</summary>
+    public event Action<ChatModeration>? ModerationReceived;
+
     public void Start()
     {
         _loop ??= Task.Run(() => RunAsync(_stop.Token));
@@ -140,6 +148,16 @@ public sealed class TwitchChatClient : IAsyncDisposable
                 // Twitch asks us to move to another server; dropping the
                 // socket sends RunAsync round its reconnect loop.
                 _socket?.Abort();
+                return;
+            case "ROOMSTATE":
+                // Mode changes (slow, sub-only) resend ROOMSTATE too; listeners
+                // should treat repeats as idempotent.
+                if (irc.Tag("room-id") is { } roomId && irc.Params.Count > 0)
+                    RoomStateReceived?.Invoke(irc.Params[0].TrimStart('#'), roomId);
+                return;
+            case "CLEARMSG" or "CLEARCHAT":
+                if (ChatModeration.FromIrc(irc) is { } moderation)
+                    ModerationReceived?.Invoke(moderation);
                 return;
         }
         // Our own JOIN/PART echoes are noise.

@@ -14,6 +14,36 @@
 
     <!-- ===== Chat ===== -->
     <DockPanel x:Name="ChatPane" Background="{StaticResource SePanelBg}">
+      <!-- Open channels. Selecting one brings its video and chat to the front;
+           the rest keep playing (audio, or as PIP thumbnails). -->
+      <Border DockPanel.Dock="Top" Classes="tabStrip" IsVisible="{Binding HasTabs}">
+        <DockPanel>
+          <ToggleButton DockPanel.Dock="Right" Classes="pip" Content="⧉ PIP" IsChecked="{Binding ShowPip}"
+                        ToolTip.Tip="Show background tabs as small videos over the player (off: audio only)" />
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Tabs}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChannelTabViewModel">
+                  <Border Classes="tab" Classes.front="{Binding IsFront}">
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                      <Button Classes="tabName" Content="{Binding Title}" Command="{Binding SelectCommand}"
+                              ToolTip.Tip="Bring to front" />
+                      <Button Classes="tabIcon" Content="{Binding Player.MuteGlyph}" Command="{Binding Player.ToggleMuteCommand}"
+                              ToolTip.Tip="Mute this tab" />
+                      <Button Classes="tabIcon" Content="✕" Command="{Binding CloseCommand}" ToolTip.Tip="Close tab" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
       <Border DockPanel.Dock="Top" Classes="paneHeader">
         <DockPanel>
           <Button DockPanel.Dock="Right" Content="✕" ToolTip.Tip="Leave channel"
@@ -52,15 +82,14 @@
       <ScrollViewer x:Name="ChatScroll" HorizontalScrollBarVisibility="Disabled">
         <ItemsControl x:Name="ChatItems" ItemsSource="{Binding Chat.Lines}">
           <ItemsControl.Styles>
-            <!-- Alternating rows, as in Chatty, so wrapped lines stay
-                 attributable at a glance. -->
-            <Style Selector="ContentPresenter:nth-child(2n)">
-              <Setter Property="Background" Value="{StaticResource SePanelAltBg}" />
+            <!-- As on twitch.tv: no zebra rows, a faint highlight under the pointer. -->
+            <Style Selector="v|ChatLine:pointerover">
+              <Setter Property="Background" Value="#1AFFFFFF" />
             </Style>
           </ItemsControl.Styles>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ChatEntry">
-              <v:ChatLine Entry="{Binding}" Padding="6,3" />
+              <v:ChatLine Entry="{Binding}" />
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -79,12 +108,10 @@
         <TextBlock Text="{Binding Player.Status}" Foreground="{StaticResource SeTextFaint}"
                    FontSize="{StaticResource SeSmallFontSize}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" />
       </StackPanel>
-      <!-- mpv renders into this native window; it covers the text above while
-           visible. Boxed to exactly 16:9 so a window too narrow for a
-           full-height player letterboxes instead of stretching. -->
-      <v:AspectRatioBox x:Name="VideoBox" IsVisible="{Binding Player.IsVideoVisible}">
-        <v:PlayerSurface x:Name="Video" />
-      </v:AspectRatioBox>
+      <!-- One native video surface per tab (added in code): the front one
+           fills the pane at 16:9 and covers the text above while playing;
+           the others are PIP thumbnails or hidden. -->
+      <v:VideoStage x:Name="Videos" ShowPip="{Binding ShowPip}" />
     </Panel>
 
     <!-- ===== Live streams ===== -->
@@ -94,10 +121,22 @@
           <Button DockPanel.Dock="Right" Content="⚙" ToolTip.Tip="Settings">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedRight">
-                <StackPanel Width="320" Spacing="8">
+                <!-- Taller than a bar display: scroll rather than clip. -->
+                <ScrollViewer MaxHeight="420" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Width="320" Spacing="8" Margin="0,0,12,0">
                 <TextBlock Text="Layout and startup" FontWeight="SemiBold" />
                 <CheckBox Content="Chat on the left (stream list on the right)" IsChecked="{Binding ChatOnLeft}" />
-                <CheckBox Content="Reopen the last channel at startup" IsChecked="{Binding ReopenLastChannel}" />
+                <CheckBox Content="Reopen the last tabs at startup" IsChecked="{Binding ReopenLastChannel}" />
+                <CheckBox Content="Show background tabs as picture-in-picture" IsChecked="{Binding ShowPip}" />
+                <Separator />
+                <TextBlock Text="Chat" FontWeight="SemiBold" />
+                <CheckBox Content="Timestamps" IsChecked="{Binding ShowTimestamps}" />
+                <CheckBox Content="Join and part messages" IsChecked="{Binding ShowJoinPart}" />
+                <TextBlock Text="Third-party (each optional)" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}" />
+                <CheckBox Content="Pronouns (pronouns.alejo.io)" IsChecked="{Binding ShowPronouns}" />
+                <CheckBox Content="BetterTTV emotes" IsChecked="{Binding UseBttv}" />
+                <CheckBox Content="FrankerFaceZ emotes and badges" IsChecked="{Binding UseFfz}" />
+                <CheckBox Content="7TV emotes" IsChecked="{Binding UseSevenTv}" />
                 <Separator />
                 <StackPanel Spacing="8" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
                   <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" />
@@ -116,6 +155,7 @@
                   </StackPanel>
                 </StackPanel>
                 </StackPanel>
+                </ScrollViewer>
               </Flyout>
             </Button.Flyout>
           </Button>
@@ -142,6 +182,10 @@
               <StackPanel Spacing="1" Background="Transparent">
                 <StackPanel.ContextMenu>
                   <ContextMenu>
+                    <MenuItem Header="Open" Command="{Binding OpenCommand}" />
+                    <MenuItem Header="Open in new tab" Command="{Binding OpenInNewTabCommand}" />
+                    <MenuItem Header="Open in background tab (keeps playing)" Command="{Binding OpenInBackgroundCommand}" />
+                    <Separator />
                     <MenuItem Header="{Binding FavoriteMenuText}" Command="{Binding ToggleFavoriteCommand}" />
                   </ContextMenu>
                 </StackPanel.ContextMenu>

@@ -53,6 +53,50 @@
     <Setter Property="Background" Value="#5C16C5" />
   </Style>
 
+  <!-- Tab strip above the chat header. The front tab is lit. -->
+  <Style Selector="Border.tabStrip">
+    <Setter Property="Background" Value="{StaticResource SeWindowBg}" />
+    <Setter Property="Padding" Value="2,2,2,0" />
+  </Style>
+  <Style Selector="Border.tab">
+    <Setter Property="Background" Value="{StaticResource SePanelAltBg}" />
+    <Setter Property="CornerRadius" Value="4,4,0,0" />
+    <Setter Property="Margin" Value="0,0,2,0" />
+    <Setter Property="Padding" Value="2,0" />
+  </Style>
+  <Style Selector="Border.tab.front">
+    <Setter Property="Background" Value="{StaticResource SeHeaderBg}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SeAccent}" />
+    <Setter Property="BorderThickness" Value="0,2,0,0" />
+  </Style>
+  <Style Selector="Border.tab Button">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Height" Value="22" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.tab Button.tabName">
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+  </Style>
+  <Style Selector="Border.tab.front Button.tabName">
+    <Setter Property="Foreground" Value="{StaticResource SeText}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.tab Button.tabIcon">
+    <Setter Property="Padding" Value="3,0" />
+    <Setter Property="Foreground" Value="{StaticResource SeTextFaint}" />
+  </Style>
+  <Style Selector="ToggleButton.pip">
+    <Setter Property="Height" Value="22" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
   <!-- Resize handles beside the player: a faint line that lights up on hover. -->
   <Style Selector="v|PaneGrip.grip">
     <Setter Property="Background" Value="{StaticResource SeRule}" />

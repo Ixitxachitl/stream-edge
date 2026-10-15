@@ -6,15 +6,29 @@ using StreamEdge.Streams;
 
 namespace StreamEdge.AvaloniaApp.ViewModels;
 
+/// <summary>How a stream opens.</summary>
+public enum OpenMode
+{
+    /// <summary>In the front tab, replacing its channel (double-click).</summary>
+    Front,
+    /// <summary>In a new tab brought to the front.</summary>
+    NewTab,
+    /// <summary>In a new tab that stays behind, playing audio or as PIP.</summary>
+    Background,
+}
+
 public sealed partial class StreamItemViewModel : ObservableObject
 {
     private readonly Action<StreamItemViewModel> _toggleFavorite;
+    private readonly Action<string, OpenMode> _open;
 
-    public StreamItemViewModel(LiveStream stream, DateTimeOffset now, Action<StreamItemViewModel> toggleFavorite)
+    public StreamItemViewModel(LiveStream stream, DateTimeOffset now,
+        Action<StreamItemViewModel> toggleFavorite, Action<string, OpenMode> open)
     {
         Stream = stream;
         _header = stream.Header(now);
         _toggleFavorite = toggleFavorite;
+        _open = open;
     }
 
     public LiveStream Stream { get; }
@@ -30,6 +44,15 @@ public sealed partial class StreamItemViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleFavorite() => _toggleFavorite(this);
+
+    [RelayCommand]
+    private void Open() => _open(Stream.Login, OpenMode.Front);
+
+    [RelayCommand]
+    private void OpenInNewTab() => _open(Stream.Login, OpenMode.NewTab);
+
+    [RelayCommand]
+    private void OpenInBackground() => _open(Stream.Login, OpenMode.Background);
 
     public void Tick(DateTimeOffset now) => Header = Stream.Header(now);
 }
@@ -96,29 +119,13 @@ public sealed partial class StreamListViewModel : ObservableObject
         var starred = _source.Select(s => s with { IsFavorite = _settings.IsFavorite(s.Login) });
         Items.Clear();
         foreach (var s in StreamSort.Apply(starred, Sort))
-            Items.Add(new StreamItemViewModel(s, now, ToggleFavorite));
-        // Silently: re-selecting the channel already open must not reopen it.
-        _suppressSelection = true;
-        try { Selected = Items.FirstOrDefault(i => i.Stream.Login == keep); }
-        finally { _suppressSelection = false; }
+            Items.Add(new StreamItemViewModel(s, now, ToggleFavorite, (login, mode) => OpenRequested?.Invoke(login, mode)));
+        Selected = Items.FirstOrDefault(i => i.Stream.Login == keep);
         OnPropertyChanged(nameof(Header));
         OnPropertyChanged(nameof(IsEmpty));
     }
 
-    private bool _suppressSelection;
-
-    public void ClearSelection()
-    {
-        _suppressSelection = true;
-        try { Selected = null; }
-        finally { _suppressSelection = false; }
-    }
-
-    /// <summary>The user picked a channel (not a rebuild restoring the selection).</summary>
-    public event Action<string>? ChannelChosen;
-
-    partial void OnSelectedChanged(StreamItemViewModel? value)
-    {
-        if (!_suppressSelection && value is not null) ChannelChosen?.Invoke(value.Stream.Login);
-    }
+    /// <summary>The user asked to open a stream: double-click (front) or
+    /// the context menu. Selecting alone opens nothing.</summary>
+    public event Action<string, OpenMode>? OpenRequested;
 }

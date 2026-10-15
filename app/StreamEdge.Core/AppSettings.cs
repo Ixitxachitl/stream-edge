@@ -30,6 +30,14 @@ public sealed class AppSettings
     /// <summary>The last channel opened (login name, no '#').</summary>
     public string? Channel { get; set; }
 
+    /// <summary>Channels open as tabs, in tab order; <see cref="Channel"/> is
+    /// the one in front.</summary>
+    public List<string> OpenTabs { get; set; } = [];
+
+    /// <summary>Show background tabs as small live videos over the player
+    /// (off: background tabs are audio only).</summary>
+    public bool ShowPip { get; set; } = true;
+
     /// <summary>Reopen <see cref="Channel"/> at start-up; off starts with no
     /// channel open.</summary>
     public bool ReopenLastChannel { get; set; } = true;
@@ -53,6 +61,10 @@ public sealed class AppSettings
     /// <summary>Borderless full-screen on <see cref="ScreenIndex"/>.</summary>
     public bool Fullscreen { get; set; }
 
+    /// <summary>Where the window was last, restored at start-up unless a
+    /// <c>--screen</c> is given or it would land off every screen.</summary>
+    public WindowPlacement? Window { get; set; }
+
     /// <summary>Share of the space left beside the player that goes to chat
     /// (the rest goes to the stream list), 0..1.</summary>
     public double ChatShare { get; set; } = 0.5;
@@ -63,6 +75,27 @@ public sealed class AppSettings
     public string TimestampFormat { get; set; } = "h:mm tt";
 
     public int ChatScrollback { get; set; } = 500;
+
+    // Chat extras. Each third-party service is its own switch because each
+    // is a separate request to someone else's server, and some users only
+    // want the one their community uses. Missing from older files → the
+    // defaults below.
+
+    /// <summary>Pronoun tags from pronouns.alejo.io beside names.</summary>
+    public bool ShowPronouns { get; set; } = true;
+
+    /// <summary>BetterTTV emotes.</summary>
+    public bool UseBttv { get; set; } = true;
+
+    /// <summary>FrankerFaceZ emotes and badges (incl. custom mod badges).</summary>
+    public bool UseFfz { get; set; } = true;
+
+    /// <summary>7TV emotes.</summary>
+    public bool UseSevenTv { get; set; } = true;
+
+    /// <summary>JOIN/PART lines. Off by default: official chat doesn't show
+    /// them and in busy channels they drown the conversation.</summary>
+    public bool ShowJoinPart { get; set; }
 
     private static readonly JsonSerializerOptions Json = new()
     {

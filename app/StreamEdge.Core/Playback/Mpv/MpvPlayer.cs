@@ -41,6 +41,11 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         ("ytdl", "no"),
         ("audio-client-name", "StreamEdge"),
         ("hwdec", "auto-safe"),
+        // OpenGL rather than mpv's default D3D11 on Windows. Several players
+        // rendering into child windows that get moved and raised (tabs, PIP)
+        // crashed inside dxgi.dll, intermittently, with D3D11 in both flip
+        // and blit modes. OpenGL is mpv's default elsewhere anyway.
+        ("gpu-api", "opengl"),
 
         // mpv's own low-latency preset: no audio buffer, single-threaded
         // decode, minimal demuxer probing, no frame interpolation.
@@ -130,6 +135,13 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
     }
 
     public void ShowMessage(string text) => Command("show-text " + Quote(text) + " 1500");
+
+    public void SetStatusText(string? text)
+    {
+        if (_ctx == IntPtr.Zero) return;
+        // osd-msg1 stays on screen at osd-level 1 until replaced.
+        MpvNative.mpv_set_property_string(_ctx, "osd-msg1", text ?? "");
+    }
 
     /// <summary>For smoke tests: saves the current video frame.</summary>
     public void Screenshot(string path) => Command("screenshot-to-file " + Quote(path) + " video");
