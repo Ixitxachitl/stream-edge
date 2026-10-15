@@ -170,8 +170,10 @@ public sealed class TwitchChatClient : IAsyncDisposable
         _socket?.Abort();
         if (_loop is not null)
         {
+            // Whatever the loop died of no longer matters once we're
+            // shutting it down; disposal must not throw.
             try { await _loop.ConfigureAwait(false); }
-            catch (OperationCanceledException) { }
+            catch (Exception) { }
         }
         _stop.Dispose();
         _sendLock.Dispose();

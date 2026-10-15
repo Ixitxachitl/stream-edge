@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
 using StreamEdge.AvaloniaApp.ViewModels;
+using StreamEdge.Playback.Mpv;
 
 namespace StreamEdge.AvaloniaApp.Views;
 
@@ -19,6 +20,32 @@ public partial class MainWindow : Window
         InitializeComponent();
         ChatInput.KeyDown += OnChatInputKeyDown;
         Opened += (_, _) => PlaceOnScreen();
+        Video.HandleCreated += OnVideoHandleCreated;
+        Video.HandleDestroying += OnVideoHandleDestroying;
+    }
+
+    private MpvPlayer? _mpv;
+
+    private void OnVideoHandleCreated(long windowId)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        try
+        {
+            _mpv = new MpvPlayer(windowId);
+            vm.AttachPlayer(_mpv);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            vm.PlayerFailed(ex.Message);
+        }
+    }
+
+    private void OnVideoHandleDestroying()
+    {
+        // mpv must let go of the window before it is destroyed.
+        (DataContext as MainViewModel)?.AttachPlayer(null);
+        _mpv?.Dispose();
+        _mpv = null;
     }
 
     protected override void OnDataContextChanged(EventArgs e)

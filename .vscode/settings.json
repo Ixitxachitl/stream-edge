@@ -31,6 +31,11 @@
       ]
     },
     {
+      "label": "$(cloud-download) libmpv",
+      "task": "Fetch libmpv",
+      "tooltip": "Download the pinned libmpv build the player needs (Windows)"
+    },
+    {
       "label": "$(package) Release",
       "task": "Build Release",
       "tooltip": "Package a release into dist/ via scripts/build-release.ps1"

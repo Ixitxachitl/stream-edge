@@ -58,11 +58,15 @@ There are two independent credentials, and both are optional:
 | Sent to | `id.twitch.tv`, `api.twitch.tv`, IRC | `gql.twitch.tv` only, as `Authorization: OAuth …` on the PlaybackAccessToken query |
 | Why separate | GQL doesn't accept third-party Helix tokens, and the web client ID GQL needs can't be used for OAuth | |
 
-- Device code flow: the app shows a code, and the user approves it at
-  twitch.tv/activate on any device. It needs no embedded browser, redirect URI or
-  client secret, so it works the same on all three OSes. This needs a Twitch
-  application registered as a **Public** client, whose Client ID goes in the flyout
-  (stored as `ClientId` in settings.json).
+- Login UX: **Log in with Twitch** opens Twitch's own sign-in page in the default
+  browser, with the device code pre-filled in the URL. The user logs in and clicks
+  Authorize, and the app polls for the token, so no code needs typing. The code is
+  shown small as a fallback. An in-app username/password form isn't an option,
+  because Twitch requires its own login page.
+- Under the hood this is the device code flow: no embedded browser, redirect URI
+  listener or client secret, so it behaves the same on all three OSes. The app
+  ships its own **Public** client ID (`TwitchApp.ClientId`). Public is what lets
+  tokens refresh without a secret. `ClientId` in settings.json overrides it for forks.
 - Tokens are validated at start-up (Twitch requires it) and refreshed with the
   refresh token when they expire. Hourly re-validation is still TODO.
 - **Secrets never go in settings.json.** `SecretStore` uses DPAPI (current user)
@@ -92,11 +96,43 @@ playlist resolution (with optional auth-token), secrets store.
 - [ ] Hourly token re-validation, plus 401 → refresh → retry in Helix calls
 - [ ] Remember the selected channel. The list is followed-only; add a search box for others
 
-### Phase 3: video
-- [ ] **Spike first:** confirm LibVLCSharp.Avalonia (or a `NativeControlHost` hosting a VLC/mpv window) works on Avalonia 12 on all three OSes. Fallback: libmpv render API into an `OpenGlControlBase`
-- [ ] Play `Player.Playlist` (already resolved), with a quality picker parsed from the master playlist, audio-only mode, volume and mute overlay
-- [ ] Low-latency HLS tuning and auto-reconnect when the stream drops or the token expires
-- [ ] Ad handling for anonymous viewers: show a "commercial break" overlay rather than stalling
+### Phase 3: video (latency first)
+
+The player is built for **being close to live and catching back up after a
+lag**, ahead of picture quality.
+
+```
+Twitch CDN ──HLS + prefetch──▶ LiveHlsReader ──TS bytes──▶ LocalStreamServer (127.0.0.1) ──▶ mpv (libmpv, wid)
+                                    ▲                                                          │
+                                    └──── LivePlaybackSession ◀── CatchUpController ◀── buffer/stall stats (4 Hz)
+```
+
+- **mpv over VLC:** mpv exposes buffered time (`demuxer-cache-duration`) and
+  stall state (`paused-for-cache`), and changes `speed` live with
+  pitch-corrected audio. Catch-up depends on all three. It runs with
+  `profile=low-latency`, no probing, and frame dropping instead of falling behind.
+- **The app fetches HLS itself, not mpv:** standard HLS clients wait for whole
+  segments and ignore Twitch's `#EXT-X-TWITCH-PREFETCH`. `LiveHlsReader` joins at
+  the newest complete segment, streams prefetch segments while they are still
+  being encoded, and forwards bytes as they arrive. The player reads them from a
+  one-client local HTTP server; reloading that URL is how a resync takes effect.
+- **Catch-up rules (`CatchUpController`, unit-tested):**
+  - Buffer above 2 s: play faster, proportionally, up to 1.25×, until back at the 1 s target.
+  - Buffer above 6 s, or the downloader 3 or more segments behind: drop the buffer and rejoin at the live edge (8 s cooldown).
+  - 2 stalls within 45 s: drop one quality step. The stream never drops to audio-only on its own.
+  - 3 stall-free minutes after a drop: try one step back up, never above the preference.
+  - Stalls during ad breaks don't count.
+- Ads: stitched ad segments are skipped (`SkipAds`). With the `auth-token` and a sub or Turbo there are none.
+- Token expiry or a dropped stream: the player goes idle, and the session re-resolves with backoff. Offline channels are re-checked every 30 s.
+- Controls sit in the chat header (quality menu, mute, latency, catch-up speed),
+  because nothing can be drawn over a native video window. Transient notices use mpv's OSD.
+- libmpv: on Windows `scripts/fetch-libmpv.ps1` provides a pinned build, which ships beside the exe.
+  On Linux and macOS it comes from the system package (`libmpv2`, `brew install mpv`).
+
+Still to do:
+- [ ] Verify embedding on Linux (X11; Wayland needs XWayland for `wid`) and macOS
+- [ ] Volume slider (mute and volume are wired, but there's no slider yet)
+- [ ] Show the catch-up thresholds in settings for people who prefer smoothness
 - Risks: Twitch can add Client-Integrity requirements to GQL at any time, and the web client ID and query shape are undocumented. Keep all of it in `TwitchPlayback` so a fix is one file
 
 ### Phase 4: ultrawide polish

@@ -10,19 +10,45 @@
         Title="{Binding WindowTitle}"
         Width="1920" Height="480" MinWidth="960" MinHeight="240">
 
-  <v:UltrawideLayout x:Name="Layout" ChatShare="{Binding ChatShare}">
+  <v:UltrawideLayout x:Name="Layout" ChatShare="{Binding ChatShare}" ChatOnLeft="{Binding ChatOnLeft}">
 
     <!-- ===== Chat ===== -->
     <DockPanel x:Name="ChatPane" Background="{StaticResource SePanelBg}">
       <Border DockPanel.Dock="Top" Classes="paneHeader">
         <DockPanel>
-          <TextBlock DockPanel.Dock="Right" Text="{Binding Chat.Status}" Foreground="{StaticResource SeTextFaint}" />
+          <Button DockPanel.Dock="Right" Content="✕" ToolTip.Tip="Leave channel"
+                  Command="{Binding LeaveChannelCommand}" IsVisible="{Binding HasChannel}" />
+          <TextBlock DockPanel.Dock="Right" Text="{Binding Chat.Status}" Foreground="{StaticResource SeTextFaint}" Margin="0,0,6,0" />
+          <!-- Player controls live here: nothing can be drawn over native video. -->
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" Margin="0,0,8,0"
+                      IsVisible="{Binding Player.IsVideoVisible}">
+            <TextBlock Text="{Binding Player.Speed}" Foreground="{StaticResource SeAccent}"
+                       ToolTip.Tip="Playing faster to catch up to live" Margin="0,0,4,0" />
+            <TextBlock Text="{Binding Player.Latency}" Foreground="{StaticResource SeTextDim}"
+                       ToolTip.Tip="Approximate delay behind the broadcaster" Margin="0,0,4,0" />
+            <Button Content="{Binding Player.MuteGlyph}" Command="{Binding Player.ToggleMuteCommand}" ToolTip.Tip="Mute" />
+            <Button Content="{Binding Player.QualityLabel}" ToolTip.Tip="Quality (drops automatically to keep up with live)">
+              <Button.Flyout>
+                <MenuFlyout ItemsSource="{Binding Player.Qualities}">
+                  <MenuFlyout.ItemContainerTheme>
+                    <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:QualityOption">
+                      <Setter Property="Header" Value="{Binding Name}" />
+                      <Setter Property="Command" Value="{Binding Select}" />
+                      <Setter Property="CommandParameter" Value="{Binding}" />
+                      <Setter Property="ToggleType" Value="Radio" />
+                      <Setter Property="IsChecked" Value="{Binding IsCurrent}" />
+                    </ControlTheme>
+                  </MenuFlyout.ItemContainerTheme>
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
+          </StackPanel>
           <TextBlock Text="{Binding Chat.Header}" FontWeight="SemiBold" Foreground="{StaticResource SeText}" />
         </DockPanel>
       </Border>
       <TextBox DockPanel.Dock="Bottom" x:Name="ChatInput" Margin="4"
                Text="{Binding Chat.Draft}" IsEnabled="{Binding Chat.CanSend}"
-               PlaceholderText="Sign in to chat" MinHeight="28" Padding="6,4" />
+               PlaceholderText="{Binding Chat.Placeholder}" MinHeight="28" Padding="6,4" />
       <ScrollViewer x:Name="ChatScroll" HorizontalScrollBarVisibility="Disabled">
         <ItemsControl x:Name="ChatItems" ItemsSource="{Binding Chat.Lines}">
           <ItemsControl.Styles>
@@ -43,7 +69,7 @@
 
     <!-- ===== Player ===== -->
     <Panel x:Name="PlayerPane" Background="Black">
-      <!-- Video surface goes here (phase 3). Until then, what would play. -->
+      <!-- Shown when there's no video: what's selected and why it isn't playing. -->
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="6" MaxWidth="600">
         <TextBlock Text="{Binding Player.Channel}" FontSize="22" FontWeight="SemiBold"
                    Foreground="{StaticResource SeText}" HorizontalAlignment="Center" />
@@ -53,26 +79,26 @@
         <TextBlock Text="{Binding Player.Status}" Foreground="{StaticResource SeTextFaint}"
                    FontSize="{StaticResource SeSmallFontSize}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" />
       </StackPanel>
+      <!-- mpv renders into this native window; it covers the text above while visible. -->
+      <v:PlayerSurface x:Name="Video" IsVisible="{Binding Player.IsVideoVisible}" />
     </Panel>
 
     <!-- ===== Live streams ===== -->
     <DockPanel x:Name="StreamsPane" Background="{StaticResource SePanelBg}">
       <Border DockPanel.Dock="Top" Classes="paneHeader">
         <DockPanel>
-          <Button DockPanel.Dock="Right" Content="⚙" ToolTip.Tip="Account and playback">
+          <Button DockPanel.Dock="Right" Content="⚙" ToolTip.Tip="Settings">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedRight">
-                <StackPanel Width="320" Spacing="8" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
+                <StackPanel Width="320" Spacing="8">
+                <TextBlock Text="Layout and startup" FontWeight="SemiBold" />
+                <CheckBox Content="Chat on the left (stream list on the right)" IsChecked="{Binding ChatOnLeft}" />
+                <CheckBox Content="Reopen the last channel at startup" IsChecked="{Binding ReopenLastChannel}" />
+                <Separator />
+                <StackPanel Spacing="8" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
                   <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" />
-                  <TextBox Text="{Binding ClientId}" PlaceholderText="Twitch app Client ID (Public client)" />
-                  <StackPanel Orientation="Horizontal" Spacing="6">
-                    <Button Content="Sign in" Command="{Binding SignInCommand}" IsVisible="{Binding !IsSignedIn}" />
-                    <Button Content="Sign out" Command="{Binding SignOutCommand}" IsVisible="{Binding IsSignedIn}" />
-                  </StackPanel>
-                  <SelectableTextBlock Text="{Binding UserCode}" FontSize="24" FontWeight="Bold"
-                                       IsVisible="{Binding UserCode, Converter={x:Static ObjectConverters.IsNotNull}}" />
-                  <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}"
-                             IsVisible="{Binding Message.Length}" />
+                  <v:LoginBox IsVisible="{Binding !IsSignedIn}" />
+                  <Button Content="Log out" Command="{Binding SignOutCommand}" IsVisible="{Binding IsSignedIn}" />
                   <Separator />
                   <TextBlock Text="Ad-free playback (optional)" FontWeight="SemiBold" />
                   <TextBlock TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}"
@@ -85,6 +111,7 @@
                                IsVisible="{Binding HasPlaybackToken}" />
                   </StackPanel>
                 </StackPanel>
+                </StackPanel>
               </Flyout>
             </Button.Flyout>
           </Button>
@@ -93,9 +120,12 @@
         </DockPanel>
       </Border>
       <Panel>
-        <TextBlock Text="{Binding Streams.EmptyText}" IsVisible="{Binding Streams.IsEmpty}"
-                   Foreground="{StaticResource SeTextFaint}" TextWrapping="Wrap" TextAlignment="Center"
-                   VerticalAlignment="Center" Margin="16" />
+        <StackPanel IsVisible="{Binding Streams.IsEmpty}" VerticalAlignment="Center" Margin="16" Spacing="10">
+          <TextBlock Text="{Binding Streams.EmptyText}" Foreground="{StaticResource SeTextFaint}"
+                     TextWrapping="Wrap" TextAlignment="Center" />
+          <!-- The login screen: shown in place of the list until signed in. -->
+          <v:LoginBox DataContext="{Binding Account}" IsVisible="{Binding !IsSignedIn}" HorizontalAlignment="Center" />
+        </StackPanel>
         <ListBox x:Name="StreamList" ItemsSource="{Binding Streams.Items}" SelectedItem="{Binding Streams.Selected}"
                  Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
           <ListBox.Styles>
@@ -105,13 +135,22 @@
           </ListBox.Styles>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:StreamItemViewModel">
-              <StackPanel Spacing="1">
+              <StackPanel Spacing="1" Background="Transparent">
+                <StackPanel.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="{Binding FavoriteMenuText}" Command="{Binding ToggleFavoriteCommand}" />
+                  </ContextMenu>
+                </StackPanel.ContextMenu>
                 <!-- ──── ★ Name (viewers | uptime) ──── -->
                 <Grid ColumnDefinitions="*,Auto,*">
                   <Rectangle Height="1" Fill="{StaticResource SeRule}" VerticalAlignment="Center" Margin="0,0,6,0" />
                   <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <TextBlock Text="★" Foreground="{StaticResource SeFavorite}" IsVisible="{Binding IsFavorite}" />
-                    <TextBlock Text="{Binding Header}" FontWeight="SemiBold" Foreground="{StaticResource SeText}" />
+                    <!-- Click to star: starred channels sort to the top. A
+                         button, so clicking it doesn't also open the channel. -->
+                    <Button Classes="star" Classes.on="{Binding IsFavorite}" Content="{Binding FavoriteGlyph}"
+                            Command="{Binding ToggleFavoriteCommand}" ToolTip.Tip="{Binding FavoriteMenuText}" />
+                    <TextBlock Text="{Binding Header}" FontWeight="SemiBold" Foreground="{StaticResource SeText}"
+                               VerticalAlignment="Center" />
                   </StackPanel>
                   <Rectangle Grid.Column="2" Height="1" Fill="{StaticResource SeRule}" VerticalAlignment="Center" Margin="6,0,0,0" />
                 </Grid>

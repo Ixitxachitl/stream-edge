@@ -22,13 +22,13 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         [property: JsonPropertyName("viewer_count")] int ViewerCount,
         [property: JsonPropertyName("started_at")] DateTimeOffset StartedAt)
     {
-        public LiveStream ToLiveStream(ISet<string> favorites) =>
-            new(UserLogin, UserName, Title, GameName, ViewerCount, StartedAt, favorites.Contains(UserLogin));
+        public LiveStream ToLiveStream() =>
+            new(UserLogin, UserName, Title, GameName, ViewerCount, StartedAt);
     }
 
     /// <summary>Every live channel the user follows (all pages).</summary>
     public async Task<IReadOnlyList<LiveStream>> GetFollowedStreamsAsync(
-        string userId, ISet<string> favorites, CancellationToken ct)
+        string userId, CancellationToken ct)
     {
         var streams = new List<LiveStream>();
         string? cursor = null;
@@ -43,7 +43,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
             response.EnsureSuccessStatusCode();
             var page = await response.Content.ReadFromJsonAsync<StreamsPage>(ct).ConfigureAwait(false);
             if (page is null) break;
-            streams.AddRange(page.Data.Select(s => s.ToLiveStream(favorites)));
+            streams.AddRange(page.Data.Select(s => s.ToLiveStream()));
             cursor = page.Pagination?.Cursor;
         } while (!string.IsNullOrEmpty(cursor));
         return streams;

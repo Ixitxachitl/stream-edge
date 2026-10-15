@@ -29,3 +29,6 @@ project.fragment.lock.json
 # OS
 Thumbs.db
 .DS_Store
+
+# Native player library, fetched by scripts/fetch-libmpv.ps1
+third_party/libmpv/

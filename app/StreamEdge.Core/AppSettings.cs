@@ -12,9 +12,12 @@ public sealed class AppSettings
 {
     public const string FileName = "settings.json";
 
-    /// <summary>Client ID of the Twitch application (registered as a Public
-    /// client) used for sign-in and Helix. Not a secret.</summary>
+    /// <summary>Overrides the built-in <see cref="Auth.TwitchApp.ClientId"/>,
+    /// for forks that register their own Twitch application. Hand-edit only.</summary>
     public string? ClientId { get; set; }
+
+    [JsonIgnore]
+    public string EffectiveClientId => string.IsNullOrWhiteSpace(ClientId) ? Auth.TwitchApp.ClientId : ClientId.Trim();
 
     /// <summary>Signed-in account, for display and Helix calls. The tokens
     /// themselves live in <see cref="Auth.SecretStore"/>, never here.</summary>
@@ -24,8 +27,23 @@ public sealed class AppSettings
     /// <summary>Channels pinned to the top of the stream list.</summary>
     public List<string> Favorites { get; set; } = [];
 
-    /// <summary>Channel to join on start-up (login name, no '#').</summary>
+    /// <summary>The last channel opened (login name, no '#').</summary>
     public string? Channel { get; set; }
+
+    /// <summary>Reopen <see cref="Channel"/> at start-up; off starts with no
+    /// channel open.</summary>
+    public bool ReopenLastChannel { get; set; } = true;
+
+    /// <summary>Quality to start at ("source", "720p60", "480p"…). Catch-up
+    /// may drop below it while the connection struggles.</summary>
+    public string PreferredQuality { get; set; } = "source";
+
+    public int Volume { get; set; } = 100;
+    public bool Muted { get; set; }
+
+    /// <summary>Default layout is list | player | chat; this puts chat on the
+    /// left instead.</summary>
+    public bool ChatOnLeft { get; set; }
 
     /// <summary>Monitor to open on, by index into the platform's screen list.
     /// Null means "wherever the OS puts it"; the point of the app is a small
@@ -69,8 +87,25 @@ public sealed class AppSettings
         return new();
     }
 
+    /// <summary>Set for <c>--demo</c>: settings are read so the layout looks
+    /// like the user's, but nothing a demo session does is written back.</summary>
+    [JsonIgnore]
+    public bool ReadOnly { get; set; }
+
+    public bool IsFavorite(string login) => Favorites.Contains(login, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Stars or un-stars a channel; returns the new state.</summary>
+    public bool ToggleFavorite(string login)
+    {
+        if (Favorites.RemoveAll(f => string.Equals(f, login, StringComparison.OrdinalIgnoreCase)) > 0)
+            return false;
+        Favorites.Add(login.ToLowerInvariant());
+        return true;
+    }
+
     public void Save()
     {
+        if (ReadOnly) return;
         var path = AppData.PathFor(FileName);
         var temp = path + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(this, Json));

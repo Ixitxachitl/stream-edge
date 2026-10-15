@@ -9,8 +9,8 @@ namespace StreamEdge.Auth;
 /// short code, the user approves it at twitch.tv/activate on any device. No
 /// embedded browser, no redirect URI, no client secret, which suits a public
 /// desktop client on all three platforms.</summary>
-/// <remarks>Needs a Twitch application registered as a <b>Public</b> client;
-/// its Client ID goes in settings.json as <c>ClientId</c>.</remarks>
+/// <remarks>Needs a Twitch application registered as a <b>Public</b> client
+/// (<see cref="TwitchApp"/>), so tokens refresh without a secret.</remarks>
 public sealed class TwitchAuth(HttpClient http, string clientId)
 {
     /// <summary>Followed live streams, plus reading and sending chat.</summary>

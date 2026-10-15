@@ -1,0 +1,27 @@
+<!-- "Log in with Twitch", plus the pending state while the browser is open.
+     Used both as the stream list's empty state and in the ⚙ flyout. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
+             x:Class="StreamEdge.AvaloniaApp.Views.LoginBox"
+             x:DataType="vm:AccountViewModel">
+  <StackPanel Spacing="8">
+    <Button Classes="twitch" Content="Log in with Twitch" Command="{Binding SignInCommand}"
+            IsVisible="{Binding !IsPending}" HorizontalAlignment="Stretch" />
+
+    <StackPanel Spacing="6" IsVisible="{Binding IsPending}">
+      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Foreground="{StaticResource SeText}" />
+      <TextBlock TextWrapping="Wrap" Foreground="{StaticResource SeTextFaint}" FontSize="{StaticResource SeSmallFontSize}">
+        <Run Text="If Twitch asks for a code:" />
+        <Run Text="{Binding UserCode}" FontWeight="Bold" Foreground="{StaticResource SeText}" />
+      </TextBlock>
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button Content="Open page again" Command="{Binding OpenSignInPageCommand}" />
+        <Button Content="Cancel" Command="{Binding CancelSignInCommand}" />
+      </StackPanel>
+    </StackPanel>
+
+    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}"
+               IsVisible="{Binding !IsPending}" />
+  </StackPanel>
+</UserControl>

@@ -7,6 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +20,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\StreamEdge.Core\StreamEdge.Core.csproj" />
+  </ItemGroup>
+
+  <!-- libmpv for the player, on Windows only: Linux and macOS use the system
+       package. Fetched by scripts/fetch-libmpv.ps1; optional, since the app
+       runs without it (the player pane says what's missing). -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\third_party\libmpv\win-x64\libmpv-2.dll')">
+    <None Include="..\..\third_party\libmpv\win-x64\libmpv-2.dll" Link="libmpv-2.dll"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- SkiaSharp's and HarfBuzzSharp's Windows packages ship native debug

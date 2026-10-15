@@ -18,7 +18,6 @@ public sealed partial class AccountViewModel : ObservableObject
     {
         _settings = settings;
         _http = http;
-        _clientId = settings.ClientId ?? "";
         _hasPlaybackToken = SecretStore.Get(SecretStore.PlaybackAuthToken) is not null;
     }
 
@@ -31,13 +30,14 @@ public sealed partial class AccountViewModel : ObservableObject
     public string Summary => IsSignedIn ? "Signed in as " + Login : "Not signed in";
     public string? AccessToken => SecretStore.Get(SecretStore.OAuthToken);
 
+    /// <summary>The device code, shown small as a fallback in case the browser
+    /// page didn't pre-fill it.</summary>
     [ObservableProperty]
-    private string _clientId;
-
-    /// <summary>The code to type at <see cref="VerificationUri"/> while a
-    /// sign-in is pending.</summary>
-    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPending))]
     private string? _userCode;
+
+    /// <summary>A sign-in is waiting for the user to authorise in the browser.</summary>
+    public bool IsPending => UserCode is not null;
 
     [ObservableProperty]
     private string? _verificationUri;
@@ -53,27 +53,24 @@ public sealed partial class AccountViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasPlaybackToken;
 
-    partial void OnClientIdChanged(string value) =>
-        _settings.ClientId = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
+    /// <summary>"Log in with Twitch": opens Twitch's own sign-in page in the
+    /// browser with the device code already filled in; the user just logs in
+    /// and clicks Authorize, and this picks the token up by polling.</summary>
     [RelayCommand]
     private async Task SignInAsync()
     {
-        if (string.IsNullOrWhiteSpace(_settings.ClientId))
-        {
-            Message = "Enter the Client ID of your Twitch app (Public client) first.";
-            return;
-        }
         _signIn?.Cancel();
         _signIn = new CancellationTokenSource();
         var ct = _signIn.Token;
-        var auth = new TwitchAuth(_http, _settings.ClientId);
+        var auth = new TwitchAuth(_http, _settings.EffectiveClientId);
         try
         {
             var code = await auth.StartAsync(ct);
-            UserCode = code.UserCode;
             VerificationUri = code.VerificationUri;
-            Message = "Approve the code at " + code.VerificationUri;
+            UserCode = code.UserCode;
+            Message = UrlLauncher.TryOpen(code.VerificationUri)
+                ? "Finish logging in in your browser…"
+                : "Open " + code.VerificationUri + " and enter the code below.";
             var tokens = await auth.WaitForApprovalAsync(code, ct);
             if (tokens is null)
             {
@@ -110,6 +107,15 @@ public sealed partial class AccountViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void OpenSignInPage()
+    {
+        if (VerificationUri is { } url) UrlLauncher.TryOpen(url);
+    }
+
+    [RelayCommand]
+    private void CancelSignIn() => _signIn?.Cancel();
+
+    [RelayCommand]
     private void SignOut()
     {
         _signIn?.Cancel();
@@ -125,8 +131,8 @@ public sealed partial class AccountViewModel : ObservableObject
     /// refreshing it if it has expired. Signs out if neither works.</summary>
     public async Task RestoreAsync(CancellationToken ct)
     {
-        if (_settings.ClientId is null || AccessToken is not { } token) return;
-        var auth = new TwitchAuth(_http, _settings.ClientId);
+        if (AccessToken is not { } token) return;
+        var auth = new TwitchAuth(_http, _settings.EffectiveClientId);
         try
         {
             if (await auth.ValidateAsync(token, ct) is not null) return;

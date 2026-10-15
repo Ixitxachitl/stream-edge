@@ -28,7 +28,10 @@ public sealed partial class ChatViewModel : ObservableObject
 
     /// <summary>Sending needs a signed-in account; anonymous chat is read-only.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Placeholder))]
     private bool _canSend;
+
+    public string Placeholder => CanSend ? "Send a message" : "Log in to chat";
 
     public string Header => Channel.Length == 0 ? "Chat" : "#" + Channel;
 

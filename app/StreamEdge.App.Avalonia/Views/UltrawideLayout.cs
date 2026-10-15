@@ -4,7 +4,8 @@ using Avalonia.Controls;
 
 namespace StreamEdge.AvaloniaApp.Views;
 
-/// <summary>The app's three-pane arrangement: chat | player | stream list.
+/// <summary>The app's three-pane arrangement: stream list | player | chat
+/// (or chat | player | list with <see cref="ChatOnLeft"/>).
 ///
 /// On a short, wide display the player is the one thing whose size is fixed
 /// by the content: it gets exactly the width its aspect ratio needs at the
@@ -12,9 +13,10 @@ namespace StreamEdge.AvaloniaApp.Views;
 /// side panes share whatever width is left, split by <see cref="ChatShare"/>.
 /// A grid with star columns can't express "width follows height", which is
 /// why this is a panel rather than a Grid.</summary>
-/// <remarks>Children, in order: chat, player, list. When the window is too
-/// narrow to give both sides <see cref="MinSideWidth"/>, the player shrinks
-/// (and letterboxes) rather than the sides vanishing.</remarks>
+/// <remarks>Children are always chat, player, list, whichever side chat is
+/// drawn on. When the window is too narrow to give both sides
+/// <see cref="MinSideWidth"/>, the player shrinks (and letterboxes) rather
+/// than the sides vanishing.</remarks>
 public sealed class UltrawideLayout : Panel
 {
     public static readonly StyledProperty<double> PlayerAspectProperty =
@@ -30,10 +32,14 @@ public sealed class UltrawideLayout : Panel
     public static readonly StyledProperty<bool> ShowPlayerProperty =
         AvaloniaProperty.Register<UltrawideLayout, bool>(nameof(ShowPlayer), true);
 
+    public static readonly StyledProperty<bool> ChatOnLeftProperty =
+        AvaloniaProperty.Register<UltrawideLayout, bool>(nameof(ChatOnLeft));
+
     static UltrawideLayout()
     {
         AffectsMeasure<UltrawideLayout>(PlayerAspectProperty, MinSideWidthProperty,
             ChatShareProperty, ShowPlayerProperty);
+        AffectsArrange<UltrawideLayout>(ChatOnLeftProperty);
     }
 
     public double PlayerAspect
@@ -58,6 +64,12 @@ public sealed class UltrawideLayout : Panel
     {
         get => GetValue(ShowPlayerProperty);
         set => SetValue(ShowPlayerProperty, value);
+    }
+
+    public bool ChatOnLeft
+    {
+        get => GetValue(ChatOnLeftProperty);
+        set => SetValue(ChatOnLeftProperty, value);
     }
 
     /// <summary>Widths of chat, player and list for a given panel size.
@@ -94,13 +106,16 @@ public sealed class UltrawideLayout : Panel
     {
         var (chat, player, list) = Split(finalSize, PlayerAspect, MinSideWidth, ChatShare, ShowPlayer);
         var widths = new[] { chat, player, list };
+        // Left-to-right drawing order, as child indices.
+        int[] order = ChatOnLeft ? [0, 1, 2] : [2, 1, 0];
         var x = 0.0;
-        for (var i = 0; i < Children.Count; i++)
+        foreach (var i in order)
         {
-            var w = i < 3 ? widths[i] : 0;
-            Children[i].Arrange(new Rect(x, 0, w, finalSize.Height));
-            x += w;
+            if (i >= Children.Count) continue;
+            Children[i].Arrange(new Rect(x, 0, widths[i], finalSize.Height));
+            x += widths[i];
         }
+        for (var i = 3; i < Children.Count; i++) Children[i].Arrange(default);
         return finalSize;
     }
 }

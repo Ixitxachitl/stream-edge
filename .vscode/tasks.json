@@ -59,6 +59,14 @@
       "problemMatcher": []
     },
     {
+      "label": "Fetch libmpv",
+      "type": "shell",
+      "command": "pwsh",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/fetch-libmpv.ps1"],
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
       // build-release.ps1 detects the host OS and picks the RID and archive
       // format itself.
       "label": "Build Release",

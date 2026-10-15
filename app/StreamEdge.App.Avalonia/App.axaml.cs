@@ -24,7 +24,11 @@ public partial class App : Application
             desktop.ShutdownRequested += (_, _) =>
             {
                 vm.SaveSettings();
-                vm.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                // Off the UI thread: blocking it on an async dispose whose
+                // continuations want the UI thread deadlocks, leaving the
+                // process alive with no window. Bounded, so a slow socket close
+                // can't hold up exit either.
+                Task.Run(() => vm.DisposeAsync().AsTask()).Wait(TimeSpan.FromSeconds(2));
             };
         }
         base.OnFrameworkInitializationCompleted();

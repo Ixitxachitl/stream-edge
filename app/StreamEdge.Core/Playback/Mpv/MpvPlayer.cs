@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+using System.Globalization;
+
+namespace StreamEdge.Playback.Mpv;
+
+/// <summary><see cref="IVideoPlayer"/> over libmpv, tuned for latency.
+/// libmpv's client API is thread-safe, so calls may come from any thread.</summary>
+public sealed class MpvPlayer : IVideoPlayer, IDisposable
+{
+    private IntPtr _ctx;
+
+    /// <param name="windowId">Native window to draw into (HWND, X11 window,
+    /// NSView). Null lets mpv open its own window, which is only useful in tests.</param>
+    public MpvPlayer(long? windowId)
+    {
+        _ctx = MpvNative.mpv_create();
+        if (_ctx == IntPtr.Zero) throw new InvalidOperationException("mpv_create failed.");
+
+        if (windowId is { } wid) Option("wid", wid.ToString(CultureInfo.InvariantCulture));
+        foreach (var (name, value) in Options) Option(name, value);
+
+        var rc = MpvNative.mpv_initialize(_ctx);
+        if (rc < 0) throw new InvalidOperationException("mpv_initialize: " + MpvNative.ErrorString(rc));
+    }
+
+    /// <summary>Latency over smoothness. Applied in order, so later lines
+    /// override what the low-latency profile sets.</summary>
+    internal static readonly (string Name, string Value)[] Options =
+    [
+        // Embedded player: no mpv UI, keys, or terminal.
+        ("terminal", "no"),
+        ("msg-level", "all=warn"),
+        ("osc", "no"),
+        ("input-default-bindings", "no"),
+        ("input-vo-keyboard", "no"),
+        ("input-cursor", "no"),
+        ("cursor-autohide", "no"),
+        ("idle", "yes"),
+        ("keep-open", "no"),
+        ("force-window", "yes"),
+        ("ytdl", "no"),
+        ("audio-client-name", "StreamEdge"),
+        ("hwdec", "auto-safe"),
+
+        // mpv's own low-latency preset: no audio buffer, single-threaded
+        // decode, minimal demuxer probing, no frame interpolation.
+        ("profile", "low-latency"),
+        // The input is always MPEG-TS from LocalStreamServer; skip probing.
+        ("demuxer-lavf-format", "mpegts"),
+        // Keep a demuxer cache so buffered time is measurable, but pause for
+        // it only briefly: a stall should end as soon as there's anything to
+        // show, and CatchUpController treats repeated stalls as a reason to
+        // drop quality rather than to buffer more.
+        ("cache", "yes"),
+        ("cache-pause", "yes"),
+        ("cache-pause-initial", "no"),
+        ("cache-pause-wait", "0.3"),
+        // Live has no back-buffer worth keeping.
+        ("demuxer-max-back-bytes", "0"),
+        // Speed changes keep pitch (scaletempo2) instead of chipmunking.
+        ("audio-pitch-correction", "yes"),
+        // Drop late frames rather than fall further behind.
+        ("framedrop", "vo"),
+
+        ("osd-level", "1"),
+        ("osd-font-size", "26"),
+        ("osd-duration", "1500"),
+    ];
+
+    /// <summary>True if libmpv can be found on this machine.</summary>
+    public static bool IsAvailable(out string? error)
+    {
+        try
+        {
+            var ctx = MpvNative.mpv_create();
+            if (ctx == IntPtr.Zero)
+            {
+                error = "mpv_create failed.";
+                return false;
+            }
+            MpvNative.mpv_terminate_destroy(ctx);
+            error = null;
+            return true;
+        }
+        catch (DllNotFoundException)
+        {
+            error = OperatingSystem.IsWindows()
+                ? "libmpv-2.dll not found. Run scripts/fetch-libmpv.ps1 and rebuild."
+                : OperatingSystem.IsMacOS() ? "libmpv not found. Install it with: brew install mpv"
+                : "libmpv not found. Install it, e.g.: sudo apt install libmpv2";
+            return false;
+        }
+    }
+
+    private void Option(string name, string value)
+    {
+        var rc = MpvNative.mpv_set_option_string(_ctx, name, value);
+        // An option this build doesn't know (older mpv) shouldn't stop playback.
+        if (rc < 0) System.Diagnostics.Trace.WriteLine($"mpv option {name}={value}: {MpvNative.ErrorString(rc)}");
+    }
+
+    private void Command(string command)
+    {
+        if (_ctx == IntPtr.Zero) return;
+        MpvNative.mpv_command_string(_ctx, command);
+    }
+
+    private static string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+    public void Load(Uri url) => Command("loadfile " + Quote(url.AbsoluteUri) + " replace");
+
+    public void Stop() => Command("stop");
+
+    public void SetSpeed(double speed)
+    {
+        if (_ctx == IntPtr.Zero) return;
+        MpvNative.mpv_set_property_string(_ctx, "speed", speed.ToString("0.00", CultureInfo.InvariantCulture));
+    }
+
+    public void SetVolume(int percent)
+    {
+        if (_ctx == IntPtr.Zero) return;
+        MpvNative.mpv_set_property_string(_ctx, "volume", Math.Clamp(percent, 0, 130).ToString(CultureInfo.InvariantCulture));
+    }
+
+    public void SetMute(bool mute)
+    {
+        if (_ctx == IntPtr.Zero) return;
+        MpvNative.mpv_set_property_string(_ctx, "mute", mute ? "yes" : "no");
+    }
+
+    public void ShowMessage(string text) => Command("show-text " + Quote(text) + " 1500");
+
+    /// <summary>For smoke tests: saves the current video frame.</summary>
+    public void Screenshot(string path) => Command("screenshot-to-file " + Quote(path) + " video");
+
+    public VideoPlayerStats GetStats()
+    {
+        if (_ctx == IntPtr.Zero) return new VideoPlayerStats(0, false, true);
+        var buffer = MpvNative.mpv_get_property(_ctx, "demuxer-cache-duration", MpvNative.FormatDouble, out var d) >= 0 ? d : 0;
+        var stalled = MpvNative.mpv_get_property_flag(_ctx, "paused-for-cache", MpvNative.FormatFlag, out var p) >= 0 && p != 0;
+        var idle = MpvNative.mpv_get_property_flag(_ctx, "idle-active", MpvNative.FormatFlag, out var i) >= 0 && i != 0;
+        return new VideoPlayerStats(buffer, stalled, idle);
+    }
+
+    public void Dispose()
+    {
+        var ctx = _ctx;
+        _ctx = IntPtr.Zero;
+        // Must happen before the host window is destroyed: mpv is still
+        // rendering into it until this returns.
+        if (ctx != IntPtr.Zero) MpvNative.mpv_terminate_destroy(ctx);
+    }
+}

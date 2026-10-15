@@ -41,6 +41,12 @@ $name    = "StreamEdge-$Version-$platform-$arch"
 $staging = Join-Path $repoRoot "dist/$name"
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 
+# The player needs libmpv. On Windows it ships beside the executable;
+# elsewhere it is a system package the user installs (see README).
+if ($platform -eq 'windows') {
+    & (Join-Path $PSScriptRoot 'fetch-libmpv.ps1')
+}
+
 Write-Host "Publishing $name ($rid)..."
 dotnet publish app/StreamEdge.App.Avalonia/StreamEdge.App.Avalonia.csproj `
     -c Release -r $rid --self-contained true `
