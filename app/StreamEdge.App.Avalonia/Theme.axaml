@@ -2,7 +2,8 @@
      (a 1920x480 or 1920x440 bar panel): compact fonts, thin headers, no
      menu bar. -->
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="using:StreamEdge.AvaloniaApp.Views">
   <Styles.Resources>
     <SolidColorBrush x:Key="SeWindowBg" Color="#0E0E10" />
     <SolidColorBrush x:Key="SePanelBg" Color="#18181B" />
@@ -50,6 +51,14 @@
   </Style>
   <Style Selector="Button.twitch:pressed /template/ ContentPresenter">
     <Setter Property="Background" Value="#5C16C5" />
+  </Style>
+
+  <!-- Resize handles beside the player: a faint line that lights up on hover. -->
+  <Style Selector="v|PaneGrip.grip">
+    <Setter Property="Background" Value="{StaticResource SeRule}" />
+  </Style>
+  <Style Selector="v|PaneGrip.grip:pointerover">
+    <Setter Property="Background" Value="{StaticResource SeAccent}" />
   </Style>
 
   <!-- The star toggle on stream list entries: borderless glyph, gold when on. -->

@@ -136,7 +136,8 @@ Still to do:
 - Risks: Twitch can add Client-Integrity requirements to GQL at any time, and the web client ID and query shape are undocumented. Keep all of it in `TwitchPlayback` so a fix is one file
 
 ### Phase 4: ultrawide polish
-- [ ] Draggable splitters that write `ChatShare`, and a player show/hide toggle
+- [x] Draggable grips beside the player: the video keeps its full-height 16:9 size and slides, one side growing by what the other loses. Saved as a share, so it scales with the window; double-click to re-center
+- [ ] Player show/hide toggle
 - [ ] Screen picker in the flyout (`ScreenIndex`), borderless/fullscreen toggle, always-on-top
 - [ ] Font-size scale for tiny high-DPI bars, and layout presets (1920×480, 1920×440, 2560×720, 3840×1100)
 - [ ] Multi-channel chat tabs in the chat pane

@@ -79,8 +79,12 @@
         <TextBlock Text="{Binding Player.Status}" Foreground="{StaticResource SeTextFaint}"
                    FontSize="{StaticResource SeSmallFontSize}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" />
       </StackPanel>
-      <!-- mpv renders into this native window; it covers the text above while visible. -->
-      <v:PlayerSurface x:Name="Video" IsVisible="{Binding Player.IsVideoVisible}" />
+      <!-- mpv renders into this native window; it covers the text above while
+           visible. Boxed to exactly 16:9 so a window too narrow for a
+           full-height player letterboxes instead of stretching. -->
+      <v:AspectRatioBox x:Name="VideoBox" IsVisible="{Binding Player.IsVideoVisible}">
+        <v:PlayerSurface x:Name="Video" />
+      </v:AspectRatioBox>
     </Panel>
 
     <!-- ===== Live streams ===== -->
@@ -162,6 +166,11 @@
         </ListBox>
       </Panel>
     </DockPanel>
+
+
+    <!-- Drag handles either side of the player (left, then right). -->
+    <v:PaneGrip x:Name="LeftGrip" Classes="grip" />
+    <v:PaneGrip x:Name="RightGrip" Classes="grip" />
 
   </v:UltrawideLayout>
 </Window>

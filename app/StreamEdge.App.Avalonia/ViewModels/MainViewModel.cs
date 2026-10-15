@@ -70,7 +70,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public double ChatShare
     {
         get => _settings.ChatShare;
-        set => SetProperty(_settings.ChatShare, Math.Clamp(value, 0.1, 0.9), _settings, (s, v) => s.ChatShare = v);
+        set => SetProperty(_settings.ChatShare, Math.Clamp(value, 0, 1), _settings, (s, v) => s.ChatShare = v);
     }
 
     /// <summary>Swaps the side panes: chat left, list right.</summary>
