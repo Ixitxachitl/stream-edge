@@ -8,7 +8,7 @@ namespace StreamEdge.Demo;
 /// previewer, so layout work needs neither a network nor a Twitch account.</summary>
 public static class SampleData
 {
-    public const string Channel = "nintendope503";
+    public const string Channel = "pixelperegrine";
 
     public static IReadOnlyList<LiveStream> Streams(DateTimeOffset now)
     {
@@ -17,18 +17,18 @@ public static class SampleData
 
         return
         [
-            S("GlitchCat7", "Look out Streamer, Deadlines! (Level Design)", "Super Mario World", 57, 2.4, fav: true),
-            S("noobalott", "[18+] LATE NIGHT SCREAMING — NEW CROWD CONTROL MEMES AND SCARE ALERTS !kofi", "Fears to Fathom - Scratch Creek", 55, 1.3),
-            S("AlyssaSMW", "PSG finale??? :3 | !pronouns !discord", "Super Mario World", 44, 3.5),
-            S("firstnamebutt", "Testing Kaizo - Recovery Arc !slime | Lets be Friends", "Super Mario World", 16, 22 / 60.0),
-            S("NintenDope503", "Gotta finish some games to play new ones haha <3 :3 !slap", "Graveyard Keeper", 11, 59 / 60.0, fav: true),
-            S("Grind_Stone88", "elephants i geuss", "Super Mario World", 9, 2.1),
-            S("tehgoocherer", "First Playthrough | No Spoilers | No Backseating", "Resident Evil 2", 8, 1.8),
-            S("TopazTamarind", "Convergence: Underworld Mage Path", "ELDEN RING", 5, 10.2),
-            S("Jerma985", "Donnie \"Free Wheel Spins\" McDer---- you know the rest", "Grand Theft Auto V", 11455, 2.7),
-            S("Vinesauce", "Hellraiser Revival, Ace Combat 8", "Clive Barker's Hellraiser: Revival", 5518, 1.8),
-            S("BarbarousKing", "Finale time? VALOR MORTIS has been pretty fun, let's do it", "Valor Mortis", 2447, 3.4),
-            S("GamesDoneQuick", "Speedrunning marathon in support of charity", "Retro", 676, 3.6),
+            S("CometCrumb", "Look out Streamer, Deadlines! (Level Design)", "Super Mario World", 57, 2.4, fav: true),
+            S("lanternmoth", "[18+] LATE NIGHT SCREAMING — NEW CROWD CONTROL MEMES AND SCARE ALERTS !kofi", "Fears to Fathom - Scratch Creek", 55, 1.3),
+            S("MossyLedge", "PSG finale??? :3 | !pronouns !discord", "Super Mario World", 44, 3.5),
+            S("kaizokettle", "Testing Kaizo - Recovery Arc !slime | Lets be Friends", "Super Mario World", 16, 22 / 60.0),
+            S("PixelPeregrine", "Gotta finish some games to play new ones haha <3 :3 !slap", "Graveyard Keeper", 11, 59 / 60.0, fav: true),
+            S("Pebble_Patrol42", "elephants i geuss", "Super Mario World", 9, 2.1),
+            S("fogcabinet", "First Playthrough | No Spoilers | No Backseating", "Resident Evil 2", 8, 1.8),
+            S("AmberAtlas", "Convergence: Underworld Mage Path", "ELDEN RING", 5, 10.2),
+            S("BigTimeBramble", "Donnie \"Free Wheel Spins\" McDer---- you know the rest", "Grand Theft Auto V", 11455, 2.7),
+            S("VelvetCartridge", "Hellraiser Revival, Ace Combat 8", "Clive Barker's Hellraiser: Revival", 5518, 1.8),
+            S("IronOrchard", "Finale time? VALOR MORTIS has been pretty fun, let's do it", "Valor Mortis", 2447, 3.4),
+            S("RelayMarathon", "Speedrunning marathon in support of charity", "Retro", 676, 3.6),
         ];
     }
 
@@ -47,22 +47,22 @@ public static class SampleData
         return
         [
             ChatMessage.System(Channel, "### Finished with history logs. ###", t),
-            Say(0, "nintendope503", "NintenDope503", "#B65CFF", "https://www.twitch.tv/videos/2900045691", "broadcaster/1", "subscriber/0"),
-            Say(0, "ixitxachitl", "Ixitxachitl", "#4E8FD6", "i have a question"),
-            Say(1, "ixitxachitl", "Ixitxachitl", "#4E8FD6", "why am i soft in the middle now why am i soft in the middle when the rest of my life is so hard?"),
-            Member(1, "JOIN: Buggyify"),
-            Member(2, "JOIN: Kaptonttv"),
-            Member(2, "PART: Leonidas3233"),
-            Member(4, "PART: Kaptonttv"),
-            new(t + TimeSpan.FromMinutes(5), ChatMessageKind.Action, Channel, "pokemoncommunitygame", "PokemonCommunityGame", "#FF6B3D",
+            Say(0, "pixelperegrine", "PixelPeregrine", "#B65CFF", "https://www.twitch.tv/videos/1234567890", "broadcaster/1", "subscriber/0"),
+            Say(0, "chattynarwhal", "ChattyNarwhal", "#4E8FD6", "i have a question"),
+            Say(1, "chattynarwhal", "ChattyNarwhal", "#4E8FD6", "why am i soft in the middle now why am i soft in the middle when the rest of my life is so hard?"),
+            Member(1, "JOIN: quillfeather"),
+            Member(2, "JOIN: Tidewalker"),
+            Member(2, "PART: Sprocket2210"),
+            Member(4, "PART: Tidewalker"),
+            new(t + TimeSpan.FromMinutes(5), ChatMessageKind.Action, Channel, "crittercatchbot", "CritterCatchBot", "#FF6B3D",
                 ["moderator/1"], "A wild Murkrow appears Catch it using !pokecatch (winners revealed in 90s)"),
-            Say(5, "nintendope503", "NintenDope503", "#B65CFF", "!pokecatch Ultraball", "broadcaster/1"),
-            Say(6, "pokemoncommunitygame", "PokemonCommunityGame", "#FF6B3D", "Murkrow has been caught by: NintenDope503", "moderator/1"),
-            Say(7, "ixitxachitl", "Ixitxachitl", "#4E8FD6", "Elden Ring next please") with { CustomRewardId = "next-game" },
+            Say(5, "pixelperegrine", "PixelPeregrine", "#B65CFF", "!pokecatch Ultraball", "broadcaster/1"),
+            Say(6, "crittercatchbot", "CritterCatchBot", "#FF6B3D", "Murkrow has been caught by: PixelPeregrine", "moderator/1"),
+            Say(7, "chattynarwhal", "ChattyNarwhal", "#4E8FD6", "Elden Ring next please") with { CustomRewardId = "next-game" },
         ];
     }
 
-    public static ChannelPoints Points() => new("Dope Points", null,
+    public static ChannelPoints Points() => new("Pip Points", null,
     [
         new("hydrate", "Hydrate", 100, "#1F69FF", null, null, false, true),
         new("next-game", "Pick the next game", 2500, "#392E5C", null, "Name a game", true, true),

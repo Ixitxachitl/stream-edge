@@ -149,7 +149,7 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
         var (window, vm, _) = Open();
         const string url = "https://media4.giphy.com/media/joSNxeswxuc74Juo8X/giphy.gif";
         var line = StreamEdge.Chat.ChatMessage.FromIrc(StreamEdge.Chat.IrcMessage.Parse(
-            $"@display-name=Alice;gifs=0-33|joSNxeswxuc74Juo8X|{url};id=g1 :alice!alice@alice.tmi.twitch.tv PRIVMSG #nintendope503 :[Y A Y Yes GIF by Djemilah Birnie]"),
+            $"@display-name=Alice;gifs=0-33|joSNxeswxuc74Juo8X|{url};id=g1 :alice!alice@alice.tmi.twitch.tv PRIVMSG #pixelperegrine :[Y A Y Yes GIF by Djemilah Birnie]"),
             DateTimeOffset.Now)!;
         vm.FrontTab!.Chat.Add(line);
         Dispatcher.UIThread.RunJobs();

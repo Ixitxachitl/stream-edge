@@ -26,9 +26,9 @@ public class PlaybackTests
     [Fact]
     public void UsherUrlCarriesEscapedTokenAndSignature()
     {
-        var url = TwitchPlayback.UsherUrl("NintenDope503", new("{\"a\":1}", "sig"));
+        var url = TwitchPlayback.UsherUrl("PixelPeregrine", new("{\"a\":1}", "sig"));
         Assert.Equal("usher.ttvnw.net", url.Host);
-        Assert.Equal("/api/channel/hls/nintendope503.m3u8", url.AbsolutePath);
+        Assert.Equal("/api/channel/hls/pixelperegrine.m3u8", url.AbsolutePath);
         Assert.Contains("sig=sig", url.Query);
         Assert.Contains("token=%7B%22a%22%3A1%7D", url.Query);
     }

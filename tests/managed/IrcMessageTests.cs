@@ -10,13 +10,13 @@ public class IrcMessageTests
     public void ParsesTaggedPrivmsg()
     {
         var m = IrcMessage.Parse(
-            "@badges=broadcaster/1,subscriber/0;color=#B65CFF;display-name=NintenDope503;tmi-sent-ts=1700000000000 " +
-            ":nintendope503!nintendope503@nintendope503.tmi.twitch.tv PRIVMSG #nintendope503 :!pokecatch Ultraball\r\n");
+            "@badges=broadcaster/1,subscriber/0;color=#B65CFF;display-name=PixelPeregrine;tmi-sent-ts=1700000000000 " +
+            ":pixelperegrine!pixelperegrine@pixelperegrine.tmi.twitch.tv PRIVMSG #pixelperegrine :!pokecatch Ultraball\r\n");
 
         Assert.Equal("PRIVMSG", m.Command);
-        Assert.Equal("nintendope503", m.Nick);
-        Assert.Equal(["#nintendope503", "!pokecatch Ultraball"], m.Params);
-        Assert.Equal("NintenDope503", m.Tag("display-name"));
+        Assert.Equal("pixelperegrine", m.Nick);
+        Assert.Equal(["#pixelperegrine", "!pokecatch Ultraball"], m.Params);
+        Assert.Equal("PixelPeregrine", m.Tag("display-name"));
         Assert.Equal("#B65CFF", m.Tag("color"));
     }
 

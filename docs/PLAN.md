@@ -12,10 +12,10 @@ and keep an eye on who's live, all in a single row.
 ```
 ┌──────────── chat ────────────┬────────── player ──────────┬──────── live streams ────────┐
 │ #channel           Connected │                            │ Live Streams (33) [Viewers] ⇅⚙│
-│ 7:13 PM ### history ###      │                            │ ──── ★ GlitchCat7 (57|2.4h) ──│
+│ 7:13 PM ### history ###      │                            │ ──── ★ CometCrumb (57|2.4h) ──│
 │ 7:14 PM [B][S] Name: msg …   │     16:9 video, exactly    │ Look out Streamer, Deadlines! │
 │ 7:14 PM JOIN: someone        │     window-height tall     │ (Super Mario World)           │
-│ …                            │                            │ ──── Jerma985 (11,455|2.7h) ──│
+│ …                            │                            │ BigTimeBramble (11,455|2.7h) ─│
 │ [ Send a message           ] │                            │ …                             │
 └──────────────────────────────┴────────────────────────────┴───────────────────────────────┘
           ChatShare × rest           height × 16/9                (1 − ChatShare) × rest

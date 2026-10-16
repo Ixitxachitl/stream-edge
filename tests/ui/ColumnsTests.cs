@@ -19,8 +19,8 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         settings = new AppSettings();
         var vm = new MainViewModel(settings, new StartupOptions { Demo = true }, InlineDispatcher.Instance);
-        vm.OpenChannel("vinesauce", OpenMode.Background);
-        vm.OpenChannel("jerma985", OpenMode.Background);
+        vm.OpenChannel("velvetcartridge", OpenMode.Background);
+        vm.OpenChannel("bigtimebramble", OpenMode.Background);
         return vm;
     }
 
@@ -34,12 +34,12 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         var vm = Demo(out var settings);
         var column = Assert.Single(vm.Columns);
 
-        vm.MoveTab(Tab(vm, "jerma985"), column, 0);
-        Assert.Equal(["jerma985", "nintendope503", "vinesauce"], Logins(column));
-        // Indexes count the strip before the move: "after vinesauce" is 3.
-        vm.MoveTab(Tab(vm, "jerma985"), column, 3);
-        Assert.Equal(["nintendope503", "vinesauce", "jerma985"], Logins(column));
-        Assert.Equal(["nintendope503", "vinesauce", "jerma985"], settings.OpenTabs);
+        vm.MoveTab(Tab(vm, "bigtimebramble"), column, 0);
+        Assert.Equal(["bigtimebramble", "pixelperegrine", "velvetcartridge"], Logins(column));
+        // Indexes count the strip before the move: "after velvetcartridge" is 3.
+        vm.MoveTab(Tab(vm, "bigtimebramble"), column, 3);
+        Assert.Equal(["pixelperegrine", "velvetcartridge", "bigtimebramble"], Logins(column));
+        Assert.Equal(["pixelperegrine", "velvetcartridge", "bigtimebramble"], settings.OpenTabs);
     });
 
     [Fact]
@@ -47,14 +47,14 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         var vm = Demo(out var settings);
         var front = vm.FrontTab!;
-        var vine = Tab(vm, "vinesauce");
+        var velvet = Tab(vm, "velvetcartridge");
 
-        vm.MoveTabToNewColumn(vine, 1);
+        vm.MoveTabToNewColumn(velvet, 1);
 
         Assert.Equal(2, vm.Columns.Count);
-        Assert.Equal(["nintendope503", "jerma985"], Logins(vm.Columns[0]));
-        Assert.Equal(["vinesauce"], Logins(vm.Columns[1]));
-        Assert.Same(vine, vm.Columns[1].Selected);
+        Assert.Equal(["pixelperegrine", "bigtimebramble"], Logins(vm.Columns[0]));
+        Assert.Equal(["velvetcartridge"], Logins(vm.Columns[1]));
+        Assert.Same(velvet, vm.Columns[1].Selected);
         Assert.Same(front, vm.FrontTab); // still on video
         Assert.True(vm.Columns[0].HasFront);
         Assert.False(vm.Columns[1].HasFront);
@@ -62,9 +62,9 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.False(vm.Columns[0].IsLast);
         Assert.True(vm.Columns[1].IsLast);
         // The new column is the active one: the chat box acts on it.
-        Assert.Same(vine.Chat, vm.Chat);
+        Assert.Same(velvet.Chat, vm.Chat);
         Assert.Equal(2, settings.ChatColumns.Count);
-        Assert.Equal("vinesauce", settings.ChatColumns[1].Selected);
+        Assert.Equal("velvetcartridge", settings.ChatColumns[1].Selected);
     });
 
     [Fact]
@@ -72,17 +72,17 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         var vm = Demo(out _);
         var front = vm.FrontTab!;
-        var vine = Tab(vm, "vinesauce");
-        vm.MoveTabToNewColumn(vine, 1);
+        var velvet = Tab(vm, "velvetcartridge");
+        vm.MoveTabToNewColumn(velvet, 1);
 
         vm.Activate(vm.Columns[0]);
         Assert.Same(front.Chat, vm.Chat);
         vm.Activate(vm.Columns[1]);
-        Assert.Same(vine.Chat, vm.Chat);
+        Assert.Same(velvet.Chat, vm.Chat);
         Assert.Same(front, vm.FrontTab);
 
-        vine.SelectCommand.Execute(null);
-        Assert.Same(vine, vm.FrontTab);
+        velvet.SelectCommand.Execute(null);
+        Assert.Same(velvet, vm.FrontTab);
         Assert.True(vm.Columns[1].HasFront);
         Assert.False(vm.Columns[0].HasFront);
     });
@@ -91,18 +91,18 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
     public void AColumnEmptiedByDraggingOrClosingGoesAway() => Ui(() =>
     {
         var vm = Demo(out _);
-        var vine = Tab(vm, "vinesauce");
-        vm.MoveTabToNewColumn(vine, 0);
-        Assert.Equal(["vinesauce"], Logins(vm.Columns[0]));
+        var velvet = Tab(vm, "velvetcartridge");
+        vm.MoveTabToNewColumn(velvet, 0);
+        Assert.Equal(["velvetcartridge"], Logins(vm.Columns[0]));
 
         // Dragged back into the other column.
-        vm.MoveTab(vine, vm.Columns[1], 1);
+        vm.MoveTab(velvet, vm.Columns[1], 1);
         var column = Assert.Single(vm.Columns);
-        Assert.Equal(["nintendope503", "vinesauce", "jerma985"], Logins(column));
+        Assert.Equal(["pixelperegrine", "velvetcartridge", "bigtimebramble"], Logins(column));
 
         // Closed: the column goes, and the active one moves to its neighbour.
-        vm.MoveTabToNewColumn(vine, 1);
-        vine.CloseCommand.Execute(null);
+        vm.MoveTabToNewColumn(velvet, 1);
+        velvet.CloseCommand.Execute(null);
         Assert.Single(vm.Columns);
         Assert.Same(vm.Columns[0], vm.ActiveColumn);
     });
@@ -111,27 +111,27 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
     public void ALoneTabDraggedToAnEdgeMovesItsColumn() => Ui(() =>
     {
         var vm = Demo(out _);
-        vm.MoveTabToNewColumn(Tab(vm, "vinesauce"), 1);
-        vm.MoveTabToNewColumn(Tab(vm, "jerma985"), 2);
-        Assert.Equal(["vinesauce"], Logins(vm.Columns[1]));
+        vm.MoveTabToNewColumn(Tab(vm, "velvetcartridge"), 1);
+        vm.MoveTabToNewColumn(Tab(vm, "bigtimebramble"), 2);
+        Assert.Equal(["velvetcartridge"], Logins(vm.Columns[1]));
 
-        Assert.False(vm.CanSplit(Tab(vm, "jerma985"), 2)); // beside itself
-        vm.MoveTabToNewColumn(Tab(vm, "jerma985"), 0);
+        Assert.False(vm.CanSplit(Tab(vm, "bigtimebramble"), 2)); // beside itself
+        vm.MoveTabToNewColumn(Tab(vm, "bigtimebramble"), 0);
         Assert.Equal(3, vm.Columns.Count);
-        Assert.Equal(["jerma985"], Logins(vm.Columns[0]));
-        Assert.Equal(["nintendope503"], Logins(vm.Columns[1]));
+        Assert.Equal(["bigtimebramble"], Logins(vm.Columns[0]));
+        Assert.Equal(["pixelperegrine"], Logins(vm.Columns[1]));
     });
 
     [Fact]
     public void ClosingTheTabOnVideoHandsVideoToWhatItsColumnNowShows() => Ui(() =>
     {
         var vm = Demo(out _);
-        var vine = Tab(vm, "vinesauce");
-        vm.MoveTabToNewColumn(vine, 1);
-        vm.MoveTabToNewColumn(Tab(vm, "jerma985"), 2);
-        vine.SelectCommand.Execute(null);
+        var velvet = Tab(vm, "velvetcartridge");
+        vm.MoveTabToNewColumn(velvet, 1);
+        vm.MoveTabToNewColumn(Tab(vm, "bigtimebramble"), 2);
+        velvet.SelectCommand.Execute(null);
 
-        vine.CloseCommand.Execute(null);
+        velvet.CloseCommand.Execute(null);
 
         Assert.Equal(2, vm.Columns.Count);
         Assert.NotNull(vm.FrontTab);
@@ -147,29 +147,29 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Dispatcher.UIThread.RunJobs();
         var pane = window.FindControl<Control>("ChatPane")!;
         var (w, h) = (pane.Bounds.Width, pane.Bounds.Height);
-        var vine = Tab(vm, "vinesauce");
+        var velvet = Tab(vm, "velvetcartridge");
 
         // Right edge, over the chat: a new column to the right.
-        var split = window.DropTargetAt(vine, new Point(w - 10, h / 2))!;
+        var split = window.DropTargetAt(velvet, new Point(w - 10, h / 2))!;
         Assert.True(split.NewColumn);
         Assert.Equal(1, split.Index);
         // Left edge: a new column on the left.
-        Assert.Equal(0, window.DropTargetAt(vine, new Point(10, h / 2))!.Index);
+        Assert.Equal(0, window.DropTargetAt(velvet, new Point(10, h / 2))!.Index);
         // The middle of its own column: nothing to do.
-        Assert.Null(window.DropTargetAt(vine, new Point(w / 2, h / 2)));
+        Assert.Null(window.DropTargetAt(velvet, new Point(w / 2, h / 2)));
         // Left end of the tab strip: first place.
-        var first = window.DropTargetAt(vine, new Point(3, 12))!;
+        var first = window.DropTargetAt(velvet, new Point(3, 12))!;
         Assert.False(first.NewColumn);
         Assert.Equal(0, first.Index);
 
-        vm.MoveTabToNewColumn(vine, split.Index);
+        vm.MoveTabToNewColumn(velvet, split.Index);
         Dispatcher.UIThread.RunJobs();
         var views = window.GetVisualDescendants().OfType<ChatColumnView>().ToList();
         Assert.Equal(2, views.Count);
         Assert.Equal(w / 2, views[0].Bounds.Width, 0);
 
         // Into the other column's middle: appended there.
-        var into = window.DropTargetAt(Tab(vm, "jerma985"), new Point(w * 0.75, h / 2))!;
+        var into = window.DropTargetAt(Tab(vm, "bigtimebramble"), new Point(w * 0.75, h / 2))!;
         Assert.False(into.NewColumn);
         Assert.Same(vm.Columns[1], into.Column);
         Assert.Equal(1, into.Index);
@@ -185,32 +185,32 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
     public void StackingPutsAChatAboveOrBelowAnotherAndIsRemembered() => Ui(() =>
     {
         var vm = Demo(out var settings);
-        var (ninten, vine, jerma) = (vm.FrontTab!, Tab(vm, "vinesauce"), Tab(vm, "jerma985"));
+        var (pixel, velvet, bramble) = (vm.FrontTab!, Tab(vm, "velvetcartridge"), Tab(vm, "bigtimebramble"));
 
-        vm.MoveTabToStack(vine, vm.Columns[0], below: true);
-        Assert.Equal([["nintendope503", "jerma985"], ["vinesauce"]], vm.Columns.Select(Logins));
+        vm.MoveTabToStack(velvet, vm.Columns[0], below: true);
+        Assert.Equal([["pixelperegrine", "bigtimebramble"], ["velvetcartridge"]], vm.Columns.Select(Logins));
         Assert.Equal([false, true], vm.Columns.Select(c => c.StacksBelow));
         Assert.Equal(1, vm.VisibleColumnCount);
-        Assert.Same(ninten, vm.FrontTab); // stacking doesn't touch the video
+        Assert.Same(pixel, vm.FrontTab); // stacking doesn't touch the video
 
-        vm.MoveTabToStack(jerma, vm.Columns[0], below: false);
-        Assert.Equal([["jerma985"], ["nintendope503"], ["vinesauce"]], vm.Columns.Select(Logins));
+        vm.MoveTabToStack(bramble, vm.Columns[0], below: false);
+        Assert.Equal([["bigtimebramble"], ["pixelperegrine"], ["velvetcartridge"]], vm.Columns.Select(Logins));
         Assert.Equal([false, true, true], vm.Columns.Select(c => c.StacksBelow));
         Assert.Equal([false, true, true], settings.ChatColumns.Select(c => c.Below));
         // The PIP switch stays in the top chat.
         Assert.True(vm.Columns[0].IsLast);
 
         // The top chat leaving its column: the one under it heads it now.
-        vm.MoveTabToNewColumn(jerma, 3);
-        Assert.Equal([["nintendope503"], ["vinesauce"], ["jerma985"]], vm.Columns.Select(Logins));
+        vm.MoveTabToNewColumn(bramble, 3);
+        Assert.Equal([["pixelperegrine"], ["velvetcartridge"], ["bigtimebramble"]], vm.Columns.Select(Logins));
         Assert.Equal([false, true, false], vm.Columns.Select(c => c.StacksBelow));
         Assert.Equal(2, vm.VisibleColumnCount);
         Assert.True(vm.Columns[2].IsLast);
 
         // A chat alone in its spot can't stack onto itself or where it already is.
-        Assert.False(vm.CanStack(vine, vm.Columns[1], below: true));
-        Assert.False(vm.CanStack(vine, vm.Columns[0], below: true));
-        Assert.True(vm.CanStack(vine, vm.Columns[0], below: false));
+        Assert.False(vm.CanStack(velvet, vm.Columns[1], below: true));
+        Assert.False(vm.CanStack(velvet, vm.Columns[0], below: true));
+        Assert.True(vm.CanStack(velvet, vm.Columns[0], below: false));
     });
 
     [Fact]
@@ -225,16 +225,16 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Dispatcher.UIThread.RunJobs();
         var pane = window.FindControl<Control>("ChatPane")!;
         var (w, h) = (pane.Bounds.Width, pane.Bounds.Height);
-        var vine = Tab(vm, "vinesauce");
+        var velvet = Tab(vm, "velvetcartridge");
 
-        var bottom = window.DropTargetAt(vine, new Point(w / 2, h - 20))!;
+        var bottom = window.DropTargetAt(velvet, new Point(w / 2, h - 20))!;
         Assert.True(bottom.StackBelow);
         Assert.False(bottom.NewColumn);
-        Assert.False(window.DropTargetAt(vine, new Point(w / 2, 80))!.StackBelow);
+        Assert.False(window.DropTargetAt(velvet, new Point(w / 2, 80))!.StackBelow);
         // The sides still make columns.
-        Assert.True(window.DropTargetAt(vine, new Point(w - 10, h / 2))!.NewColumn);
+        Assert.True(window.DropTargetAt(velvet, new Point(w - 10, h / 2))!.NewColumn);
 
-        vm.MoveTabToStack(vine, bottom.Column!, below: true);
+        vm.MoveTabToStack(velvet, bottom.Column!, below: true);
         Dispatcher.UIThread.RunJobs();
         var views = window.GetVisualDescendants().OfType<ChatColumnView>().ToList();
         Assert.Equal(2, views.Count);
@@ -247,7 +247,7 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.Equal(h, under.Bottom, 0);
 
         // Over the lower chat's left edge: a new column left of the whole stack.
-        var left = window.DropTargetAt(Tab(vm, "jerma985"), new Point(10, h * 0.75))!;
+        var left = window.DropTargetAt(Tab(vm, "bigtimebramble"), new Point(10, h * 0.75))!;
         Assert.True(left.NewColumn);
         Assert.Equal(0, left.Index);
 
@@ -275,17 +275,17 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         var paneRight = pane.TranslatePoint(new Point(pane.Bounds.Width - 10, pane.Bounds.Height / 2), window)!.Value;
 
         // A plain click selects (and puts on video), no drag.
-        var jerma = TabCenter("jerma985");
-        window.MouseDown(jerma, MouseButton.Left);
-        window.MouseUp(jerma, MouseButton.Left);
+        var bramble = TabCenter("bigtimebramble");
+        window.MouseDown(bramble, MouseButton.Left);
+        window.MouseUp(bramble, MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
-        Assert.Equal("jerma985", vm.FrontTab?.Login);
+        Assert.Equal("bigtimebramble", vm.FrontTab?.Login);
         Assert.Single(vm.Columns);
 
-        // Press on vinesauce, drag to the chat's right edge, let go.
-        var vine = TabCenter("vinesauce");
-        window.MouseDown(vine, MouseButton.Left);
-        window.MouseMove(vine + new Point(20, 0));
+        // Press on velvetcartridge, drag to the chat's right edge, let go.
+        var velvet = TabCenter("velvetcartridge");
+        window.MouseDown(velvet, MouseButton.Left);
+        window.MouseMove(velvet + new Point(20, 0));
         window.MouseMove(paneRight);
         Dispatcher.UIThread.RunJobs();
         Assert.True(window.FindControl<Border>("DropIndicator")!.IsVisible);
@@ -293,8 +293,8 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Dispatcher.UIThread.RunJobs();
 
         Assert.Equal(2, vm.Columns.Count);
-        Assert.Equal("vinesauce", Assert.Single(vm.Columns[1].Tabs).Login);
-        Assert.Equal("jerma985", vm.FrontTab?.Login); // dragging doesn't change the video
+        Assert.Equal("velvetcartridge", Assert.Single(vm.Columns[1].Tabs).Login);
+        Assert.Equal("bigtimebramble", vm.FrontTab?.Login); // dragging doesn't change the video
         Assert.False(window.FindControl<Border>("DropIndicator")!.IsVisible);
         window.Close();
     });
@@ -312,25 +312,25 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
             new(DateTimeOffset.Now, StreamEdge.Chat.ChatMessageKind.Message, login, "someone", "Someone", null, [], $"history line {i}");
 
         // History arrives for a tab in the background, then it's opened.
-        var vine = Tab(vm, "vinesauce");
-        vine.Chat.InsertHistory([.. Enumerable.Range(0, 120).Select(i => Line("vinesauce", i))], "test");
-        vine.SelectCommand.Execute(null);
+        var velvet = Tab(vm, "velvetcartridge");
+        velvet.Chat.InsertHistory([.. Enumerable.Range(0, 120).Select(i => Line("velvetcartridge", i))], "test");
+        velvet.SelectCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
         Assert.True(scroll.Extent.Height > scroll.Viewport.Height * 2);
         Assert.True(AtBottom());
 
         // History arriving for the tab on screen keeps the end in view.
-        var jerma = Tab(vm, "jerma985");
-        jerma.SelectCommand.Execute(null);
+        var bramble = Tab(vm, "bigtimebramble");
+        bramble.SelectCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
-        jerma.Chat.InsertHistory([.. Enumerable.Range(0, 120).Select(i => Line("jerma985", i))], "test");
+        bramble.Chat.InsertHistory([.. Enumerable.Range(0, 120).Select(i => Line("bigtimebramble", i))], "test");
         Dispatcher.UIThread.RunJobs();
         Assert.True(AtBottom());
 
         // Scrolled up to read: new lines don't pull the view down.
         scroll.Offset = scroll.Offset.WithY(0);
         Dispatcher.UIThread.RunJobs();
-        jerma.Chat.Add(Line("jerma985", 999));
+        bramble.Chat.Add(Line("bigtimebramble", 999));
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(0, scroll.Offset.Y);
         window.Close();

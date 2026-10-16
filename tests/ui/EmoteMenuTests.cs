@@ -23,7 +23,7 @@ public class EmoteMenuTests(HeadlessAvalonia ui) : UiTest(ui)
         ],
         new Dictionary<string, EmoteOwner>
         {
-            ["100"] = new("100", "NintenDope503", null),
+            ["100"] = new("100", "PixelPeregrine", null),
             ["200"] = new("200", "OtherStreamer", null),
         }, replace: true);
         return vm;
@@ -40,7 +40,7 @@ public class EmoteMenuTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         var vm = Demo();
         vm.EmoteMenu.Open();
-        Assert.Equal(["NintenDope503", "OtherStreamer", "Twitch"], Headers(vm.EmoteMenu));
+        Assert.Equal(["PixelPeregrine", "OtherStreamer", "Twitch"], Headers(vm.EmoteMenu));
         Assert.Equal(["chanHype", "otherWave", "Kappa"], Codes(vm.EmoteMenu));
     });
 
@@ -74,9 +74,9 @@ public class EmoteMenuTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         var vm = Demo();
         var chat = vm.FrontTab!.Chat;
-        chat.AddOwn(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, "nintendope503", "me", "Me", "#1E90FF",
+        chat.AddOwn(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, "pixelperegrine", "me", "Me", "#1E90FF",
             ["subscriber/12"], "nice chanHype"));
-        chat.Add(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, "nintendope503", "bob", "bob", null,
+        chat.Add(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, "pixelperegrine", "bob", "bob", null,
             [], "nice chanHype"));
 
         Assert.Contains(chat.Lines[^2].Tokens, t => t.Kind == ChatTokenKind.Emote && t.Emote!.Code == "chanHype");

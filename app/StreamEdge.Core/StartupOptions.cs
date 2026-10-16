@@ -3,7 +3,7 @@ namespace StreamEdge;
 
 /// <summary>Command-line switches. Each overrides the matching setting for
 /// this run only; nothing here is written back to settings.json.</summary>
-/// <example><c>StreamEdge --screen 1 --fullscreen --channel nintendope503</c></example>
+/// <example><c>StreamEdge --screen 1 --fullscreen --channel pixelperegrine</c></example>
 public sealed record StartupOptions
 {
     /// <summary>Sample chat and streams, no network.</summary>

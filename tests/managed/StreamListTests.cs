@@ -22,8 +22,8 @@ public class StreamListTests
     [Fact]
     public void HeaderMatchesChattyStyle()
     {
-        var s = new LiveStream("jerma985", "Jerma985", "t", "g", 11455, Now - TimeSpan.FromHours(2.7));
-        Assert.Equal("Jerma985 (11,455 | 2.7h)", s.Header(Now));
+        var s = new LiveStream("bigtimebramble", "BigTimeBramble", "t", "g", 11455, Now - TimeSpan.FromHours(2.7));
+        Assert.Equal("BigTimeBramble (11,455 | 2.7h)", s.Header(Now));
     }
 
     [Theory]

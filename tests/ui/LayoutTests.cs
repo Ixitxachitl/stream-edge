@@ -349,13 +349,13 @@ public class SidesAndFavoritesTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         var window = Open(new AppSettings(), out _);
         var list = window.FindControl<ListBox>("StreamList")!;
-        var jerma = list.GetVisualDescendants().OfType<ListBoxItem>()
-            .Single(i => i.DataContext is StreamItemViewModel { DisplayName: "Jerma985" });
-        var texts = jerma.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
-        Assert.Contains("Jerma985", texts);
+        var bramble = list.GetVisualDescendants().OfType<ListBoxItem>()
+            .Single(i => i.DataContext is StreamItemViewModel { DisplayName: "BigTimeBramble" });
+        var texts = bramble.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+        Assert.Contains("BigTimeBramble", texts);
         Assert.Contains("Grand Theft Auto V", texts);
         Assert.Contains("11.4K", texts);
-        Assert.Contains("J", texts); // avatar placeholder: demo data has no avatars
+        Assert.Contains("B", texts); // avatar placeholder: demo data has no avatars
         window.Close();
     });
 

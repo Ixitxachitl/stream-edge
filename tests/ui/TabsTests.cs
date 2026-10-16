@@ -20,12 +20,12 @@ public class TabsTests(HeadlessAvalonia ui) : UiTest(ui)
     public void DoubleClickOpensInTheFrontTabInPlace() => Ui(() =>
     {
         var vm = Demo(out _);
-        var item = vm.Streams.Items.First(i => i.Stream.Login == "jerma985");
+        var item = vm.Streams.Items.First(i => i.Stream.Login == "bigtimebramble");
 
         item.OpenCommand.Execute(null);
 
         Assert.Single(vm.Tabs);
-        Assert.Equal("jerma985", vm.FrontTab?.Login);
+        Assert.Equal("bigtimebramble", vm.FrontTab?.Login);
         Assert.Same(vm.FrontTab!.Chat, vm.Chat);
     });
 
@@ -34,43 +34,43 @@ public class TabsTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         var vm = Demo(out var settings);
         var front = vm.FrontTab!;
-        vm.Streams.Items.First(i => i.Stream.Login == "vinesauce").OpenInBackgroundCommand.Execute(null);
+        vm.Streams.Items.First(i => i.Stream.Login == "velvetcartridge").OpenInBackgroundCommand.Execute(null);
 
         Assert.Equal(2, vm.Tabs.Count);
         Assert.Same(front, vm.FrontTab);
-        var background = vm.Tabs.Single(t => t.Login == "vinesauce");
+        var background = vm.Tabs.Single(t => t.Login == "velvetcartridge");
         Assert.False(background.IsFront);
-        Assert.Equal(["nintendope503", "vinesauce"], settings.OpenTabs);
+        Assert.Equal(["pixelperegrine", "velvetcartridge"], settings.OpenTabs);
 
         background.SelectCommand.Execute(null);
         Assert.Same(background, vm.FrontTab);
         Assert.True(background.IsFront);
         Assert.False(front.IsFront);
         Assert.Same(background.Chat, vm.Chat);
-        Assert.Equal("vinesauce", settings.Channel);
+        Assert.Equal("velvetcartridge", settings.Channel);
     });
 
     [Fact]
     public void OpeningAnOpenChannelReusesItsTab() => Ui(() =>
     {
         var vm = Demo(out _);
-        vm.Streams.Items.First(i => i.Stream.Login == "vinesauce").OpenInBackgroundCommand.Execute(null);
-        vm.Streams.Items.First(i => i.Stream.Login == "vinesauce").OpenInNewTabCommand.Execute(null);
+        vm.Streams.Items.First(i => i.Stream.Login == "velvetcartridge").OpenInBackgroundCommand.Execute(null);
+        vm.Streams.Items.First(i => i.Stream.Login == "velvetcartridge").OpenInNewTabCommand.Execute(null);
 
         Assert.Equal(2, vm.Tabs.Count);
-        Assert.Equal("vinesauce", vm.FrontTab?.Login);
+        Assert.Equal("velvetcartridge", vm.FrontTab?.Login);
     });
 
     [Fact]
     public void ClosingTheFrontTabPromotesItsNeighbour() => Ui(() =>
     {
         var vm = Demo(out var settings);
-        vm.Streams.Items.First(i => i.Stream.Login == "vinesauce").OpenInBackgroundCommand.Execute(null);
+        vm.Streams.Items.First(i => i.Stream.Login == "velvetcartridge").OpenInBackgroundCommand.Execute(null);
 
         vm.LeaveChannelCommand.Execute(null);
 
-        Assert.Equal("vinesauce", Assert.Single(vm.Tabs).Login);
-        Assert.Equal("vinesauce", vm.FrontTab?.Login);
+        Assert.Equal("velvetcartridge", Assert.Single(vm.Tabs).Login);
+        Assert.Equal("velvetcartridge", vm.FrontTab?.Login);
         vm.LeaveChannelCommand.Execute(null);
         Assert.Empty(vm.Tabs);
         Assert.Null(vm.FrontTab);

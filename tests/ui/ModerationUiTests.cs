@@ -16,7 +16,7 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
         new(new AppSettings { ShowPronouns = false }, new StartupOptions { Demo = true }, InlineDispatcher.Instance);
 
     private static ChatMessage Line(string login, string text, string id) =>
-        new(DateTimeOffset.Now, ChatMessageKind.Message, "nintendope503", login, login, null, [], text)
+        new(DateTimeOffset.Now, ChatMessageKind.Message, "pixelperegrine", login, login, null, [], text)
         { Id = id, UserId = "u-" + login };
 
     /// <summary>The glyphs of clickable bits (mod icons, names) in a line.</summary>
