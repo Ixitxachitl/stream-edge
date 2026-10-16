@@ -142,6 +142,7 @@ public partial class MainWindow : Window
         // Clicks, double-clicks and the wheel over the video land on the
         // native window, never on Avalonia.
         surface.Input += input => vm.OnVideoInput(tab, input);
+        surface.Hover += over => vm.OnVideoHover(tab, over);
         tab.PropertyChanged += OnTabChanged;
         tab.Player.PropertyChanged += OnTabPlayerChanged;
         Videos.Children.Add(surface);

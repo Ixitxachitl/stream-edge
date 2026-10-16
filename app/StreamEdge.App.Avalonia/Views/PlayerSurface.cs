@@ -11,7 +11,7 @@ namespace StreamEdge.AvaloniaApp.Views;
 ///
 /// Being native, nothing Avalonia draws can sit on top of it ("airspace"),
 /// so status and controls live in the pane headers, and transient messages
-/// go through mpv's own OSD.
+/// and the hover info strip go through mpv's own OSD.
 ///
 /// For the same reason Avalonia never sees the mouse over a video. mpv
 /// disables its own window when embedded, so clicks and the wheel go to
@@ -30,6 +30,10 @@ public sealed partial class PlayerSurface : NativeControlHost
     /// <summary>Click, double-click, wheel or Esc over this video, on the
     /// UI thread. Windows only for now.</summary>
     public event Action<VideoInput>? Input;
+
+    /// <summary>The mouse moved onto this video (true) or left it (false),
+    /// on the UI thread. Windows only for now.</summary>
+    public event Action<bool>? Hover;
 
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
@@ -55,6 +59,7 @@ public sealed partial class PlayerSurface : NativeControlHost
     private long _lastDownTime;
     private (int X, int Y) _lastDownAt;
     private int _wheel;
+    private bool _hovering;
 
     private void Hook()
     {
@@ -75,6 +80,21 @@ public sealed partial class PlayerSurface : NativeControlHost
     {
         switch (msg)
         {
+            case WmMouseMove when !_hovering:
+                // Ask for a WM_MOUSELEAVE once the cursor goes.
+                var track = new TrackMouseEventArgs
+                {
+                    Size = (uint)Marshal.SizeOf<TrackMouseEventArgs>(),
+                    Flags = TmeLeave,
+                    Window = hwnd,
+                };
+                _hovering = TrackMouseEvent(ref track);
+                if (_hovering) Hover?.Invoke(true);
+                break;
+            case WmMouseLeave:
+                _hovering = false;
+                Hover?.Invoke(false);
+                break;
             case WmLButtonDown:
                 // The window class has no CS_DBLCLKS, so double-clicks are
                 // timed here, with the user's own double-click settings.
@@ -105,6 +125,9 @@ public sealed partial class PlayerSurface : NativeControlHost
 
     private const int GwlpWndProc = -4;
     private const uint WmKeyDown = 0x0100;
+    private const uint WmMouseMove = 0x0200;
+    private const uint WmMouseLeave = 0x02A3;
+    private const uint TmeLeave = 0x00000002;
     private const uint WmLButtonDown = 0x0201;
     private const uint WmMouseWheel = 0x020A;
     private const int WheelDelta = 120;
@@ -128,6 +151,19 @@ public sealed partial class PlayerSurface : NativeControlHost
 
     [LibraryImport("user32.dll")]
     private static partial uint GetDoubleClickTime();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TrackMouseEventArgs
+    {
+        public uint Size;
+        public uint Flags;
+        public IntPtr Window;
+        public uint HoverTime;
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool TrackMouseEvent(ref TrackMouseEventArgs args);
 
     [LibraryImport("user32.dll")]
     private static partial int GetSystemMetrics(int index);

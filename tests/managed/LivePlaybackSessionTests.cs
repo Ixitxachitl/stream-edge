@@ -115,6 +115,7 @@ public sealed class LivePlaybackSessionTests : IDisposable
         public void SetVolume(int percent) { }
         public void SetMute(bool mute) { }
         public void SetStatusText(string? text) { }
+        public void SetInfoStrip(InfoStrip? strip) { }
         public bool CaptionsOn;
         public void SetCaptions(bool on) => CaptionsOn = on;
     }

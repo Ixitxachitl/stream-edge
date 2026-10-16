@@ -50,6 +50,23 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
     [ObservableProperty]
     private bool _isFront;
 
+    // A video that's no longer the main one keeps no strip.
+    partial void OnIsFrontChanged(bool value)
+    {
+        if (!value) ShowInfoStrip(false);
+    }
+
+    private bool _infoStripShown;
+
+    /// <summary>The stream-info strip along the bottom of this tab's video,
+    /// while the mouse is over it.</summary>
+    internal void ShowInfoStrip(bool show)
+    {
+        if (!show && !_infoStripShown) return;
+        _infoStripShown = show;
+        Video?.SetInfoStrip(show ? Player.InfoStrip(DateTimeOffset.Now) : null);
+    }
+
     /// <summary>The tab its chat column shows.</summary>
     [ObservableProperty]
     private bool _isSelected;

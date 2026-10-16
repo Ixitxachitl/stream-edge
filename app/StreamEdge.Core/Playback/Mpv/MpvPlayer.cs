@@ -181,6 +181,25 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         MpvNative.mpv_set_property_string(_ctx, "osd-msg1", text ?? "");
     }
 
+    public void SetInfoStrip(InfoStrip? strip)
+    {
+        if (_ctx == IntPtr.Zero) return;
+        if (strip is null)
+        {
+            Command("osd-overlay 1 none \"\"");
+            return;
+        }
+        // osd-overlay id format data res_x res_y z hidden compute_bounds;
+        // res_x 0 takes the window's aspect. First lay out just the text,
+        // hidden, to learn how many lines it wrapped to, then draw the band
+        // to fit behind it.
+        var res = InfoStripAss.ResY.ToString(CultureInfo.InvariantCulture);
+        var text = InfoStripAss.TextEvent(strip);
+        var bounds = MpvNative.CommandForInts(_ctx, "osd-overlay", "1", "ass-events", text, "0", res, "0", "yes", "yes");
+        var top = bounds is not null && bounds.TryGetValue("y0", out var y0) ? (int)y0 : InfoStripAss.TwoLineTop;
+        MpvNative.CommandForInts(_ctx, "osd-overlay", "1", "ass-events", InfoStripAss.Build(strip, top), "0", res, "0", "no", "no");
+    }
+
     /// <summary>Any numeric mpv property ("frame-drop-count",
     /// "decoder-frame-drop-count", "avsync"…), or null; for diagnostics.</summary>
     public double? Diagnostic(string property) =>

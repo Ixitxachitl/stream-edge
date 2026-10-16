@@ -4,6 +4,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StreamEdge.Playback;
+using StreamEdge.Ui;
 
 namespace StreamEdge.AvaloniaApp.ViewModels;
 
@@ -31,6 +32,15 @@ public sealed partial class PlayerViewModel : ObservableObject
 
     [ObservableProperty]
     private string _status = "Pick a stream from the list.";
+
+    /// <summary>Viewer count from the live list, -1 when unknown.</summary>
+    internal int Viewers { get; set; } = -1;
+
+    internal DateTimeOffset StartedAt { get; set; }
+
+    /// <summary>What the strip over a hovered video shows, as of now.</summary>
+    internal InfoStrip InfoStrip(DateTimeOffset now) => new(Channel, Title, Game,
+        Viewers < 0 ? null : $"{UiFormats.Viewers(Viewers)} viewers   ·   {UiFormats.Uptime(now - StartedAt)}");
 
     /// <summary>Show the native video surface. Off while there's nothing to
     /// play, so the placeholder text underneath is visible.</summary>

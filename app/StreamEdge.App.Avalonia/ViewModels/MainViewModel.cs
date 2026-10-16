@@ -1051,6 +1051,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>The mouse over a tab's video: the main video shows a strip
+    /// of stream info along its bottom; PIP thumbnails are too small for one.</summary>
+    public void OnVideoHover(ChannelTabViewModel tab, bool over)
+    {
+        if (Tabs.Contains(tab)) tab.ShowInfoStrip(over && tab.IsFront);
+    }
+
     /// <summary>A surface was created but mpv failed to start on it.</summary>
     public void PlayerFailed(ChannelTabViewModel tab, string message)
     {
@@ -1328,6 +1335,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         tab.Player.Channel = stream?.DisplayName ?? tab.DisplayName ?? tab.Login;
         tab.Player.Title = stream?.Title ?? "";
         tab.Player.Game = stream?.Game ?? "";
+        tab.Player.Viewers = stream is { IsLive: true } ? stream.Viewers : -1;
+        tab.Player.StartedAt = stream?.StartedAt ?? default;
         if (tab != FrontTab) return;
         WindowTitle = stream is null
             ? $"#{tab.Login} - StreamEdge"

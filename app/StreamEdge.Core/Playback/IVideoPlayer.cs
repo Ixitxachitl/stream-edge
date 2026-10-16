@@ -28,6 +28,10 @@ public interface IVideoPlayer
     /// <summary>Text that stays on the video until cleared (null), e.g.
     /// "Ad break" while ads are being skipped and the picture is black.</summary>
     void SetStatusText(string? text);
+
+    /// <summary>The stream-info strip along the bottom of the video, shown
+    /// while the mouse is over it; null hides it.</summary>
+    void SetInfoStrip(InfoStrip? strip);
 }
 
 /// <param name="BufferSeconds">Media buffered ahead of the playhead.</param>
