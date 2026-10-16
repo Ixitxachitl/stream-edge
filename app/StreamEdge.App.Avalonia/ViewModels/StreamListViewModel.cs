@@ -35,6 +35,19 @@ public sealed partial class StreamItemViewModel : ObservableObject
 
     public LiveStream Stream { get; }
     public string Title => Stream.Title;
+
+    /// <summary>In a shared chat session: up to two of the other channels'
+    /// icons, drawn over the corner of this one's, as twitch.tv's sidebar.</summary>
+    public IReadOnlyList<SharedAvatar> SharedAvatars => Stream.SharedWith is { } others
+        ? [.. others.Take(2).Select(o => new SharedAvatar(o.DisplayName, o.ProfileImage))]
+        : [];
+
+    public bool IsSharedChat => Stream.IsSharedChat;
+
+    /// <summary>"Shared chat with A, B", in the row's hover card.</summary>
+    public string SharedText => Stream.SharedWith is { Count: > 0 } others
+        ? "Shared chat with " + string.Join(", ", others.Select(o => o.DisplayName))
+        : "";
     public string Game => Stream.IsLive ? Stream.Game : "Offline";
     public bool IsLive => Stream.IsLive;
 
@@ -88,6 +101,12 @@ public sealed partial class StreamItemViewModel : ObservableObject
         Header = Stream.Header(now);
         Uptime = UptimeText(Stream, now);
     }
+}
+
+/// <summary>A small channel icon (its initial until the picture loads).</summary>
+public sealed record SharedAvatar(string Name, Uri? Image)
+{
+    public string Initial => Name.Length > 0 ? char.ToUpperInvariant(Name[0]).ToString() : "?";
 }
 
 public sealed partial class StreamListViewModel : ObservableObject

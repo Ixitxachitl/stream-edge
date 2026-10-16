@@ -207,11 +207,15 @@ public sealed class ChatLine : Border
         if (entry.CanModerate && !entry.IsOwn && !entry.IsDeleted && m.Login is not null
             && m.Kind is ChatMessageKind.Message or ChatMessageKind.Action)
         {
-            if (m.Id is not null) inlines.Add(ModButton("🗑", "Delete message", ModAction.Delete, entry));
+            // A line shared from another channel can only be deleted there.
+            if (m.Id is not null && !entry.IsFromOtherRoom) inlines.Add(ModButton("🗑", "Delete message", ModAction.Delete, entry));
             inlines.Add(ModButton("⏱", "Timeout 10 minutes", ModAction.Timeout, entry));
             inlines.Add(ModButton("⛔", "Ban", ModAction.Ban, entry));
         }
 
+        // Shared chat: the icon of the channel the line was sent in, first,
+        // as twitch.tv draws it.
+        if (m.SourceRoomId is not null && m.Login is not null) inlines.Add(SourceIcon(entry.Source));
         foreach (var badge in entry.Badges) inlines.Add(Badge(badge));
 
         var nameBrush = new SolidColorBrush(Readable(Color.Parse(UserColors.For(m.Login, m.Color))));
@@ -365,6 +369,36 @@ public sealed class ChatLine : Border
         };
         // Standing on the baseline, like the text beside it.
         return new InlineUIContainer(view) { BaselineAlignment = BaselineAlignment.Baseline };
+    }
+
+    /// <summary>A round channel icon (its initial until the picture loads).</summary>
+    private static Inline SourceIcon(StreamEdge.Streams.ChannelInfo? source)
+    {
+        var name = source?.DisplayName ?? "";
+        var icon = new Panel { Width = BadgeHeight, Height = BadgeHeight, Margin = new Thickness(0, 0, 3, 0) };
+        icon.Children.Add(new Border
+        {
+            Background = Brush("#3A3A3D"),
+            CornerRadius = new CornerRadius(BadgeHeight / 2),
+            Child = new TextBlock
+            {
+                Text = name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "",
+                FontSize = 10,
+                FontWeight = FontWeight.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        });
+        if (source?.ProfileImage is { } image)
+            icon.Children.Add(new RemoteImage
+            {
+                Source = image,
+                Stretch = Stretch.UniformToFill,
+                Clip = new EllipseGeometry(new Rect(0, 0, BadgeHeight, BadgeHeight)),
+            });
+        ToolTip.SetTip(icon, name.Length > 0 ? "Sent from " + name : "Sent from a channel in this shared chat");
+        return new InlineUIContainer(new InlineMiddle(icon)) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
     private static Inline Badge(ChatServices.Badge badge)

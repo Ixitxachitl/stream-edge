@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using StreamEdge.Chat;
 using StreamEdge.Chat.Emotes;
+using StreamEdge.Streams;
 using StreamEdge.Ui;
 
 namespace StreamEdge.AvaloniaApp.ViewModels;
@@ -16,8 +17,11 @@ public sealed class ChatServices
     private Dictionary<string, UserEmote> _mine = new(StringComparer.Ordinal);
     private IReadOnlyDictionary<string, EmoteOwner> _owners = new Dictionary<string, EmoteOwner>();
 
+    private readonly HttpClient _http;
+
     public ChatServices(HttpClient http, AppSettings settings, IUiDispatcher ui, Func<string?> selfLogin)
     {
+        _http = http;
         Settings = settings;
         Ui = ui;
         SelfLogin = selfLogin;
@@ -33,6 +37,53 @@ public sealed class ChatServices
     public EmoteRegistry Emotes { get; }
     public TwitchBadges Badges { get; }
     public PronounService Pronouns { get; }
+
+    // ----- Channels by room id (shared chat) ---------------------------------
+
+    private readonly Dictionary<string, ChannelInfo?> _channels = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _channelsLoading = new(StringComparer.Ordinal);
+
+    /// <summary>A channel's name and avatar became known (on the UI thread),
+    /// by room id: lines from it and lists naming it redraw.</summary>
+    public event Action<string>? ChannelLoaded;
+
+    /// <summary>Off in demo mode and tests: channels are only what's remembered.</summary>
+    public bool LookUpChannels { get; set; } = true;
+
+    /// <summary>The channel with this room id, for shared chat's icons and
+    /// names: null until known, and then <see cref="ChannelLoaded"/> fires.
+    /// Looked up once (GQL, so signed out too). Call on the UI thread.</summary>
+    public ChannelInfo? ChannelById(string roomId)
+    {
+        if (_channels.TryGetValue(roomId, out var known)) return known;
+        if (!LookUpChannels || !_channelsLoading.Add(roomId)) return null;
+        _ = Task.Run(async () =>
+        {
+            ChannelInfo? info = null;
+            try
+            {
+                info = await ChannelInfo.FetchByIdAsync(_http, roomId, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+            {
+                // Lines keep a plain placeholder.
+            }
+            Ui.Post(() =>
+            {
+                _channelsLoading.Remove(roomId);
+                if (info is null) return;
+                Remember(roomId, info);
+            });
+        });
+        return null;
+    }
+
+    /// <summary>A channel known from elsewhere (Helix, demo data).</summary>
+    public void Remember(string roomId, ChannelInfo info)
+    {
+        _channels[roomId] = info;
+        ChannelLoaded?.Invoke(roomId);
+    }
 
     /// <summary>Raised after the user's own emotes change (on the UI thread).</summary>
     public event Action? MyEmotesChanged;
@@ -101,8 +152,8 @@ public sealed class ChatServices
     /// Twitch's when the channel has it), then the user's FFZ badges.</summary>
     public IReadOnlyList<Badge> BadgesFor(ChatMessage message, string? roomId)
     {
-        var list = new List<Badge>(message.Badges.Count + 1);
-        foreach (var badge in message.Badges)
+        var list = new List<Badge>(message.ShownBadges.Count + 1);
+        foreach (var badge in message.ShownBadges)
         {
             var set = badge.Split('/')[0];
             var ffz = roomId is null ? null : set switch

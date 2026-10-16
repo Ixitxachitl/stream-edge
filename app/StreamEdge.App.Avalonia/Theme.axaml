@@ -425,6 +425,58 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <!-- Stars stay out of the way: shown when on, or over the row. -->
+  <!-- Shared chat: small round channel icons, ringed in the panel colour
+       so overlapping ones stay apart. -->
+  <Style Selector="Border.sharedAvatar">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="BorderBrush" Value="{StaticResource SePanelBg}" />
+    <Setter Property="Background" Value="{StaticResource SeRule}" />
+  </Style>
+  <Style Selector="Border.sharedAvatar.strip">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="BorderBrush" Value="{StaticResource SePanelAltBg}" />
+  </Style>
+  <Style Selector="Border.sharedAvatar TextBlock">
+    <Setter Property="FontSize" Value="8" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Foreground" Value="{StaticResource SeText}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.sharedAvatar.strip TextBlock">
+    <Setter Property="FontSize" Value="10" />
+  </Style>
+  <!-- Over the bottom-right of a stream's avatar. -->
+  <Style Selector="ListBox.streams ItemsControl.sharedAvatars">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="Margin" Value="0,0,-11,-5" />
+  </Style>
+  <Style Selector="ListBox.streams Border.sharedAvatar">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="#53535F" />
+  </Style>
+  <Style Selector="ListBox.streams Border.sharedAvatar TextBlock">
+    <Setter Property="FontSize" Value="9" />
+  </Style>
+  <Style Selector="Border.sharedStrip">
+    <Setter Property="DockPanel.Dock" Value="Top" />
+    <Setter Property="Background" Value="{StaticResource SePanelAltBg}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SeRule}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="8,4" />
+  </Style>
+  <Style Selector="Border.sharedStrip TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+  </Style>
   <!-- Between open-but-unfollowed channels and followed ones. -->
   <Style Selector="ListBox.streams Border.listSeparator">
     <Setter Property="Height" Value="1" />

@@ -186,6 +186,8 @@
                     Classes.offline="{Binding !IsLive}">
                 <ToolTip.Tip>
                   <StackPanel MaxWidth="360" Spacing="2">
+                    <TextBlock Text="{Binding SharedText}" Foreground="{StaticResource SeAccent}" FontWeight="SemiBold"
+                               IsVisible="{Binding IsSharedChat}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding Uptime}" Foreground="{StaticResource SeTextDim}"
                                FontSize="{StaticResource SeSmallFontSize}" />
@@ -211,6 +213,28 @@
                       <EllipseGeometry Rect="0,0,30,30" />
                     </em:RemoteImage.Clip>
                   </em:RemoteImage>
+                  <!-- Shared chat: the partners' icons over the corner. -->
+                  <ItemsControl Classes="sharedAvatars" ItemsSource="{Binding SharedAvatars}" IsVisible="{Binding IsSharedChat}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="-6" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:SharedAvatar">
+                        <Border Classes="sharedAvatar">
+                          <Panel>
+                            <TextBlock Text="{Binding Initial}" />
+                            <em:RemoteImage Source="{Binding Image}" Stretch="UniformToFill">
+                              <em:RemoteImage.Clip>
+                                <EllipseGeometry Rect="0,0,16,16" />
+                              </em:RemoteImage.Clip>
+                            </em:RemoteImage>
+                          </Panel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </Panel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,6,0">
                   <TextBlock Classes="streamName" Text="{Binding DisplayName}" />

@@ -10,10 +10,26 @@ public static class SampleData
 {
     public const string Channel = "pixelperegrine";
 
+    /// <summary>Made-up user ids (room ids), by login: the same every run.</summary>
+    public static string RoomId(string login)
+    {
+        var sum = 0;
+        foreach (var c in login.ToLowerInvariant()) sum = (sum * 31 + c) % 1_000_000;
+        return (100_000 + sum).ToString();
+    }
+
+    /// <summary>The demo channel shares its chat with these, host first.</summary>
+    public static IReadOnlyList<string> SharedChat { get; } = ["pixelperegrine", "cometcrumb", "mossyledge"];
+
+    /// <summary>Names for the demo's channels, as Twitch would give them.</summary>
+    public static ChannelInfo Info(string login) => new(login.ToLowerInvariant(),
+        Streams(DateTimeOffset.Now).FirstOrDefault(s => s.Login == login.ToLowerInvariant())?.DisplayName ?? login, null, null);
+
     public static IReadOnlyList<LiveStream> Streams(DateTimeOffset now)
     {
         LiveStream S(string name, string title, string game, int viewers, double hours, bool fav = false) =>
-            new(name.ToLowerInvariant(), name, title, game, viewers, now - TimeSpan.FromHours(hours), fav);
+            new(name.ToLowerInvariant(), name, title, game, viewers, now - TimeSpan.FromHours(hours), fav,
+                UserId: RoomId(name));
 
         return
         [
@@ -39,8 +55,14 @@ public static class SampleData
     public static IReadOnlyList<ChatMessage> Chat(DateTimeOffset now)
     {
         var t = now - TimeSpan.FromMinutes(10);
+        // In a shared chat session every line names the channel it was sent in.
+        var here = RoomId(Channel);
         ChatMessage Say(int min, string login, string display, string color, string text, params string[] badges) =>
-            new(t + TimeSpan.FromMinutes(min), ChatMessageKind.Message, Channel, login, display, color, badges, text);
+            new ChatMessage(t + TimeSpan.FromMinutes(min), ChatMessageKind.Message, Channel, login, display, color, badges, text)
+                { SourceRoomId = here, SourceBadges = badges };
+        ChatMessage From(string channel, int min, string login, string display, string color, string text, params string[] badges) =>
+            new ChatMessage(t + TimeSpan.FromMinutes(min), ChatMessageKind.Message, Channel, login, display, color, [], text)
+                { SourceRoomId = RoomId(channel), SourceBadges = badges };
         ChatMessage Member(int min, string text) =>
             new(t + TimeSpan.FromMinutes(min), ChatMessageKind.Membership, Channel, null, null, null, [], text);
 
@@ -54,10 +76,12 @@ public static class SampleData
             Member(2, "JOIN: Tidewalker"),
             Member(2, "PART: Sprocket2210"),
             Member(4, "PART: Tidewalker"),
-            new(t + TimeSpan.FromMinutes(5), ChatMessageKind.Action, Channel, "crittercatchbot", "CritterCatchBot", "#FF6B3D",
-                ["moderator/1"], "A wild Murkrow appears Catch it using !pokecatch (winners revealed in 90s)"),
+            new ChatMessage(t + TimeSpan.FromMinutes(5), ChatMessageKind.Action, Channel, "crittercatchbot", "CritterCatchBot", "#FF6B3D",
+                ["moderator/1"], "A wild Murkrow appears Catch it using !pokecatch (winners revealed in 90s)") { SourceRoomId = here },
             Say(5, "pixelperegrine", "PixelPeregrine", "#B65CFF", "!pokecatch Ultraball", "broadcaster/1"),
             Say(6, "crittercatchbot", "CritterCatchBot", "#FF6B3D", "Murkrow has been caught by: PixelPeregrine", "moderator/1"),
+            From("cometcrumb", 6, "orbitwren", "OrbitWren", "#5DA9A9", "hi from Comet's chat!", "subscriber/12"),
+            From("mossyledge", 6, "ledgeling", "Ledgeling", "#E0A84E", "the shared chat is chaos lol", "vip/1"),
             Say(7, "chattynarwhal", "ChattyNarwhal", "#4E8FD6", "Elden Ring next please") with { CustomRewardId = "next-game" },
         ];
     }

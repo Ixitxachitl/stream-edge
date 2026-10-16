@@ -31,7 +31,26 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
 
     internal sealed record HelixUser(
         [property: JsonPropertyName("id")] string Id,
-        [property: JsonPropertyName("profile_image_url")] string? ProfileImageUrl);
+        [property: JsonPropertyName("profile_image_url")] string? ProfileImageUrl,
+        [property: JsonPropertyName("login")] string? Login = null,
+        [property: JsonPropertyName("display_name")] string? DisplayName = null);
+
+    /// <summary>Names and small avatars for these user ids, by id.</summary>
+    public async Task<IReadOnlyDictionary<string, ChannelInfo>> GetUsersAsync(
+        IReadOnlyCollection<string> userIds, CancellationToken ct)
+    {
+        var users = new Dictionary<string, ChannelInfo>();
+        foreach (var batch in userIds.Distinct().Chunk(UsersPerRequest))
+        {
+            var url = "https://api.twitch.tv/helix/users?" + string.Join("&", batch.Select(id => "id=" + Uri.EscapeDataString(id)));
+            var page = await GetAsync<UsersPage>(url, ct).ConfigureAwait(false);
+            foreach (var u in page?.Data ?? [])
+                if (u.Login is { Length: > 0 } login)
+                    users[u.Id] = new ChannelInfo(login, string.IsNullOrEmpty(u.DisplayName) ? login : u.DisplayName,
+                        null, ParseProfileImage(u.ProfileImageUrl));
+        }
+        return users;
+    }
 
     /// <summary>Helix takes at most this many ids per "Get Users" request.</summary>
     private const int UsersPerRequest = 100;
@@ -108,6 +127,28 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
                   + $"&broadcaster_id={Uri.EscapeDataString(broadcasterId)}";
         var page = await GetAsync<FollowedPage>(url, ct).ConfigureAwait(false);
         return page?.Data.Count > 0;
+    }
+
+    internal sealed record SharedChatPage([property: JsonPropertyName("data")] List<SharedChatSession> Data);
+
+    internal sealed record SharedChatSession(
+        [property: JsonPropertyName("host_broadcaster_id")] string? HostId,
+        [property: JsonPropertyName("participants")] List<SharedChatParticipant>? Participants);
+
+    internal sealed record SharedChatParticipant([property: JsonPropertyName("broadcaster_id")] string BroadcasterId);
+
+    /// <summary>Helix "Get Shared Chat Session": the channels sharing chat
+    /// with this one, host first and this one included; empty when it isn't
+    /// in a session.</summary>
+    public async Task<IReadOnlyList<string>> GetSharedChatAsync(string broadcasterId, CancellationToken ct)
+    {
+        var page = await GetAsync<SharedChatPage>(
+            "https://api.twitch.tv/helix/shared_chat/session?broadcaster_id=" + Uri.EscapeDataString(broadcasterId), ct).ConfigureAwait(false);
+        if (page?.Data.FirstOrDefault() is not { Participants: { Count: > 0 } participants } session) return [];
+        var ids = participants.Select(p => p.BroadcasterId).ToList();
+        // Host first, as twitch.tv lists them.
+        if (session.HostId is { } host && ids.Remove(host)) ids.Insert(0, host);
+        return ids;
     }
 
     internal sealed record FollowedPage([property: JsonPropertyName("data")] List<System.Text.Json.JsonElement> Data);

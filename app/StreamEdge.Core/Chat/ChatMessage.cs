@@ -90,6 +90,27 @@ public sealed record ChatMessage(
     /// redeeming this channel-points reward (one that asks for text).</summary>
     public string? CustomRewardId { get; init; }
 
+    /// <summary>Shared chat: tag <c>source-room-id</c>, the channel the line
+    /// was sent in. Twitch sets it on every line while the channel is in a
+    /// shared chat session (its own lines too), and never otherwise.</summary>
+    public string? SourceRoomId { get; init; }
+
+    /// <summary>Shared chat: tag <c>source-id</c>, the message's id in the
+    /// channel it was sent in; a deletion there names this one.</summary>
+    public string? SourceId { get; init; }
+
+    /// <summary>Shared chat: tag <c>source-badges</c>, the sender's badges
+    /// in the channel the line was sent in, which twitch.tv shows.</summary>
+    public IReadOnlyList<string>? SourceBadges { get; init; }
+
+    /// <summary>The badges twitch.tv draws: the sender's in the channel the
+    /// line came from.</summary>
+    public IReadOnlyList<string> ShownBadges => SourceBadges ?? Badges;
+
+    /// <summary>Sent in another channel of a shared chat session than
+    /// <paramref name="roomId"/> (this tab's).</summary>
+    public bool IsFromOtherRoom(string? roomId) => SourceRoomId is { } source && roomId is not null && source != roomId;
+
     public bool IsReply => ReplyParentName is not null;
 
     public static ChatMessage System(string channel, string text, DateTimeOffset at) =>
@@ -146,7 +167,14 @@ public sealed record ChatMessage(
         Id = irc.Tag("id"),
         UserId = irc.Tag("user-id"),
         TwitchEmotes = ParseEmotes(irc.Tag("emotes"), emoteText, emoteOffset),
-        MsgId = irc.Tag("msg-id"),
+        // A sub, raid or announcement in another channel of a shared chat
+        // comes as "sharedchatnotice"; what it was is in source-msg-id.
+        MsgId = irc.Tag("msg-id") == "sharedchatnotice" ? irc.Tag("source-msg-id") ?? "sharedchatnotice" : irc.Tag("msg-id"),
+        SourceRoomId = irc.Tag("source-room-id") is { Length: > 0 } source ? source : null,
+        SourceId = irc.Tag("source-id"),
+        SourceBadges = irc.Tag("source-room-id") is { Length: > 0 } && irc.Tag("source-badges") is { } sourceBadges
+            ? sourceBadges.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            : null,
         AnimationId = irc.Tag("animation-id"),
         IsFirstMessage = irc.Tag("first-msg") == "1",
         ReplyParentName = irc.Tag("reply-parent-display-name") ?? irc.Tag("reply-parent-user-login"),

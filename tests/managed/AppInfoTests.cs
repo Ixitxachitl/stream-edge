@@ -7,11 +7,14 @@ namespace StreamEdge.Tests;
 
 public class AppInfoTests
 {
+    private static string ThisFile([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
+
     [Fact]
     public void VersionIsTheOneDeclaredForTheBuild()
     {
-        // Walk up from the test binaries to the repo's Directory.Build.props.
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        // Walk up from this source file (the binaries may be built anywhere)
+        // to the repo's Directory.Build.props.
+        var dir = new FileInfo(ThisFile()).Directory;
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Directory.Build.props"))) dir = dir.Parent;
         Assert.NotNull(dir);
         var declared = XDocument.Load(Path.Combine(dir.FullName, "Directory.Build.props"))

@@ -17,8 +17,12 @@ public sealed record LiveStream(
     bool IsFavorite = false,
     string? UserId = null,
     Uri? ProfileImage = null,
-    bool IsLive = true)
+    bool IsLive = true,
+    IReadOnlyList<ChannelInfo>? SharedWith = null)
 {
+    /// <summary>In a shared chat session with these channels (not itself).</summary>
+    public bool IsSharedChat => SharedWith is { Count: > 0 };
+
     public TimeSpan Uptime(DateTimeOffset now) => now - StartedAt;
 
     /// <summary>The list header: "CometCrumb (57 | 2.4h)".</summary>

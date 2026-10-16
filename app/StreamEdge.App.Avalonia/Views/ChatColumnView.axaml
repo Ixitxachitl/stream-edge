@@ -246,6 +246,34 @@
         </Popup>
       </Panel>
     </DockPanel>
+    <!-- Shared chat: which channels' chats are mixed in, as twitch.tv says
+         above its chat. Each line carries its channel's icon. -->
+    <Border Classes="sharedStrip" IsVisible="{Binding Chat.IsShared}" ToolTip.Tip="{Binding Chat.SharedSummary}">
+      <DockPanel>
+        <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding Chat.SharedChannels}" Margin="0,0,8,0">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="-5" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:SharedChannel">
+              <Border Classes="sharedAvatar strip" ToolTip.Tip="{Binding Name}">
+                <Panel>
+                  <TextBlock Text="{Binding Initial}" />
+                  <em:RemoteImage Source="{Binding ProfileImage}" Stretch="UniformToFill">
+                    <em:RemoteImage.Clip>
+                      <EllipseGeometry Rect="0,0,20,20" />
+                    </em:RemoteImage.Clip>
+                  </em:RemoteImage>
+                </Panel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Text="{Binding Chat.SharedSummary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      </DockPanel>
+    </Border>
     <Panel>
     <ScrollViewer x:Name="ChatScroll" HorizontalScrollBarVisibility="Disabled">
       <ScrollViewer.ContextMenu>

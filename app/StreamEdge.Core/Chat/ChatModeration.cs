@@ -34,6 +34,10 @@ public sealed record ChatModeration(ChatModerationKind Kind, string Channel, Dat
     /// <summary>Text of the deleted message (CLEARMSG trailing), if any.</summary>
     public string? DeletedText { get; init; }
 
+    /// <summary>Shared chat: tag <c>source-room-id</c>, the channel the
+    /// moderator acted in; may be another channel of the session.</summary>
+    public string? SourceRoomId { get; init; }
+
     public static ChatModeration? FromIrc(IrcMessage irc) => FromIrc(irc, DateTimeOffset.Now);
 
     /// <summary>A moderation event for CLEARMSG/CLEARCHAT, null for any
@@ -52,12 +56,13 @@ public sealed record ChatModeration(ChatModerationKind Kind, string Channel, Dat
                     TargetMessageId = target,
                     TargetLogin = irc.Tag("login"),
                     DeletedText = irc.Params.Count > 1 ? irc.Trailing : null,
+                    SourceRoomId = SourceRoom(irc),
                 };
             case "CLEARCHAT":
                 // "CLEARCHAT #chan" clears everything; "CLEARCHAT #chan :login" one user.
                 var login = irc.Params.Count > 1 ? irc.Trailing : null;
                 if (string.IsNullOrEmpty(login))
-                    return new ChatModeration(ChatModerationKind.ClearChat, channel, at);
+                    return new ChatModeration(ChatModerationKind.ClearChat, channel, at) { SourceRoomId = SourceRoom(irc) };
                 return new ChatModeration(ChatModerationKind.ClearUser, channel, at)
                 {
                     TargetLogin = login,
@@ -65,9 +70,12 @@ public sealed record ChatModeration(ChatModerationKind Kind, string Channel, Dat
                     Duration = int.TryParse(irc.Tag("ban-duration"), out var s) && s > 0
                         ? TimeSpan.FromSeconds(s)
                         : null,
+                    SourceRoomId = SourceRoom(irc),
                 };
             default:
                 return null;
         }
     }
+
+    private static string? SourceRoom(IrcMessage irc) => irc.Tag("source-room-id") is { Length: > 0 } room ? room : null;
 }

@@ -53,6 +53,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Services.Badges.Changed += room => _ui.Post(() => RenderChats(room));
         // Own lines drawn before the user's emotes arrived get them now.
         Services.MyEmotesChanged += () => RenderChats(null);
+        // Shared chat: a channel's name and icon arrived.
+        Services.ChannelLoaded += OnChannelLoaded;
+        if (options.Demo) Services.LookUpChannels = false;
         EmoteMenu = new EmoteMenuViewModel(Services, () => ActiveTab, Account);
         ModMenu = new ModMenuViewModel(() => ActiveTab, Moderation);
         Columns.CollectionChanged += (_, _) => OnSplitsChanged();
@@ -228,12 +231,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var sample = SampleData.Streams(now);
         foreach (var s in sample.Where(s => s.IsFavorite && !_settings.IsFavorite(s.Login)))
             _settings.ToggleFavorite(s.Login);
+        // The demo channel shares its chat, as on twitch.tv.
+        foreach (var login in SampleData.Streams(now).Select(s => s.Login))
+            Services.Remember(SampleData.RoomId(login), SampleData.Info(login));
+        var shared = SampleData.SharedChat.Select(SampleData.RoomId).ToList();
+        foreach (var room in shared) _sharedSessions[room] = shared;
+        sample = [.. sample.Select(WithSharedChat)];
         Streams.Set(sample, now);
         var tab = OpenChannel(SampleData.Channel, OpenMode.NewTab)!;
         tab.Chat.Clear();
         foreach (var line in SampleData.Chat(now)) tab.Chat.Add(line);
         tab.Chat.Roster.AddNames(SampleData.Lurkers);
         tab.Chat.Points = SampleData.Points();
+        tab.Chat.RoomId = SampleData.RoomId(SampleData.Channel);
+        tab.Chat.SetSharedSession(shared);
         tab.Chat.Status = "Demo data";
         tab.Player.Status = "Demo mode: no playback.";
     }
@@ -282,7 +293,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Token = Account.IsSignedIn ? Account.AccessToken : null,
             Login = Account.IsSignedIn ? Account.Login : null,
         };
-        client.MessageReceived += m => _ui.Post(() => TabFor(m.Channel)?.Chat.Add(m));
+        client.MessageReceived += m => _ui.Post(() => OnChatMessage(m));
         client.ModerationReceived += m => _ui.Post(() => TabFor(m.Channel)?.Chat.Apply(m));
         client.NamesReceived += (channel, names) => _ui.Post(() => TabFor(channel)?.Chat.Roster.AddNames(names));
         client.RoomStateReceived += (channel, roomId) => _ui.Post(() => OnRoomState(channel, roomId));
@@ -918,7 +929,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// or all of them for globals (null).</summary>
     private void RenderChats(string? roomId)
     {
-        foreach (var tab in Tabs.Where(t => roomId is null || t.RoomId == roomId)) tab.Chat.RenderAll();
+        // Shared chat: lines from another channel use its emotes and badges.
+        foreach (var tab in Tabs.Where(t => roomId is null || t.RoomId == roomId || t.Chat.SharedRooms.Contains(roomId)
+                                            || t.Chat.Lines.Any(l => l.Message.SourceRoomId == roomId)))
+            tab.Chat.RenderAll();
     }
 
     /// <summary>GIFs drawn in chat, or left as their "[title]" text.</summary>
@@ -1045,6 +1059,100 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var tab in Tabs) tab.Session?.Tick(now);
     }
 
+    // ----- Shared chat ----------------------------------------------------
+
+    private static readonly TimeSpan SharedChatRefresh = TimeSpan.FromMinutes(3);
+
+    /// <summary>Shared chat sessions by broadcaster id: every channel in it,
+    /// host first. Channels not in one aren't in here.</summary>
+    private readonly Dictionary<string, IReadOnlyList<string>> _sharedSessions = [];
+    private DateTimeOffset _lastFollowedSharedCheck = DateTimeOffset.MinValue;
+
+    /// <summary>Other channels' rooms whose emotes and badges are loaded for
+    /// lines shared from them.</summary>
+    private readonly HashSet<string> _sharedRoomsLoaded = [];
+
+    private void OnChatMessage(ChatMessage m)
+    {
+        if (TabFor(m.Channel) is not { } tab) return;
+        tab.Chat.Add(m);
+        if (m.IsFromOtherRoom(tab.RoomId) && m.SourceRoomId is { } source) LoadSharedRoom(source);
+    }
+
+    /// <summary>A line shared from a channel that isn't open: its emotes and
+    /// badges, so the line looks as it does there.</summary>
+    private void LoadSharedRoom(string room)
+    {
+        if (_options.Demo || !_sharedRoomsLoaded.Add(room)) return;
+        _ = Services.Emotes.LoadChannelAsync(room, _stop.Token);
+        if (Account.IsSignedIn && Account.AccessToken is { } token)
+            _ = Services.Badges.LoadChannelAsync(_http, _settings.EffectiveClientId, token, room, _stop.Token);
+    }
+
+    private void OnChannelLoaded(string room)
+    {
+        RenderChats(room);
+        foreach (var tab in Tabs.Where(t => t.Chat.SharedRooms.Contains(room))) tab.Chat.RefreshSharedChannels();
+        // The stream list names a session's channels.
+        if (_sharedSessions.ContainsKey(room))
+        {
+            Streams.Set([.. Streams.Followed.Select(WithSharedChat)], DateTimeOffset.Now);
+            UpdateWatched();
+        }
+    }
+
+    /// <summary>The stream as twitch.tv lists it: with the channels it
+    /// shares chat with, by name and icon.</summary>
+    private LiveStream WithSharedChat(LiveStream s)
+    {
+        if (s.UserId is not { } id || !_sharedSessions.TryGetValue(id, out var session))
+            return s.SharedWith is null ? s : s with { SharedWith = null };
+        return s with
+        {
+            SharedWith = [.. session.Where(r => r != id)
+                .Select(r => Services.ChannelById(r) ?? new ChannelInfo("", "…", null, null))],
+        };
+    }
+
+    /// <summary>Asks Twitch which channels share chat: the open tabs' every
+    /// refresh, the followed live ones every few minutes (one request each).</summary>
+    private async Task RefreshSharedChatsAsync(HelixClient helix, IReadOnlyList<LiveStream> live)
+    {
+        var now = DateTimeOffset.Now;
+        var ids = Tabs.Select(t => t.RoomId).OfType<string>().ToHashSet();
+        var followed = now - _lastFollowedSharedCheck >= SharedChatRefresh;
+        if (followed)
+        {
+            _lastFollowedSharedCheck = now;
+            ids.UnionWith(live.Select(s => s.UserId).OfType<string>());
+        }
+        try
+        {
+            foreach (var id in ids)
+            {
+                var session = await helix.GetSharedChatAsync(id, _stop.Token);
+                if (session.Count > 1) _sharedSessions[id] = session;
+                else _sharedSessions.Remove(id);
+            }
+            // Followed channels not asked this time keep their last answer;
+            // ones no longer live drop out.
+            if (followed)
+                foreach (var gone in _sharedSessions.Keys.Where(k => !ids.Contains(k)).ToList()) _sharedSessions.Remove(gone);
+            var unknown = _sharedSessions.Values.SelectMany(v => v).Distinct()
+                .Where(r => Services.ChannelById(r) is null).ToList();
+            if (unknown.Count > 0)
+                foreach (var (id, info) in await helix.GetUsersAsync(unknown, _stop.Token))
+                    Services.Remember(id, info);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            return;
+        }
+        foreach (var tab in Tabs)
+            if (tab.RoomId is { } room)
+                tab.Chat.SetSharedSession(_sharedSessions.TryGetValue(room, out var s) ? s : []);
+    }
+
     // ----- Raids ----------------------------------------------------------
 
     public bool FollowRaids
@@ -1155,7 +1263,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (followedLive.Contains(t.Login)) continue;
             if (signedIn && (t.RoomId is not { } room || _follows.GetValueOrDefault(room, true))) continue;
             watched.Add(_watchedLive.TryGetValue(t.Login, out var live)
-                ? live with { ProfileImage = live.ProfileImage ?? t.Player.ProfileImage }
+                ? WithSharedChat(live with { ProfileImage = live.ProfileImage ?? t.Player.ProfileImage })
                 // No stream info: live is whether it's playing.
                 : new LiveStream(t.Login, t.DisplayName ?? t.Login, "", t.Player.Game, -1, default,
                     ProfileImage: t.Player.ProfileImage,
@@ -1230,7 +1338,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var helix = new HelixClient(_http, _settings.EffectiveClientId, token);
             var live = await helix.GetFollowedStreamsAsync(Account.UserId, _stop.Token);
             live = await WithAvatarsAsync(helix, live);
-            Streams.Set(live, DateTimeOffset.Now);
+            await RefreshSharedChatsAsync(helix, live);
+            Streams.Set([.. live.Select(WithSharedChat)], DateTimeOffset.Now);
             Streams.EmptyText = "No followed channels are live.";
             foreach (var tab in Tabs) ShowChannelInfo(tab);
             await RefreshWatchedAsync();

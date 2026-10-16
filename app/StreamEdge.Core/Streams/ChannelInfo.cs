@@ -15,12 +15,23 @@ public sealed record ChannelInfo(string Login, string DisplayName, Uri? OfflineI
     private const string Query =
         "query ChannelLook($login: String!) { user(login: $login) { login displayName offlineImageURL profileImageURL(width: 300) } }";
 
-    public static async Task<ChannelInfo?> FetchAsync(HttpClient http, string login, CancellationToken ct)
+    private const string ByIdQuery =
+        "query ChannelLookById($id: ID!) { user(id: $id) { login displayName offlineImageURL profileImageURL(width: 70) } }";
+
+    public static Task<ChannelInfo?> FetchAsync(HttpClient http, string login, CancellationToken ct) =>
+        QueryAsync(http, Query, new JsonObject { ["login"] = login }, ct);
+
+    /// <summary>By numeric id (a room id), with the small avatar shared chat
+    /// draws beside each line.</summary>
+    public static Task<ChannelInfo?> FetchByIdAsync(HttpClient http, string id, CancellationToken ct) =>
+        QueryAsync(http, ByIdQuery, new JsonObject { ["id"] = id }, ct);
+
+    private static async Task<ChannelInfo?> QueryAsync(HttpClient http, string query, JsonObject variables, CancellationToken ct)
     {
         var body = new JsonObject
         {
-            ["query"] = Query,
-            ["variables"] = new JsonObject { ["login"] = login },
+            ["query"] = query,
+            ["variables"] = variables,
         };
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://gql.twitch.tv/gql")
         {
