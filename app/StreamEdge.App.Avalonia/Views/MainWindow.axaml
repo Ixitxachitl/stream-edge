@@ -135,7 +135,7 @@
           </Button>
           <Button DockPanel.Dock="Right" Content="⇅" ToolTip.Tip="Change sort" Command="{Binding Streams.CycleSortCommand}" />
           <Button DockPanel.Dock="Right" Content="⟳" ToolTip.Tip="Refresh the live list (and retry offline tabs)" Command="{Binding RefreshCommand}" />
-          <TextBlock Text="{Binding Streams.Header}" />
+          <TextBlock Text="{Binding Streams.Header}" ToolTip.Tip="{Binding Streams.HeaderTip}" />
         </DockPanel>
       </Border>
       <!-- Join any channel: suggestions as you type, as on twitch.tv. -->

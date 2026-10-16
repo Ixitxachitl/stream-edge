@@ -61,6 +61,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Columns.CollectionChanged += (_, _) => OnSplitsChanged();
         Activate(AddColumn(0));
         Account.AccountChanged += () => _ = OnAccountChangedAsync();
+        // Same account, new token: chat reconnects with it from now on.
+        Account.TokenRenewed += token => _ui.Post(() =>
+        {
+            if (_chat is not null) _chat.Token = token;
+        });
         Streams.OpenRequested += (login, mode) => OpenChannel(login, mode);
         Search = new ChannelSearchViewModel(LocalChannels, SearchChannelsAsync, (login, mode) => OpenChannel(login, mode), ui);
 
@@ -1128,9 +1133,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         try
         {
-            foreach (var id in ids)
+            // A few at a time: one request per channel adds up.
+            var answers = new Dictionary<string, IReadOnlyList<string>>();
+            using var gate = new SemaphoreSlim(6);
+            await Task.WhenAll(ids.Select(async id =>
             {
-                var session = await helix.GetSharedChatAsync(id, _stop.Token);
+                await gate.WaitAsync(_stop.Token);
+                try
+                {
+                    var session = await helix.GetSharedChatAsync(id, _stop.Token);
+                    lock (answers) answers[id] = session;
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }));
+            foreach (var (id, session) in answers)
+            {
                 if (session.Count > 1) _sharedSessions[id] = session;
                 else _sharedSessions.Remove(id);
             }
@@ -1323,30 +1343,61 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await RefreshStreamsAsync();
     }
 
+    private int _streamRefreshes;
+
     private async Task RefreshStreamsAsync()
     {
         _lastStreamRefresh = DateTimeOffset.Now;
-        if (!Account.IsSignedIn || Account.UserId is null || Account.AccessToken is not { } token)
-        {
-            Streams.Set([], DateTimeOffset.Now);
-            Streams.EmptyText = "Log in to see which channels you follow are live.";
-            UpdateWatched();
-            return;
-        }
+        // The ⟳ button and the timer can overlap; the later one's answer wins.
+        var mine = ++_streamRefreshes;
         try
         {
-            var helix = new HelixClient(_http, _settings.EffectiveClientId, token);
-            var live = await helix.GetFollowedStreamsAsync(Account.UserId, _stop.Token);
+            var token = Account.IsSignedIn ? await Account.FreshTokenAsync(_stop.Token) : null;
+            if (Account.UserId is not { } me || token is null)
+            {
+                Streams.Set([], DateTimeOffset.Now);
+                Streams.EmptyText = "Log in to see which channels you follow are live.";
+                Streams.RefreshProblem = null;
+                UpdateWatched();
+                return;
+            }
+            IReadOnlyList<LiveStream> live;
+            HelixClient helix;
+            try
+            {
+                helix = new HelixClient(_http, _settings.EffectiveClientId, token);
+                live = await helix.GetFollowedStreamsAsync(me, _stop.Token);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                // Revoked or expired early: renew and try once more.
+                if (await Account.FreshTokenAsync(_stop.Token, force: true) is not { } renewed) return;
+                helix = new HelixClient(_http, _settings.EffectiveClientId, renewed);
+                live = await helix.GetFollowedStreamsAsync(me, _stop.Token);
+            }
             live = await WithAvatarsAsync(helix, live);
-            await RefreshSharedChatsAsync(helix, live);
+            if (mine != _streamRefreshes) return;
+            // The list first; who shares chat is filled in after (one
+            // request per live channel) and the list redrawn with it.
             Streams.Set([.. live.Select(WithSharedChat)], DateTimeOffset.Now);
             Streams.EmptyText = "No followed channels are live.";
+            Streams.RefreshProblem = null;
             foreach (var tab in Tabs) ShowChannelInfo(tab);
             await RefreshWatchedAsync();
+            await RefreshSharedChatsAsync(helix, live);
+            if (mine == _streamRefreshes) Streams.Set([.. live.Select(WithSharedChat)], DateTimeOffset.Now);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException && !_stop.IsCancellationRequested)
         {
-            Streams.EmptyText = "Could not load streams: " + ex.Message;
+            // Said in the header too: with streams already listed, the empty
+            // text never shows and a failed refresh looked like no change.
+            var why = ex is OperationCanceledException ? "Twitch didn't answer in time" : ex.Message;
+            Streams.EmptyText = "Could not load streams: " + why;
+            Streams.RefreshProblem = "Couldn't refresh: " + why;
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutting down.
         }
     }
 

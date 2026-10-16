@@ -132,7 +132,15 @@ public sealed partial class StreamListViewModel : ObservableObject
     [ObservableProperty]
     private string _emptyText = "Log in to see which channels you follow are live.";
 
-    public string Header => $"Live Streams ({_source.Count}) [Sorting: {Sort}]";
+    public string Header => $"Live Streams ({_source.Count}) [Sorting: {Sort}]" + (RefreshProblem is null ? "" : " ⚠");
+
+    /// <summary>Why the last refresh failed (the list shows what it had
+    /// before), or null; the header flags it and its tooltip says why.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Header), nameof(HeaderTip))]
+    private string? _refreshProblem;
+
+    public string HeaderTip => RefreshProblem ?? "Live channels you follow";
 
     /// <summary>No rows at all.</summary>
     public bool IsEmpty => Items.Count == 0;

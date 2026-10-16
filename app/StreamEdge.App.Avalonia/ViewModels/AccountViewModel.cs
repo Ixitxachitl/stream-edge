@@ -24,6 +24,10 @@ public sealed partial class AccountViewModel : ObservableObject
     /// <summary>Raised on the UI thread after sign-in or sign-out.</summary>
     public event Action? AccountChanged;
 
+    /// <summary>The access token was renewed (same account): whatever holds
+    /// a copy, like the chat connection, takes the new one.</summary>
+    public event Action<string>? TokenRenewed;
+
     public string? Login => _settings.AccountLogin;
     public string? UserId => _settings.AccountUserId;
     public bool IsSignedIn => Login is not null && SecretStore.Get(SecretStore.OAuthToken) is not null;
@@ -84,6 +88,7 @@ public sealed partial class AccountViewModel : ObservableObject
                 return;
             }
             NoteScopes(who);
+            NoteValidated(who);
             SecretStore.Set(SecretStore.OAuthToken, tokens.AccessToken);
             SecretStore.Set(SecretStore.RefreshToken, tokens.RefreshToken);
             _settings.AccountLogin = who.Login;
@@ -151,32 +156,76 @@ public sealed partial class AccountViewModel : ObservableObject
         OnPropertyChanged(nameof(CanReadChatters));
     }
 
-    public async Task RestoreAsync(CancellationToken ct)
+    public Task RestoreAsync(CancellationToken ct) => FreshTokenAsync(ct, force: true);
+
+    // ----- Keeping the token valid -------------------------------------------
+
+    /// <summary>Twitch asks apps to validate tokens hourly.</summary>
+    private static readonly TimeSpan ValidateEvery = TimeSpan.FromHours(1);
+
+    /// <summary>Renewed this long before it runs out, not after.</summary>
+    private static readonly TimeSpan RenewAhead = TimeSpan.FromMinutes(10);
+
+    private readonly SemaphoreSlim _renewing = new(1, 1);
+    private DateTimeOffset _validatedAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _expiresAt = DateTimeOffset.MaxValue;
+
+    private void NoteValidated(TwitchAuth.Identity identity)
     {
-        if (AccessToken is not { } token) return;
-        var auth = new TwitchAuth(_http, _settings.EffectiveClientId);
+        _validatedAt = DateTimeOffset.UtcNow;
+        // 0 means it doesn't expire.
+        _expiresAt = identity.ExpiresIn > 0 ? _validatedAt.AddSeconds(identity.ExpiresIn) : DateTimeOffset.MaxValue;
+    }
+
+    /// <summary>A token Twitch will accept now, renewed with the refresh
+    /// token when it has run out or is about to (user tokens last about four
+    /// hours, and this app runs all day); null when signed out, or signed
+    /// out now because Twitch no longer takes either token. Offline keeps
+    /// the token for later. <paramref name="force"/>: check now (after a 401).</summary>
+    public async Task<string?> FreshTokenAsync(CancellationToken ct, bool force = false)
+    {
+        await _renewing.WaitAsync(ct);
         try
         {
-            if (await auth.ValidateAsync(token, ct) is { } valid)
+            if (AccessToken is not { } token) return null;
+            var now = DateTimeOffset.UtcNow;
+            if (!force && now - _validatedAt < ValidateEvery && _expiresAt - now > RenewAhead) return token;
+
+            var auth = new TwitchAuth(_http, _settings.EffectiveClientId);
+            try
             {
-                NoteScopes(valid);
-                return;
+                if (await auth.ValidateAsync(token, ct) is { } valid && valid.ExpiresIn is 0 or > 600)
+                {
+                    NoteScopes(valid);
+                    NoteValidated(valid);
+                    return token;
+                }
+                if (SecretStore.Get(SecretStore.RefreshToken) is { } refresh
+                    && await auth.RefreshAsync(refresh, ct) is { } fresh)
+                {
+                    SecretStore.Set(SecretStore.OAuthToken, fresh.AccessToken);
+                    SecretStore.Set(SecretStore.RefreshToken, fresh.RefreshToken ?? refresh);
+                    if (await auth.ValidateAsync(fresh.AccessToken, ct) is { } renewed)
+                    {
+                        NoteScopes(renewed);
+                        NoteValidated(renewed);
+                    }
+                    TokenRenewed?.Invoke(fresh.AccessToken);
+                    return fresh.AccessToken;
+                }
             }
-            if (SecretStore.Get(SecretStore.RefreshToken) is { } refresh
-                && await auth.RefreshAsync(refresh, ct) is { } fresh)
+            catch (HttpRequestException)
             {
-                SecretStore.Set(SecretStore.OAuthToken, fresh.AccessToken);
-                SecretStore.Set(SecretStore.RefreshToken, fresh.RefreshToken ?? refresh);
-                if (await auth.ValidateAsync(fresh.AccessToken, ct) is { } renewed) NoteScopes(renewed);
-                return;
+                // Offline: keep the token and try again later.
+                return token;
             }
+            SignOut();
+            return null;
         }
-        catch (HttpRequestException)
+        finally
         {
-            // Offline: keep the token and try again next start.
-            return;
+            _renewing.Release();
         }
-        SignOut();
     }
 
     [RelayCommand]

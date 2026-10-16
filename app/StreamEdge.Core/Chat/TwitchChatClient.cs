@@ -21,8 +21,15 @@ public sealed class TwitchChatClient : IAsyncDisposable
     private Task? _loop;
 
     /// <summary>OAuth user token (without the "oauth:" prefix) and its login.
-    /// Both null means read-only anonymous chat.</summary>
-    public string? Token { get; init; }
+    /// Both null means read-only anonymous chat. The token can be swapped
+    /// for a renewed one; the next (re)connect uses it.</summary>
+    public string? Token
+    {
+        get => Volatile.Read(ref _token);
+        set => Volatile.Write(ref _token, value);
+    }
+
+    private string? _token;
     public string? Login { get; init; }
 
     public event Action<ChatMessage>? MessageReceived;
