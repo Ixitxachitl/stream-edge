@@ -45,8 +45,22 @@ public sealed record CatchUpOptions
 
     public TimeSpan StallWindow { get; init; } = TimeSpan.FromSeconds(60);
 
-    /// <summary>Stall-free this long after a downgrade, try one step back up.</summary>
+    /// <summary>Stall-free this long after a downgrade, try one step back up
+    /// (the fallback when a probe can't tell; see <see cref="ProbeAfter"/>).</summary>
     public TimeSpan UpgradeAfter { get; init; } = TimeSpan.FromMinutes(3);
+
+    /// <summary>Stall-free this long after a step, the next quality up may be
+    /// probed: one of its segments timed to see whether it would fit.</summary>
+    public TimeSpan ProbeAfter { get; init; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>A step up that drops back within this long failed: the
+    /// connection is borderline for it.</summary>
+    public TimeSpan UpgradeFailWindow { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>Each failed step up in a row doubles the waits above, up to
+    /// this many times (3 min → 6 → 12 → 24), so a borderline connection
+    /// settles instead of bouncing between qualities.</summary>
+    public int MaxBackoffDoublings { get; init; } = 3;
 
     /// <summary>No speeding up this soon after a stall: on a connection that
     /// just ran dry, the cushion that built up since is the only thing
@@ -96,6 +110,7 @@ public sealed class CatchUpController(CatchUpOptions options)
     private DateTimeOffset _loadedAt = DateTimeOffset.MinValue;
     private DateTimeOffset _lastStallOrStep = DateTimeOffset.MinValue;
     private DateTimeOffset _lastStall = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastUpgrade = DateTimeOffset.MinValue;
 
     public CatchUpOptions Options => options;
 
@@ -106,6 +121,19 @@ public sealed class CatchUpController(CatchUpOptions options)
     public int MaxDowngrade { get; set; }
 
     public double Speed { get; private set; } = 1.0;
+
+    /// <summary>Steps up in a row that soon dropped back.</summary>
+    public int FailedUpgrades { get; private set; }
+
+    private double Backoff => Math.Pow(2, Math.Min(FailedUpgrades, options.MaxBackoffDoublings));
+
+    /// <summary>How long stall-free before the timer steps up, after backoff.</summary>
+    public TimeSpan UpgradeWait => options.UpgradeAfter * Backoff;
+
+    /// <summary>Below the preferred quality and steady long enough (after
+    /// backoff) to try the next one up with a probe.</summary>
+    public bool MayProbe(DateTimeOffset now) =>
+        QualityOffset > 0 && !_wasStalled && now - _lastStallOrStep >= options.ProbeAfter * Backoff;
 
     /// <summary>The smoothed buffer decisions are made on.</summary>
     public double SmoothedBuffer => _smoothed ?? 0;
@@ -123,7 +151,12 @@ public sealed class CatchUpController(CatchUpOptions options)
         _loadedAt = now;
         _lastStallOrStep = now;
         _lastStall = DateTimeOffset.MinValue;
-        if (!keepQuality) QualityOffset = 0;
+        if (keepQuality) return;
+        // A new channel or the user's own pick: nothing learnt carries over.
+        QualityOffset = 0;
+        FailedUpgrades = 0;
+        _lastUpgrade = DateTimeOffset.MinValue;
+        _upgradeHolding = false;
     }
 
     /// <summary>Jumps straight to a quality step (from a bandwidth estimate)
@@ -133,10 +166,37 @@ public sealed class CatchUpController(CatchUpOptions options)
     {
         offset = Math.Clamp(offset, 0, MaxDowngrade);
         if (offset == QualityOffset) return false;
+        if (offset > QualityOffset) NoteDowngrade(now);
+        else NoteUpgrade(now);
         QualityOffset = offset;
         _stalls.Clear();
         _lastStallOrStep = now;
         return true;
+    }
+
+    private void NoteUpgrade(DateTimeOffset now)
+    {
+        _lastUpgrade = now;
+        _upgradeHolding = true;
+    }
+
+    /// <summary>The last step up hasn't been undone yet.</summary>
+    private bool _upgradeHolding;
+
+    /// <summary>Dropping soon after a step up means that step failed.</summary>
+    private void NoteDowngrade(DateTimeOffset now)
+    {
+        if (_upgradeHolding && now - _lastUpgrade <= options.UpgradeFailWindow) FailedUpgrades++;
+        _upgradeHolding = false;
+    }
+
+    /// <summary>A step up still in place past the failure window, with no
+    /// stall since: it held, and the backoff starts over.</summary>
+    private void ForgiveIfHeld(DateTimeOffset now)
+    {
+        if (FailedUpgrades > 0 && _upgradeHolding && now - _lastUpgrade > options.UpgradeFailWindow
+            && now - _lastStallOrStep > options.UpgradeFailWindow)
+            FailedUpgrades = 0;
     }
 
     public CatchUpDecision Update(PlaybackSample s)
@@ -168,14 +228,17 @@ public sealed class CatchUpController(CatchUpOptions options)
 
         if (_stalls.Count >= options.StallsForDowngrade && QualityOffset < MaxDowngrade)
         {
+            NoteDowngrade(s.At);
             QualityOffset++;
             _stalls.Clear();
             _lastStallOrStep = s.At;
             return Set(1.0, CatchUpAction.QualityDown, "Lagging: lowering quality to keep up");
         }
 
-        if (QualityOffset > 0 && !s.Stalled && s.At - _lastStallOrStep >= options.UpgradeAfter)
+        ForgiveIfHeld(s.At);
+        if (QualityOffset > 0 && !s.Stalled && s.At - _lastStallOrStep >= UpgradeWait)
         {
+            NoteUpgrade(s.At);
             QualityOffset--;
             _lastStallOrStep = s.At;
             return Set(1.0, CatchUpAction.QualityUp, "Stable: raising quality");

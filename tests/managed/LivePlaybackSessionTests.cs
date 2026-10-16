@@ -16,12 +16,15 @@ public sealed class LivePlaybackSessionTests : IDisposable
     {
         LivePlaybackSession.NoProgressTimeout = TimeSpan.FromHours(1);
         LivePlaybackSession.DeliveryWindow = TimeSpan.FromHours(1);
+        // Probes would step quality straight back up on the instant fake CDN.
+        LivePlaybackSession.ProbeInterval = TimeSpan.FromHours(1);
     }
 
     public void Dispose()
     {
         LivePlaybackSession.NoProgressTimeout = TimeSpan.FromSeconds(12);
         LivePlaybackSession.DeliveryWindow = TimeSpan.FromSeconds(8);
+        LivePlaybackSession.ProbeInterval = TimeSpan.FromSeconds(30);
     }
 
     /// <summary>GQL token, usher master playlist, and per-variant media
@@ -178,6 +181,41 @@ public sealed class LivePlaybackSessionTests : IDisposable
         Stall(31);
         Stall(36);
         Assert.Equal("720p60", session.Current?.Name);
+    }
+
+    [Theory]
+    [InlineData(20, "1080p60")]    // the source segment arrives in 1% of real time: step up
+    [InlineData(3000, "720p60")]   // in 150%: it wouldn't fit, stay down
+    public async Task AProbeStepsBackUpOnlyWhenTheHigherQualityFits(int segmentDelayMs, string expected)
+    {
+        LivePlaybackSession.ProbeInterval = TimeSpan.Zero;
+        var twitch = new FakeTwitch();
+        var player = new FakePlayer();
+        await using var session = new LivePlaybackSession(new HttpClient(twitch), player);
+        await session.StartAsync("someone", authToken: null);
+        var t = DateTimeOffset.UtcNow;
+        void Stall(int at)
+        {
+            player.Stats = new VideoPlayerStats(0, true, false);
+            session.Tick(t + TimeSpan.FromSeconds(at));
+            player.Stats = new VideoPlayerStats(2, false, false);
+            session.Tick(t + TimeSpan.FromSeconds(at + 1));
+        }
+        Stall(11);
+        Stall(16);
+        Stall(21);
+        Assert.Equal("720p60", session.Current?.Name);
+        await Until(() => player.Received.Contains("720;"));
+
+        // Calm for the probe's 20 s; it times a source segment.
+        twitch.SegmentDelayMs = segmentDelayMs;
+        session.Tick(t + TimeSpan.FromSeconds(45));
+        for (var i = 0; i < 40 && session.Current?.Name == "720p60"; i++)
+        {
+            await Task.Delay(100);
+            session.Tick(t + TimeSpan.FromSeconds(46 + i));
+        }
+        Assert.Equal(expected, session.Current?.Name);
     }
 
     private static async Task<(FakePlayer, LivePlaybackSession)> Playing(FakeTwitch? twitch = null)

@@ -322,6 +322,61 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         return true;
     }
 
+    // ----- Stepping back up ---------------------------------------------------
+
+    /// <summary>How often, at most, the next quality up is probed while below
+    /// the preferred one.</summary>
+    internal static TimeSpan ProbeInterval { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>A probe segment downloading in at most this share of its
+    /// length, alongside the running stream, says the step up fits with room
+    /// to spare.</summary>
+    private const double ProbeFits = 0.6;
+
+    private Task<ProbeResult?>? _probe;
+    private HlsVariant? _probing;
+    private DateTimeOffset _lastProbe = DateTimeOffset.MinValue;
+
+    /// <summary>While below the preferred quality: now and then, time one
+    /// segment of the next quality up, and step up at once if it fits rather
+    /// than wait out the stall-free timer. True if it changed quality.</summary>
+    private bool CheckProbe(DateTimeOffset now, LiveHlsReader? reader)
+    {
+        if (_probe is { IsCompleted: true } done)
+        {
+            _probe = null;
+            var target = _probing;
+            _probing = null;
+            if (!done.IsCompletedSuccessfully || done.Result is not { } result || target is null || Current is not { } current)
+                return false;
+            var variants = Variants.ToList();
+            // Only if it's still the step above what's playing.
+            if (result.LoadRatio > ProbeFits || variants.IndexOf(target) != UpFrom(variants.IndexOf(current))
+                || !_controller.SetQualityOffset(_controller.QualityOffset - 1, now))
+                return false;
+            _player.ShowMessage($"Connection recovered: raising quality to {target.Name}");
+            ChangeVariant(now);
+            return true;
+        }
+        if (_probe is not null || _tier != PlaybackTier.Full || reader is null || reader.InAdBreak
+            || Current is not { } playing || now - _lastProbe < ProbeInterval || !_controller.MayProbe(now))
+            return false;
+        var up = UpFrom(Variants.ToList().IndexOf(playing));
+        if (up < 0 || up < _preferredIndex) return false;
+        _lastProbe = now;
+        _probing = Variants[up];
+        _probe = BandwidthProbe.MeasureAsync(_http, Variants[up].Uri, _cts.Token);
+        return false;
+    }
+
+    /// <summary>The next video variant above <paramref name="index"/>, or -1.</summary>
+    private int UpFrom(int index)
+    {
+        var up = index - 1;
+        while (up >= 0 && Variants[up].IsAudioOnly) up--;
+        return up;
+    }
+
     private void Reload(DateTimeOffset now)
     {
         ResetDelivery();
@@ -409,6 +464,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         }
 
         if (CheckBandwidth(now, reader)) return;
+        if (CheckProbe(now, reader)) return;
 
         var decision = _controller.Update(new PlaybackSample(
             now, stats.BufferSeconds, stats.Stalled, reader?.SegmentsBehind ?? 0, reader?.InAdBreak ?? false));

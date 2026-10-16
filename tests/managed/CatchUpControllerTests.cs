@@ -150,6 +150,95 @@ public class CatchUpControllerTests
         Assert.Equal(0, c.QualityOffset);
     }
 
+    /// <summary>Three stalls from <paramref name="at"/>: one step down.</summary>
+    private static void DropOnce(CatchUpController c, double at)
+    {
+        Stall(c, at);
+        Stall(c, at + 5);
+        c.Update(At(at + 10, 0, stalled: true));
+        c.Update(At(at + 11, 2));
+    }
+
+    [Fact]
+    public void AStepUpThatDropsBackDoublesTheNextWait()
+    {
+        var c = Controller();
+        DropOnce(c, 0);
+        Assert.Equal(1, c.QualityOffset);
+        Assert.Equal(TimeSpan.FromMinutes(3), c.UpgradeWait);
+
+        // Up after 3 stall-free minutes, down again within 2: that try failed.
+        Assert.Equal(CatchUpAction.QualityUp, c.Update(At(10 + 181, 2)).Action);
+        DropOnce(c, 200);
+        Assert.Equal(1, c.QualityOffset);
+        Assert.Equal(1, c.FailedUpgrades);
+        Assert.Equal(TimeSpan.FromMinutes(6), c.UpgradeWait);
+
+        // So 3 minutes isn't enough any more; 6 is.
+        Assert.Equal(CatchUpAction.None, c.Update(At(210 + 181, 2)).Action);
+        Assert.Equal(CatchUpAction.QualityUp, c.Update(At(210 + 361, 2)).Action);
+    }
+
+    [Fact]
+    public void BackoffStopsAtTwentyFourMinutes()
+    {
+        var c = Controller();
+        var now = T0;
+        c.SetQualityOffset(1, now);
+        for (var i = 0; i < 6; i++)
+        {
+            now += TimeSpan.FromMinutes(30);
+            c.SetQualityOffset(0, now);
+            c.SetQualityOffset(1, now + TimeSpan.FromSeconds(30));
+        }
+        Assert.Equal(6, c.FailedUpgrades);
+        Assert.Equal(TimeSpan.FromMinutes(24), c.UpgradeWait);
+    }
+
+    [Fact]
+    public void AStepUpThatHoldsForgivesEarlierFailures()
+    {
+        var c = Controller();
+        c.SetQualityOffset(1, T0);
+        c.SetQualityOffset(0, T0 + TimeSpan.FromMinutes(5));
+        c.SetQualityOffset(1, T0 + TimeSpan.FromMinutes(5.5));
+        Assert.Equal(1, c.FailedUpgrades);
+
+        c.SetQualityOffset(0, T0 + TimeSpan.FromMinutes(20));
+        // Steady well past the failure window.
+        Hold(c, 20 * 60 + 1, 150, 2);
+        Assert.Equal(0, c.FailedUpgrades);
+    }
+
+    [Fact]
+    public void ProbingWaitsForCalmAndBacksOffToo()
+    {
+        var c = Controller();
+        Assert.False(c.MayProbe(T0));               // at the preferred quality: nothing to probe
+        c.SetQualityOffset(1, T0);
+        Assert.False(c.MayProbe(T0 + TimeSpan.FromSeconds(10)));
+        Assert.True(c.MayProbe(T0 + TimeSpan.FromSeconds(21)));
+
+        // A failed step up doubles the calm needed before the next probe.
+        c.SetQualityOffset(0, T0 + TimeSpan.FromSeconds(30));
+        c.SetQualityOffset(1, T0 + TimeSpan.FromSeconds(60));
+        Assert.False(c.MayProbe(T0 + TimeSpan.FromSeconds(60 + 21)));
+        Assert.True(c.MayProbe(T0 + TimeSpan.FromSeconds(60 + 41)));
+    }
+
+    [Fact]
+    public void ANewChannelForgetsTheBackoff()
+    {
+        var c = Controller();
+        c.SetQualityOffset(1, T0);
+        c.SetQualityOffset(0, T0 + TimeSpan.FromMinutes(1));
+        c.SetQualityOffset(1, T0 + TimeSpan.FromMinutes(1.5));
+        Assert.Equal(1, c.FailedUpgrades);
+        c.Reset(T0 + TimeSpan.FromMinutes(2), keepQuality: false);
+        Assert.Equal(0, c.FailedUpgrades);
+        Assert.Equal(0, c.QualityOffset);
+    }
+
     [Fact]
     public void StableAfterDowngradeStepsBackUp()
     {
