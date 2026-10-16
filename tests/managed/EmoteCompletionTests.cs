@@ -40,6 +40,20 @@ public class EmoteCompletionTests
     }
 
     [Fact]
+    public void ChannelEmotesMatchWithoutTheirPrefix()
+    {
+        var all = new[] { E("pokiHype"), E("HypeLUL"), E("hyperClap"), E("xqcL"), E("catjam"), E("cvHazmat", zeroWidth: true) };
+        // Whole-code matches first.
+        Assert.Equal(["HypeLUL", "hyperClap", "pokiHype"],
+            EmoteCompletion.Rank(all, "Hype", [], contains: false, max: 10).Select(e => e.Code));
+        Assert.Equal(["hyperClap"], EmoteCompletion.Rank(all, "clap", [], contains: false, max: 10).Select(e => e.Code));
+        Assert.Equal(["xqcL"], EmoteCompletion.Rank(all, "l", [], contains: false, max: 10).Select(e => e.Code));
+        // Lowercase all the way through has no prefix to leave out.
+        Assert.Empty(EmoteCompletion.Rank(all, "jam", [], contains: false, max: 10));
+        Assert.Empty(EmoteCompletion.Rank(all, "Haz", [], contains: false, max: 10));
+    }
+
+    [Fact]
     public void ZeroWidthEmotesOnlyMatchFromTheirStart()
     {
         var all = new[] { E("cvHazmat", zeroWidth: true), E("Hazmat") };
