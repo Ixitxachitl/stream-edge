@@ -27,8 +27,12 @@
               <DataTemplate x:DataType="vm:ChannelTabViewModel">
                 <Border Classes="tab" Classes.selected="{Binding IsSelected}" Classes.front="{Binding IsFront}">
                   <StackPanel Orientation="Horizontal" Spacing="2">
-                    <Button Classes="tabName" Content="{Binding Title}" Command="{Binding SelectCommand}"
-                            ToolTip.Tip="Show this channel (drag to move the tab)" />
+                    <!-- A TextBlock, not string content: that would take the
+                         '_' in names like some_one for an access key. -->
+                    <Button Classes="tabName" Command="{Binding SelectCommand}"
+                            ToolTip.Tip="Show this channel (drag to move the tab)">
+                      <TextBlock Text="{Binding Title}" />
+                    </Button>
                     <Button Classes="tabIcon" Content="{Binding Player.MuteGlyph}" Command="{Binding Player.ToggleMuteCommand}"
                             ToolTip.Tip="{Binding VolumeTip}" />
                     <Button Classes="tabIcon" Content="✕" Command="{Binding CloseCommand}" ToolTip.Tip="Close tab" />

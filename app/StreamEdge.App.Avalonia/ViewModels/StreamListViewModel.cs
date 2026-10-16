@@ -28,14 +28,26 @@ public sealed partial class StreamItemViewModel : ObservableObject
     {
         Stream = stream;
         _header = stream.Header(now);
-        _uptime = "Live for " + UiFormats.Uptime(stream.Uptime(now));
+        _uptime = UptimeText(stream, now);
         _toggleFavorite = toggleFavorite;
         _open = open;
     }
 
     public LiveStream Stream { get; }
     public string Title => Stream.Title;
-    public string Game => Stream.Game;
+    public string Game => Stream.IsLive ? Stream.Game : "Offline";
+    public bool IsLive => Stream.IsLive;
+
+    /// <summary>Open in a tab but not followed: listed above the followed
+    /// channels, which <see cref="SeparatorBelow"/> marks off.</summary>
+    public bool IsWatched { get; init; }
+
+    /// <summary>The last watched channel, with followed ones below it.</summary>
+    public bool SeparatorBelow { get; init; }
+
+    /// <summary>twitch.tv/name, where following and unfollowing happen.</summary>
+    [RelayCommand]
+    private void OpenOnTwitch() => UrlLauncher.TryOpen("https://www.twitch.tv/" + Uri.EscapeDataString(Stream.Login));
     public string DisplayName => Stream.DisplayName;
     public Uri? ProfileImage => Stream.ProfileImage;
 
@@ -43,7 +55,7 @@ public sealed partial class StreamItemViewModel : ObservableObject
     public string Initial => DisplayName.Length > 0 ? char.ToUpperInvariant(DisplayName[0]).ToString() : "?";
 
     /// <summary>"11.4K", as twitch.tv's sidebar has it.</summary>
-    public string ViewersText => UiFormats.CompactViewers(Stream.Viewers);
+    public string ViewersText => IsLive && Stream.Viewers >= 0 ? UiFormats.CompactViewers(Stream.Viewers) : "";
     public bool IsFavorite => Stream.IsFavorite;
     public string FavoriteGlyph => IsFavorite ? "★" : "☆";
     public string FavoriteMenuText => IsFavorite ? "Unstar" : "Star (keep at top)";
@@ -68,10 +80,13 @@ public sealed partial class StreamItemViewModel : ObservableObject
     [RelayCommand]
     private void OpenInBackground() => _open(Stream.Login, OpenMode.Background);
 
+    private static string UptimeText(LiveStream s, DateTimeOffset now) =>
+        !s.IsLive ? "Offline" : s.Viewers < 0 ? "Live" : "Live for " + UiFormats.Uptime(s.Uptime(now));
+
     public void Tick(DateTimeOffset now)
     {
         Header = Stream.Header(now);
-        Uptime = "Live for " + UiFormats.Uptime(Stream.Uptime(now));
+        Uptime = UptimeText(Stream, now);
     }
 }
 
@@ -98,8 +113,30 @@ public sealed partial class StreamListViewModel : ObservableObject
     [ObservableProperty]
     private string _emptyText = "Log in to see which channels you follow are live.";
 
-    public string Header => $"Live Streams ({Items.Count}) [Sorting: {Sort}]";
+    public string Header => $"Live Streams ({_source.Count}) [Sorting: {Sort}]";
+
+    /// <summary>No rows at all.</summary>
     public bool IsEmpty => Items.Count == 0;
+
+    /// <summary>No followed channels live (or signed out): the empty text and
+    /// login box show, under any watched channels.</summary>
+    public bool NoFollowed => _source.Count == 0;
+
+    /// <summary>The followed live channels, as last set.</summary>
+    public IReadOnlyList<LiveStream> Followed => _source;
+
+    private IReadOnlyList<LiveStream> _watched = [];
+
+    /// <summary>Channels open in tabs that the user doesn't follow, listed
+    /// first, in tab order.</summary>
+    public IReadOnlyList<LiveStream> Watched => _watched;
+
+    public void SetWatched(IReadOnlyList<LiveStream> watched, DateTimeOffset now)
+    {
+        if (watched.SequenceEqual(_watched)) return;
+        _watched = watched;
+        Rebuild(now);
+    }
 
     partial void OnSortChanged(StreamSortOrder value)
     {
@@ -136,11 +173,20 @@ public sealed partial class StreamListViewModel : ObservableObject
         // rebuild so a refresh or a toggle can't lose one.
         var starred = _source.Select(s => s with { IsFavorite = _settings.IsFavorite(s.Login) });
         Items.Clear();
+        void Open(string login, OpenMode mode) => OpenRequested?.Invoke(login, mode);
+        for (var i = 0; i < _watched.Count; i++)
+            Items.Add(new StreamItemViewModel(_watched[i] with { IsFavorite = _settings.IsFavorite(_watched[i].Login) },
+                now, ToggleFavorite, Open)
+            {
+                IsWatched = true,
+                SeparatorBelow = i == _watched.Count - 1,
+            });
         foreach (var s in StreamSort.Apply(starred, Sort))
-            Items.Add(new StreamItemViewModel(s, now, ToggleFavorite, (login, mode) => OpenRequested?.Invoke(login, mode)));
+            Items.Add(new StreamItemViewModel(s, now, ToggleFavorite, Open));
         Selected = Items.FirstOrDefault(i => i.Stream.Login == keep);
         OnPropertyChanged(nameof(Header));
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(NoFollowed));
     }
 
     /// <summary>The user asked to open a stream: double-click (front) or

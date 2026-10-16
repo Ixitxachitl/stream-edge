@@ -4,7 +4,9 @@ using StreamEdge.Ui;
 namespace StreamEdge.Streams;
 
 /// <summary>One live channel in the stream list, as Helix "Get Followed
-/// Streams" describes it, plus the channel's avatar from "Get Users".</summary>
+/// Streams" describes it, plus the channel's avatar from "Get Users".
+/// Channels open in a tab but not followed are listed too, live or not
+/// (<see cref="IsLive"/>); a negative <see cref="Viewers"/> is unknown.</summary>
 public sealed record LiveStream(
     string Login,
     string DisplayName,
@@ -14,13 +16,14 @@ public sealed record LiveStream(
     DateTimeOffset StartedAt,
     bool IsFavorite = false,
     string? UserId = null,
-    Uri? ProfileImage = null)
+    Uri? ProfileImage = null,
+    bool IsLive = true)
 {
     public TimeSpan Uptime(DateTimeOffset now) => now - StartedAt;
 
-    /// <summary>The list header: "GlitchCat7 (57 | 2.4h)".</summary>
+    /// <summary>The list header: "CometCrumb (57 | 2.4h)".</summary>
     public string Header(DateTimeOffset now) =>
-        $"{DisplayName} ({UiFormats.Viewers(Viewers)} | {UiFormats.Uptime(Uptime(now))})";
+        !IsLive || Viewers < 0 ? DisplayName : $"{DisplayName} ({UiFormats.Viewers(Viewers)} | {UiFormats.Uptime(Uptime(now))})";
 }
 
 public enum StreamSortOrder

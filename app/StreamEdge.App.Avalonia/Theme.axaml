@@ -425,6 +425,54 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <!-- Stars stay out of the way: shown when on, or over the row. -->
+  <!-- Between open-but-unfollowed channels and followed ones. -->
+  <Style Selector="ListBox.streams Border.listSeparator">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{StaticResource SeRule}" />
+    <Setter Property="Margin" Value="-10,10,-10,-5" />
+  </Style>
+  <Style Selector="ListBox.streams Grid.offline TextBlock.streamName">
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+  </Style>
+  <!-- Channel search box, and its suggestions below it. -->
+  <Style Selector="TextBox.channelSearch">
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="Padding" Value="8,3" />
+  </Style>
+  <Style Selector="Border.suggestions.below">
+    <Setter Property="Margin" Value="0,4,0,0" />
+  </Style>
+  <Style Selector="ListBox.channels Panel.avatar">
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ListBox.channels Border.avatarPlaceholder">
+    <Setter Property="Background" Value="{StaticResource SeRule}" />
+    <Setter Property="CornerRadius" Value="14" />
+  </Style>
+  <Style Selector="ListBox.channels Border.avatarPlaceholder TextBlock">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+  </Style>
+  <Style Selector="ListBox.channels TextBlock.streamName">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource SeText}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="ListBox.channels TextBlock.streamGame">
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="ListBox.channels Ellipse.liveDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Fill" Value="#EB0400" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
   <Style Selector="ListBox.streams Button.star">
     <Setter Property="Opacity" Value="0" />
   </Style>

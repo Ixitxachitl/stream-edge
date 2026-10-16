@@ -66,6 +66,52 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         return await response.Content.ReadFromJsonAsync<T>(ct).ConfigureAwait(false);
     }
 
+    internal sealed record ChannelsPage([property: JsonPropertyName("data")] List<HelixChannel> Data);
+
+    internal sealed record HelixChannel(
+        [property: JsonPropertyName("broadcaster_login")] string Login,
+        [property: JsonPropertyName("display_name")] string? DisplayName,
+        [property: JsonPropertyName("is_live")] bool IsLive,
+        [property: JsonPropertyName("game_name")] string? GameName,
+        [property: JsonPropertyName("thumbnail_url")] string? ThumbnailUrl);
+
+    /// <summary>Helix "Search Channels": channels whose name matches, live
+    /// or not, in Twitch's order.</summary>
+    public async Task<IReadOnlyList<ChannelSuggestion>> SearchChannelsAsync(string query, int first, CancellationToken ct)
+    {
+        var url = $"https://api.twitch.tv/helix/search/channels?query={Uri.EscapeDataString(query)}&first={first}";
+        var page = await GetAsync<ChannelsPage>(url, ct).ConfigureAwait(false);
+        return [.. (page?.Data ?? []).Select(c => new ChannelSuggestion(c.Login,
+            string.IsNullOrEmpty(c.DisplayName) ? c.Login : c.DisplayName, c.IsLive, c.GameName ?? "",
+            ParseProfileImage(c.ThumbnailUrl)))];
+    }
+
+    /// <summary>Which of these channels are live now (offline ones are left
+    /// out), whether followed or not.</summary>
+    public async Task<IReadOnlyList<LiveStream>> GetStreamsAsync(IReadOnlyCollection<string> logins, CancellationToken ct)
+    {
+        var streams = new List<LiveStream>();
+        foreach (var batch in logins.Distinct(StringComparer.OrdinalIgnoreCase).Chunk(UsersPerRequest))
+        {
+            var url = "https://api.twitch.tv/helix/streams?first=100&"
+                      + string.Join("&", batch.Select(l => "user_login=" + Uri.EscapeDataString(l)));
+            var page = await GetAsync<StreamsPage>(url, ct).ConfigureAwait(false);
+            streams.AddRange((page?.Data ?? []).Select(s => s.ToLiveStream()));
+        }
+        return streams;
+    }
+
+    /// <summary>Whether the user follows the broadcaster (live or not).</summary>
+    public async Task<bool> IsFollowingAsync(string userId, string broadcasterId, CancellationToken ct)
+    {
+        var url = $"https://api.twitch.tv/helix/channels/followed?user_id={Uri.EscapeDataString(userId)}"
+                  + $"&broadcaster_id={Uri.EscapeDataString(broadcasterId)}";
+        var page = await GetAsync<FollowedPage>(url, ct).ConfigureAwait(false);
+        return page?.Data.Count > 0;
+    }
+
+    internal sealed record FollowedPage([property: JsonPropertyName("data")] List<System.Text.Json.JsonElement> Data);
+
     /// <summary>Every live channel the user follows (all pages).</summary>
     public async Task<IReadOnlyList<LiveStream>> GetFollowedStreamsAsync(
         string userId, CancellationToken ct)

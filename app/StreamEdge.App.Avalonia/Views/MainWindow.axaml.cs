@@ -5,6 +5,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using StreamEdge.AvaloniaApp.ViewModels;
 using StreamEdge.Playback.Mpv;
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         StreamList.DoubleTapped += OnStreamDoubleTapped;
+        WireChannelSearch();
         WatchTabDrags();
         // Names, mentions and mod icons in chat lines (and in user cards,
         // whose recent messages are chat lines too).
@@ -169,6 +171,50 @@ public partial class MainWindow : Window
     private void OnStreamDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (StreamList.SelectedItem is StreamItemViewModel item) item.OpenCommand.Execute(null);
+    }
+
+    // ----- Channel search -------------------------------------------------
+
+    /// <summary>Up/Down pick a suggestion, Enter joins it in a new tab
+    /// (Shift+Enter: in the background), Esc clears the box; a click on a
+    /// suggestion joins it too.</summary>
+    private void WireChannelSearch()
+    {
+        // Tunnel: the text box would otherwise take Up/Down for the caret.
+        ChannelSearchBox.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (_vm?.Search is not { } search) return;
+            switch (e.Key)
+            {
+                case Key.Down:
+                    search.Move(1);
+                    e.Handled = true;
+                    break;
+                case Key.Up:
+                    search.Move(-1);
+                    e.Handled = true;
+                    break;
+                case Key.Enter:
+                    search.Accept(search.SelectedIndex,
+                        e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? OpenMode.Background : OpenMode.NewTab);
+                    e.Handled = true;
+                    break;
+                case Key.Escape:
+                    search.Cancel();
+                    e.Handled = true;
+                    break;
+            }
+        }, RoutingStrategies.Tunnel);
+        ChannelSearchBox.LostFocus += (_, _) =>
+        {
+            // Not while clicking a suggestion, which takes focus for a moment.
+            if (!ChannelSearchBox.IsKeyboardFocusWithin) _vm?.Search.Close();
+        };
+        ChannelSuggestionList.AddHandler(PointerReleasedEvent, (_, e) =>
+        {
+            if ((e.Source as Control)?.DataContext is Streams.ChannelSuggestion picked && _vm?.Search is { } search)
+                search.Accept(search.Suggestions.IndexOf(picked));
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     // ----- Chat -----------------------------------------------------------

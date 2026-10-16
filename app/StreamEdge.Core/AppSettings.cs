@@ -46,6 +46,11 @@ public sealed class AppSettings
     /// channel open.</summary>
     public bool ReopenLastChannel { get; set; } = true;
 
+    /// <summary>When an open channel raids another, the tab moves to the
+    /// raided channel, as on twitch.tv. Off, it stays and shows the offline
+    /// screen once the stream ends. Needs a signed-in account.</summary>
+    public bool FollowRaids { get; set; } = true;
+
     /// <summary>Quality to start at ("source", "720p60", "480p"…). Catch-up
     /// may drop below it while the connection struggles.</summary>
     public string PreferredQuality { get; set; } = "source";

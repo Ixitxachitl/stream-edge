@@ -31,6 +31,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly ChatViewModel _idleChat;
     private readonly PlayerViewModel _idlePlayer = new();
     private TwitchChatClient? _chat;
+    private EventSubClient? _eventSub;
     private DateTimeOffset _lastStreamRefresh = DateTimeOffset.MinValue;
 
     public MainViewModel(AppSettings settings, StartupOptions options, IUiDispatcher ui)
@@ -58,6 +59,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Activate(AddColumn(0));
         Account.AccountChanged += () => _ = OnAccountChangedAsync();
         Streams.OpenRequested += (login, mode) => OpenChannel(login, mode);
+        Search = new ChannelSearchViewModel(LocalChannels, SearchChannelsAsync, (login, mode) => OpenChannel(login, mode), ui);
 
         if (options.Demo) LoadDemo();
         else _ = StartAsync();
@@ -67,6 +69,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     public StreamListViewModel Streams { get; }
+    public ChannelSearchViewModel Search { get; }
     public ChatServices Services { get; }
     public EmoteMenuViewModel EmoteMenu { get; }
     public ModMenuViewModel ModMenu { get; }
@@ -242,6 +245,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = LoadTwitchBadgesAsync();
         _ = LoadMyEmotesAsync();
         _chat = CreateChatClient();
+        _eventSub = CreateEventSub();
         if (_options.Channel is { Length: > 0 } wanted)
         {
             // --channel always wins, alone.
@@ -302,6 +306,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // Reconnect chat under the new identity, keeping every open channel.
         if (_chat is not null) await _chat.DisposeAsync();
         _chat = CreateChatClient();
+        if (_eventSub is not null) await _eventSub.DisposeAsync();
+        _eventSub = CreateEventSub();
+        _follows.Clear();
         foreach (var tab in Tabs) await _chat.JoinAsync(tab.Login);
         await LoadTwitchBadgesAsync();
         RenderChats(null);
@@ -333,6 +340,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             CloseTab(replaced, pickNewFront: false);
         }
 
+        var tab = AddTab(login, column, index, select: mode != OpenMode.Background || column.Selected is null);
+        if (mode != OpenMode.Background || FrontTab is null) SetFront(tab);
+        else ApplyTiers();
+        SaveTabs();
+        OnPropertyChanged(nameof(HasTabs));
+        return tab;
+    }
+
+    /// <summary>A new tab for <paramref name="login"/> at <paramref name="index"/>
+    /// in <paramref name="column"/>: joins its chat and starts loading its
+    /// look, history and points. Video is the caller's call.</summary>
+    private ChannelTabViewModel AddTab(string login, ChatColumnViewModel column, int index, bool select)
+    {
         var tab = new ChannelTabViewModel(login, _settings, Services, SelectTab, t => CloseTab(t))
         {
             IsFront = false,
@@ -343,7 +363,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (PlayerUnavailable is { } why) tab.Player.Status = why;
         Tabs.Add(tab);
         column.Tabs.Insert(Math.Min(index, column.Tabs.Count), tab);
-        if (mode != OpenMode.Background || column.Selected is null) column.Selected = tab;
+        if (select) column.Selected = tab;
         _ = _chat?.JoinAsync(login);
         ShowChannelInfo(tab);
         if (!_options.Demo)
@@ -352,11 +372,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _ = LoadHistoryAsync(tab);
             _ = LoadPointsAsync(tab);
         }
-
-        if (mode != OpenMode.Background || FrontTab is null) SetFront(tab);
-        else ApplyTiers();
-        SaveTabs();
-        OnPropertyChanged(nameof(HasTabs));
+        UpdateWatched();
         return tab;
     }
 
@@ -576,6 +592,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Services.Emotes.UnloadChannel(room);
             Services.Badges.UnloadChannel(room);
+            _eventSub?.Unwatch(room);
         }
         _ = tab.DisposeAsync().AsTask();
         // Replacing in place keeps the column for the tab that's coming.
@@ -590,6 +607,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         UpdateColumnFlags();
         SaveTabs();
+        UpdateWatched();
         OnPropertyChanged(nameof(HasTabs));
     }
 
@@ -822,6 +840,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 tab.Player.OfflineImage = info.OfflineImage;
                 tab.Player.ProfileImage = info.ProfileImage;
                 ShowChannelInfo(tab);
+                UpdateWatched();
             });
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
@@ -881,6 +900,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _ = Services.Badges.LoadChannelAsync(_http, _settings.EffectiveClientId, token, roomId, _stop.Token);
         // Follower emotes are only listed when asked for by channel.
         _ = LoadMyEmotesAsync(roomId);
+        _eventSub?.Watch(roomId);
+        _ = RefreshWatchedAsync();
     }
 
     /// <summary>Twitch's badge art needs a signed-in user's token; without
@@ -1024,6 +1045,153 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var tab in Tabs) tab.Session?.Tick(now);
     }
 
+    // ----- Raids ----------------------------------------------------------
+
+    public bool FollowRaids
+    {
+        get => _settings.FollowRaids;
+        set => SetProperty(_settings.FollowRaids, value, _settings, (s, v) => s.FollowRaids = v);
+    }
+
+    /// <summary>Raids out of open channels come over EventSub, which needs
+    /// a signed-in user; signed out, a raiding channel just goes offline.</summary>
+    private EventSubClient? CreateEventSub()
+    {
+        if (_options.Demo || !Account.IsSignedIn) return null;
+        var client = new EventSubClient(_http, _settings.EffectiveClientId, () => Account.AccessToken);
+        client.Raided += raid => _ui.Post(() => OnRaid(raid));
+        client.Start();
+        foreach (var room in Tabs.Select(t => t.RoomId).OfType<string>().Distinct()) client.Watch(room);
+        return client;
+    }
+
+    /// <summary>An open channel raided another: said in its chat, and with
+    /// <see cref="FollowRaids"/> the tab moves to the raided channel. Off,
+    /// the tab stays and shows the offline screen when the stream ends.</summary>
+    public void OnRaid(RaidEvent raid)
+    {
+        var source = Tabs.FirstOrDefault(t => t.RoomId == raid.FromId) ?? TabFor(raid.FromLogin);
+        if (source is null) return;
+        var name = raid.ToName.Length > 0 ? raid.ToName : raid.ToLogin;
+        source.Chat.Add(ChatMessage.System(source.Login,
+            $"Raiding {name} with {UiFormats.Viewers(raid.Viewers)} viewers.", DateTimeOffset.Now));
+        if (!FollowRaids || string.Equals(raid.ToLogin, source.Login, StringComparison.OrdinalIgnoreCase)) return;
+
+        var from = source.DisplayName ?? source.Login;
+        if (TabFor(raid.ToLogin) is { } open)
+        {
+            // Already open: shown if the raider was on video. The raider's
+            // tab stays, and goes offline when its stream ends.
+            if (source.IsFront) SelectTab(open);
+            open.Chat.Add(ChatMessage.System(open.Login, $"### Raid from {from} ###", DateTimeOffset.Now));
+            return;
+        }
+        var target = ReplaceTab(source, raid.ToLogin.ToLowerInvariant());
+        target?.Chat.Add(ChatMessage.System(target.Login, $"### Followed the raid from {from} ###", DateTimeOffset.Now));
+    }
+
+    /// <summary>The same place in the same column, now showing another
+    /// channel; on video if the old one was.</summary>
+    private ChannelTabViewModel? ReplaceTab(ChannelTabViewModel old, string login)
+    {
+        if (ColumnOf(old) is not { } column) return null;
+        var index = column.Tabs.IndexOf(old);
+        var wasSelected = column.Selected == old;
+        var wasFront = FrontTab == old;
+        CloseTab(old, pickNewFront: false);
+        var tab = AddTab(login, column, index, select: wasSelected || column.Selected is null);
+        if (wasFront || FrontTab is null) SetFront(tab);
+        else ApplyTiers();
+        SaveTabs();
+        OnPropertyChanged(nameof(HasTabs));
+        return tab;
+    }
+
+    // ----- Channel search and watched channels -----------------------------
+
+    /// <summary>Channels the app already knows of whose name has the query
+    /// in it: followed live ones, then open tabs.</summary>
+    private IEnumerable<ChannelSuggestion> LocalChannels(string query)
+    {
+        foreach (var s in Streams.Followed.Concat(Streams.Watched))
+            if (ChannelSearch.Matches(s.Login, s.DisplayName, query))
+                yield return new ChannelSuggestion(s.Login, s.DisplayName, s.IsLive, s.Game, s.ProfileImage);
+        foreach (var t in Tabs)
+            if (ChannelSearch.Matches(t.Login, t.DisplayName ?? t.Login, query))
+                yield return new ChannelSuggestion(t.Login, t.DisplayName ?? t.Login, ProfileImage: t.Player.ProfileImage);
+    }
+
+    /// <summary>Twitch's channel search when signed in; signed out, only a
+    /// channel by that exact name can be found.</summary>
+    private async Task<IReadOnlyList<ChannelSuggestion>> SearchChannelsAsync(string query, CancellationToken ct)
+    {
+        if (_options.Demo) return [];
+        if (Account.IsSignedIn && Account.AccessToken is { } token)
+            return await new HelixClient(_http, _settings.EffectiveClientId, token)
+                .SearchChannelsAsync(query, ChannelSearchViewModel.MaxSuggestions, ct);
+        if (!ChannelSearch.IsValidLogin(query)) return [];
+        return await ChannelInfo.FetchAsync(_http, query, ct) is { } info
+            ? [new ChannelSuggestion(info.Login, info.DisplayName, ProfileImage: info.ProfileImage)]
+            : [];
+    }
+
+    /// <summary>Live state of open channels outside the followed list, by
+    /// login, from the last refresh.</summary>
+    private readonly Dictionary<string, LiveStream> _watchedLive = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Whether the user follows a channel, by room id; asked once.</summary>
+    private readonly Dictionary<string, bool> _follows = [];
+
+    /// <summary>Open tabs the user doesn't follow, for the top of the stream
+    /// list, in tab order. Signed in, a tab is listed once Twitch has said
+    /// it isn't followed; signed out, every open tab is.</summary>
+    private void UpdateWatched()
+    {
+        var followedLive = Streams.Followed.Select(s => s.Login).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var signedIn = Account.IsSignedIn && !_options.Demo;
+        var watched = new List<LiveStream>();
+        foreach (var t in Columns.SelectMany(c => c.Tabs))
+        {
+            if (followedLive.Contains(t.Login)) continue;
+            if (signedIn && (t.RoomId is not { } room || _follows.GetValueOrDefault(room, true))) continue;
+            watched.Add(_watchedLive.TryGetValue(t.Login, out var live)
+                ? live with { ProfileImage = live.ProfileImage ?? t.Player.ProfileImage }
+                // No stream info: live is whether it's playing.
+                : new LiveStream(t.Login, t.DisplayName ?? t.Login, "", t.Player.Game, -1, default,
+                    ProfileImage: t.Player.ProfileImage,
+                    IsLive: t.Session?.Status.State == PlaybackState.Playing));
+        }
+        Streams.SetWatched(watched, DateTimeOffset.Now);
+    }
+
+    /// <summary>Asks Twitch which open channels the user follows and which
+    /// unfollowed ones are live, then redraws the watched rows.</summary>
+    private async Task RefreshWatchedAsync()
+    {
+        if (_options.Demo || !Account.IsSignedIn || Account.UserId is not { } me || Account.AccessToken is not { } token)
+        {
+            UpdateWatched();
+            return;
+        }
+        var helix = new HelixClient(_http, _settings.EffectiveClientId, token);
+        var followedLive = Streams.Followed.Select(s => s.Login).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var others = Tabs.Where(t => !followedLive.Contains(t.Login)).ToList();
+        try
+        {
+            foreach (var room in others.Select(t => t.RoomId).OfType<string>().Where(r => !_follows.ContainsKey(r)).ToList())
+                _follows[room] = await helix.IsFollowingAsync(me, room, _stop.Token);
+            var live = others.Count == 0 ? [] : await helix.GetStreamsAsync([.. others.Select(t => t.Login)], _stop.Token);
+            live = await WithAvatarsAsync(helix, live);
+            _watchedLive.Clear();
+            foreach (var s in live) _watchedLive[s.Login] = s;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            // Rows keep what they showed; the next refresh tries again.
+        }
+        UpdateWatched();
+    }
+
     private void ShowChannelInfo(ChannelTabViewModel tab)
     {
         var now = DateTimeOffset.Now;
@@ -1054,6 +1222,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Streams.Set([], DateTimeOffset.Now);
             Streams.EmptyText = "Log in to see which channels you follow are live.";
+            UpdateWatched();
             return;
         }
         try
@@ -1064,6 +1233,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Streams.Set(live, DateTimeOffset.Now);
             Streams.EmptyText = "No followed channels are live.";
             foreach (var tab in Tabs) ShowChannelInfo(tab);
+            await RefreshWatchedAsync();
         }
         catch (HttpRequestException ex)
         {
@@ -1114,6 +1284,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         WarnAboutOverlays();
         Streams.Tick(now);
         foreach (var tab in Tabs) ShowChannelInfo(tab);
+        // Signed out, a watched row is live while its video plays.
+        UpdateWatched();
         if (!_options.Demo && now - _lastStreamRefresh >= StreamRefresh) _ = RefreshStreamsAsync();
         // The balance changes as the user redeems or earns elsewhere; only
         // the columns' shown tabs have theirs on screen.
@@ -1134,6 +1306,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var tab in Tabs.ToList()) await tab.DisposeAsync().ConfigureAwait(false);
         _stop.Cancel();
         if (_chat is not null) await _chat.DisposeAsync().ConfigureAwait(false);
+        if (_eventSub is not null) await _eventSub.DisposeAsync().ConfigureAwait(false);
         _http.Dispose();
         _stop.Dispose();
     }
