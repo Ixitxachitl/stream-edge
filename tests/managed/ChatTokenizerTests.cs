@@ -89,9 +89,9 @@ public class ChatTokenizerTests
     [Fact]
     public void MentionsAreDetectedAndSelfFlagged()
     {
-        var tokens = Tokens(":a!a@a PRIVMSG #c :@Noah_1, hi @bob @ and a@b", self: "noah_1");
-        Assert.Equal("M:@Noah_1|T:, hi |M:@bob|T: @ and a@b", Shape(tokens));
-        Assert.Equal("Noah_1", tokens[0].MentionLogin);
+        var tokens = Tokens(":a!a@a PRIVMSG #c :@Moss_1, hi @bob @ and a@b", self: "moss_1");
+        Assert.Equal("M:@Moss_1|T:, hi |M:@bob|T: @ and a@b", Shape(tokens));
+        Assert.Equal("Moss_1", tokens[0].MentionLogin);
         Assert.True(tokens[0].IsSelfMention);
         Assert.False(tokens[2].IsSelfMention);
     }

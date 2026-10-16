@@ -6,8 +6,8 @@
   <PropertyGroup>
     <Product>StreamEdge</Product>
     <Company>StreamEdge</Company>
-    <Authors>Noah</Authors>
-    <Copyright>Copyright © Noah</Copyright>
+    <Authors>Ixitxachitl</Authors>
+    <Copyright>Copyright © Ixitxachitl</Copyright>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
 
     <VersionPrefix>0.1.3</VersionPrefix>
