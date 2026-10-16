@@ -126,6 +126,8 @@
                                IsVisible="{Binding HasPlaybackToken}" />
                   </StackPanel>
                 </StackPanel>
+                <Separator />
+                <Button x:Name="AboutButton" Content="About StreamEdge" />
                 </StackPanel>
                 </ScrollViewer>
               </Flyout>

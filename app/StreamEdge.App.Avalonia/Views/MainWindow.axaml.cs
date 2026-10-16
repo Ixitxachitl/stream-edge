@@ -21,6 +21,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         StreamList.DoubleTapped += OnStreamDoubleTapped;
         WireChannelSearch();
+        AboutButton.Click += (_, _) => _ = new AboutWindow().ShowDialog(this);
         WatchTabDrags();
         // Names, mentions and mod icons in chat lines (and in user cards,
         // whose recent messages are chat lines too).

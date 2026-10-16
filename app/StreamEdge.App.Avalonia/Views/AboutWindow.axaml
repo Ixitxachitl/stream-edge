@@ -1,0 +1,31 @@
+<!-- Help → About: name, version (with the commit it was built from), and
+     where the source and license are. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:se="using:StreamEdge"
+        x:Class="StreamEdge.AvaloniaApp.Views.AboutWindow"
+        Title="About StreamEdge"
+        Icon="avares://StreamEdge/Assets/icon.ico"
+        Width="380" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource SePanelBg}">
+  <StackPanel Margin="24" Spacing="6">
+    <Image Source="avares://StreamEdge/Assets/icon.png" Width="72" Height="72" HorizontalAlignment="Center" Margin="0,0,0,6" />
+    <TextBlock Text="StreamEdge" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"
+               Foreground="{StaticResource SeText}" />
+    <TextBlock x:Name="VersionText" HorizontalAlignment="Center" Foreground="{StaticResource SeAccent}" />
+    <TextBlock Text="A Twitch client for small ultrawide secondary displays: chat, the stream and your live follows in one short row."
+               TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource SeTextDim}" Margin="0,6,0,6" />
+    <TextBlock x:Name="CommitText" HorizontalAlignment="Center" Foreground="{StaticResource SeTextFaint}"
+               FontSize="{StaticResource SeSmallFontSize}" />
+    <TextBlock x:Name="RuntimeText" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+               Foreground="{StaticResource SeTextFaint}" FontSize="{StaticResource SeSmallFontSize}" />
+    <TextBlock x:Name="LicenseText" HorizontalAlignment="Center" Foreground="{StaticResource SeTextFaint}"
+               FontSize="{StaticResource SeSmallFontSize}" Margin="0,6,0,0" />
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,12,0,0">
+      <Button x:Name="SourceButton" Content="Source on GitHub" />
+      <Button x:Name="CopyButton" Content="Copy version" />
+      <Button x:Name="CloseButton" Content="Close" IsDefault="True" IsCancel="True" />
+    </StackPanel>
+  </StackPanel>
+</Window>

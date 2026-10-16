@@ -294,7 +294,7 @@ public sealed class ChatLine : Border
     /// can't take clicks, so it's a small TextBlock inside the text flow.</summary>
     private Inline Clickable(string text, IBrush brush, FontWeight weight, Action onClick, bool underline = false)
     {
-        var block = new TextBlock
+        var block = new InlineTextBlock
         {
             Text = text,
             Foreground = brush,
@@ -329,7 +329,7 @@ public sealed class ChatLine : Border
             RaiseEvent(new ModActionEventArgs(ModActionEvent, action, entry));
             e.Handled = true;
         };
-        return new InlineUIContainer(block) { BaselineAlignment = BaselineAlignment.Center };
+        return new InlineUIContainer(new InlineMiddle(block)) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
     private static Inline Emote(Emote emote, IReadOnlyList<Emote> overlays, double height)
@@ -349,9 +349,8 @@ public sealed class ChatLine : Border
             // No negative margins to tuck emotes into the text line: they
             // clipped the descenders of names and text on the same line.
             Margin = new Thickness(1, 0, 1, 0),
-            VerticalAlignment = VerticalAlignment.Center,
         };
-        return new InlineUIContainer(view) { BaselineAlignment = BaselineAlignment.Center };
+        return new InlineUIContainer(new InlineMiddle(view)) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
     /// <summary>A GIF in the line, its title as the tooltip and as the text
@@ -364,7 +363,8 @@ public sealed class ChatLine : Border
             FallbackText = title,
             Margin = new Thickness(0, 2),
         };
-        return new InlineUIContainer(view) { BaselineAlignment = BaselineAlignment.Bottom };
+        // Standing on the baseline, like the text beside it.
+        return new InlineUIContainer(view) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
     private static Inline Badge(ChatServices.Badge badge)
@@ -407,7 +407,7 @@ public sealed class ChatLine : Border
             ToolTip.SetTip(child, badge.Set);
         }
         child.Margin = new Thickness(0, 0, 3, 0);
-        return new InlineUIContainer(child) { BaselineAlignment = BaselineAlignment.Center };
+        return new InlineUIContainer(new InlineMiddle(child)) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
     /// <summary>Lifts names chosen for a light background (pure blue, dark

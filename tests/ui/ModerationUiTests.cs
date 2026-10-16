@@ -23,7 +23,9 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
     private static List<string> Clickables(ChatLine line)
     {
         var text = (SelectableTextBlock)((StackPanel)line.Child!).Children[^1];
-        return [.. text.Inlines!.OfType<InlineUIContainer>().Select(c => c.Child).OfType<TextBlock>().Select(t => t.Text ?? "")];
+        // Icons come wrapped to centre them on the text; names don't.
+        return [.. text.Inlines!.OfType<InlineUIContainer>().Select(c => c.Child is InlineMiddle m ? m.Child : c.Child)
+            .OfType<TextBlock>().Select(t => t.Text ?? "")];
     }
 
     [Fact]
