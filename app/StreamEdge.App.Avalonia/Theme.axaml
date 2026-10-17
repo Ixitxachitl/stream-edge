@@ -230,7 +230,8 @@
     <Setter Property="FontSize" Value="18" />
     <Setter Property="Padding" Value="6,0" />
     <Setter Property="MinHeight" Value="28" />
-    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <!-- Level with the last line as the chat box grows. -->
+    <Setter Property="VerticalAlignment" Value="Bottom" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
   <Style Selector="Button.emoteCell">

@@ -10,13 +10,33 @@ namespace StreamEdge.AvaloniaApp.Views.Emotes;
 /// <summary>A text box's text with emote codes drawn as the emotes, the way
 /// they'll look once sent. Each code is one unit to the caret and selection
 /// (it moves over and deletes the code whole), and copying still gives the
-/// code. Single-line only; anything else falls back to plain text.</summary>
+/// code. Wraps like plain text when the box wraps.</summary>
 public sealed class EmoteTextPresenter : TextPresenter
 {
     protected override Type StyleKeyOverride => typeof(TextPresenter);
 
     /// <summary>The emote image for a word, or null to leave it as text.</summary>
     public Func<string, Uri?>? EmoteLookup { get; set; }
+
+    // The width the text is laid out in, for wrapping. The base class keeps
+    // its own copy privately, so it's noted here on the way through.
+    private double _maxWidth = double.PositiveInfinity;
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        _maxWidth = availableSize.Width;
+        return base.MeasureOverride(availableSize);
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        if (TextWrapping != TextWrapping.NoWrap && finalSize.Width != _maxWidth)
+        {
+            _maxWidth = finalSize.Width;
+            InvalidateTextLayout();
+        }
+        return base.ArrangeOverride(finalSize);
+    }
 
     /// <summary>Re-lays out the text: emote sets loaded, or the channel changed.</summary>
     public void Refresh() => InvalidateTextLayout();
@@ -25,7 +45,7 @@ public sealed class EmoteTextPresenter : TextPresenter
     {
         var text = Text;
         if (EmoteLookup is not { } lookup || string.IsNullOrEmpty(text) || PasswordChar != default
-            || !string.IsNullOrEmpty(PreeditText) || TextWrapping != TextWrapping.NoWrap)
+            || !string.IsNullOrEmpty(PreeditText))
             return base.CreateTextLayout();
         var spans = Find(text, lookup);
         if (spans.Count == 0) return base.CreateTextLayout();
@@ -35,8 +55,9 @@ public sealed class EmoteTextPresenter : TextPresenter
             BaselineAlignment.Baseline, null, FontFeatures);
         var paragraph = new GenericTextParagraphProperties(FlowDirection, TextAlignment, true, false, run,
             TextWrapping, LineHeight, 0, LetterSpacing);
+        var width = TextWrapping == TextWrapping.NoWrap ? double.PositiveInfinity : _maxWidth;
         return new TextLayout(new Source(text, spans, run, this), paragraph, TextTrimming.None,
-            double.PositiveInfinity, double.PositiveInfinity, 0);
+            width, double.PositiveInfinity, 0);
     }
 
     /// <summary>Space-separated words that are emotes, in order.</summary>

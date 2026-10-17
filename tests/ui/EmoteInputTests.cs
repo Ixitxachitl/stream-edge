@@ -178,4 +178,31 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
         }
         window.Close();
     });
+
+    [Fact]
+    public void LongMessagesWrapAndTheBoxGrows() => Ui(() =>
+    {
+        var (window, vm, input) = Open();
+        var oneLine = input.Bounds.Height;
+        Type(window, string.Concat(Enumerable.Repeat("a long message Kappa ", 12)));
+        Assert.True(input.Bounds.Height > oneLine + 10, $"{input.Bounds.Height} vs {oneLine}");
+        Assert.True(input.Bounds.Height <= 120);
+        // Bottom-aligned beside it, the emote and points buttons stay their own size.
+        foreach (var name in new[] { "EmoteButton", "PointsButton" })
+            Assert.True(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == name).Bounds.Height < oneLine + 4, name);
+
+        // The demo is signed out; uncover the box for the picture.
+        window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "ChatLogin").IsVisible = false;
+        var frame = window.CaptureRenderedFrame();
+        if (Environment.GetEnvironmentVariable("STREAMEDGE_SNAPSHOT") is { Length: > 0 } path)
+#pragma warning disable CS0618
+            frame!.Save(path.Replace(".png", "-wrap.png"));
+#pragma warning restore CS0618
+
+        // Twitch's limit: typing past 500 characters does nothing.
+        vm.Chat.Draft = "";
+        Type(window, new string('x', 520));
+        Assert.Equal(500, vm.Chat.Draft.Length);
+        window.Close();
+    });
 }

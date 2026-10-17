@@ -213,9 +213,13 @@
         </Button.Flyout>
       </Button>
       <Panel>
-        <!-- Emotes show as emotes while typing; Tab completes them. -->
+        <!-- Emotes show as emotes while typing; Tab completes them. Long
+             messages wrap and the box grows (up to a few lines, then
+             scrolls); 500 characters is Twitch's limit. -->
         <em:EmoteTextBox x:Name="ChatInput" Text="{Binding Chat.Draft}" IsEnabled="{Binding Chat.CanSend}"
-                         PlaceholderText="{Binding Chat.Placeholder}" MinHeight="28" Padding="6,4" />
+                         PlaceholderText="{Binding Chat.Placeholder}" MinHeight="28" MaxHeight="120" Padding="6,4"
+                         TextWrapping="Wrap" MaxLength="500" VerticalContentAlignment="Center"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto" />
         <!-- Signed out, the chat box is a way in rather than a dead end. -->
         <Button x:Name="ChatLogin" Classes="twitch" Content="Log in to chat" Command="{Binding Main.Account.SignInCommand}"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" VerticalContentAlignment="Center" Padding="6,4">
