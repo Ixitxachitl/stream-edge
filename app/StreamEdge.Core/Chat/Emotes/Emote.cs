@@ -23,4 +23,13 @@ public sealed record Emote(
     EmoteProvider Provider,
     bool ZeroWidth = false,
     int? Width = null,
-    int? Height = null);
+    int? Height = null)
+{
+    /// <summary>The largest image there is, for an emote drawn far above its
+    /// usual size (Twitch's "gigantify an emote", which only takes Twitch
+    /// emotes): Twitch's 3.0, its biggest. Others keep <see cref="ImageUrl"/>.</summary>
+    public Uri LargestImageUrl =>
+        Provider == EmoteProvider.Twitch && ImageUrl.AbsoluteUri.EndsWith("/2.0", StringComparison.Ordinal)
+            ? new Uri(ImageUrl.AbsoluteUri[..^"2.0".Length] + "3.0")
+            : ImageUrl;
+}

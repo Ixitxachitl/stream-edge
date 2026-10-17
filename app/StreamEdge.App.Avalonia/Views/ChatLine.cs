@@ -237,16 +237,17 @@ public sealed class ChatLine : Border
         }
 
         var textBrush = isAction ? nameBrush : isNotice ? SystemBrush : TextBrush;
-        // Twitch's "gigantify an emote" power-up enlarges the last emote.
+        // Twitch's "gigantify an emote" power-up enlarges the last Twitch
+        // emote (it can't take BTTV, FFZ or 7TV ones, even after it).
         var gigantic = m.MsgId == "gigantified-emote-message"
-            ? entry.Tokens.LastOrDefault(t => t.Kind == ChatTokenKind.Emote)
+            ? entry.Tokens.LastOrDefault(t => t.Kind == ChatTokenKind.Emote && t.Emote?.Provider == EmoteProvider.Twitch)
             : null;
         foreach (var token in entry.Tokens)
         {
             switch (token.Kind)
             {
                 case ChatTokenKind.Emote when token.Emote is { } emote:
-                    inlines.Add(Emote(emote, token.Overlays, token == gigantic ? EmoteHeight * 4 : EmoteHeight));
+                    inlines.Add(token == gigantic ? GiganticEmote(emote, token.Overlays) : Emote(emote, token.Overlays, EmoteHeight));
                     break;
                 case ChatTokenKind.Gif when token.Url is { } gif:
                     inlines.Add(Gif(gif, token.Text));
@@ -336,7 +337,23 @@ public sealed class ChatLine : Border
         return new InlineUIContainer(new InlineMiddle(block)) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
-    private static Inline Emote(Emote emote, IReadOnlyList<Emote> overlays, double height)
+    private static Inline Emote(Emote emote, IReadOnlyList<Emote> overlays, double height) =>
+        new InlineUIContainer(new InlineMiddle(NewEmoteView(emote, emote.ImageUrl, overlays, height)))
+        {
+            BaselineAlignment = BaselineAlignment.Baseline,
+        };
+
+    /// <summary>A gigantified emote: four times the size, from the largest
+    /// image Twitch has (the usual 2.0 goes soft at that size), and standing
+    /// on the baseline like the text beside it. Centred on the text like an
+    /// ordinary emote, it hung most of its height below the line.</summary>
+    private static Inline GiganticEmote(Emote emote, IReadOnlyList<Emote> overlays) =>
+        new InlineUIContainer(NewEmoteView(emote, emote.LargestImageUrl, overlays, EmoteHeight * 4))
+        {
+            BaselineAlignment = BaselineAlignment.Baseline,
+        };
+
+    private static EmoteView NewEmoteView(Emote emote, Uri image, IReadOnlyList<Emote> overlays, double height)
     {
         var tip = emote.Code + "\n" + emote.Provider switch
         {
@@ -346,7 +363,7 @@ public sealed class ChatLine : Border
             _ => "Twitch emote",
         };
         if (overlays.Count > 0) tip += "\n+ " + string.Join(", ", overlays.Select(o => o.Code));
-        var view = new EmoteView(emote.ImageUrl, [.. overlays.Select(o => o.ImageUrl)], tip)
+        return new EmoteView(image, [.. overlays.Select(o => o.ImageUrl)], tip)
         {
             EmoteHeight = height,
             FallbackText = emote.Code,
@@ -354,7 +371,6 @@ public sealed class ChatLine : Border
             // clipped the descenders of names and text on the same line.
             Margin = new Thickness(1, 0, 1, 0),
         };
-        return new InlineUIContainer(new InlineMiddle(view)) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
     /// <summary>A GIF in the line, its title as the tooltip and as the text

@@ -61,4 +61,34 @@ public class ChatLineAlignmentTests(HeadlessAvalonia ui) : UiTest(ui)
 #pragma warning restore CS0618
         window.Close();
     });
+
+    [Fact]
+    public void AGiganticEmoteStandsOnTheBaselineAtTwitchsLargestSize() => Ui(() =>
+    {
+        var vm = new MainViewModel(new AppSettings(), new StartupOptions { Demo = true }, InlineDispatcher.Instance);
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        vm.FrontTab!.Chat.Add(ChatMessage.FromIrc(IrcMessage.Parse(
+            "@color=#5DA9A9;display-name=Wax_leftpaw;emotes=25:6-10/354:12-16;msg-id=gigantified-emote-message;id=" + Guid.NewGuid()
+            + " :wax_leftpaw!wax_leftpaw@wax_leftpaw.tmi.twitch.tv PRIVMSG #pixelperegrine :look! Kappa 4Head"), DateTimeOffset.Now)!);
+        Dispatcher.UIThread.RunJobs();
+        window.CaptureRenderedFrame();
+
+        var line = window.GetVisualDescendants().OfType<ChatLine>().Last();
+        var text = line.GetVisualDescendants().OfType<SelectableTextBlock>().Last();
+        var baseline = text.Padding.Top + text.TextLayout.TextLines[^1].Baseline;
+        var emotes = line.GetVisualDescendants().OfType<AvaloniaApp.Views.Emotes.EmoteView>().ToList();
+        Assert.Equal(2, emotes.Count);
+        var (normal, gigantic) = (emotes[0], emotes[1]);
+
+        // The last Twitch emote, four times the size, from the 3.0 image.
+        Assert.Equal(4 * normal.Bounds.Height, gigantic.Bounds.Height, 1.0);
+        Assert.EndsWith("/354/default/dark/3.0", gigantic.Source!.AbsoluteUri);
+        Assert.EndsWith("/25/default/dark/2.0", normal.Source!.AbsoluteUri);
+
+        // Its bottom on the text's baseline, not centred on the text.
+        var bottom = gigantic.TranslatePoint(new Point(0, gigantic.Bounds.Height), text)!.Value.Y;
+        Assert.Equal(baseline, bottom, 1.0);
+        window.Close();
+    });
 }
