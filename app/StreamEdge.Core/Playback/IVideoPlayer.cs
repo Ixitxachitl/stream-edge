@@ -15,6 +15,9 @@ public interface IVideoPlayer
 
     VideoPlayerStats GetStats();
 
+    /// <summary>Seconds buffered before playback starts, or resumes after a stall.</summary>
+    void SetResumeBuffer(double seconds);
+
     /// <summary>Brief on-video message ("Jumping to live").</summary>
     void ShowMessage(string text);
 

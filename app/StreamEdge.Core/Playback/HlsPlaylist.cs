@@ -75,16 +75,27 @@ public static class HlsPlaylist
     }
 
     /// <summary>Index of the variant to start on: the named one if present
-    /// (matched loosely: "720p" finds "720p60"), else the best.</summary>
+    /// (matched loosely: "720p" finds "720p60"). Otherwise the name is a
+    /// cap: the best variant no taller than it ("720p60" on a channel that
+    /// tops out at 1080p and 480p gets 480p), else the best.</summary>
     public static int Pick(IReadOnlyList<HlsVariant> variants, string? preferred)
     {
         if (variants.Count == 0) return -1;
         if (string.IsNullOrWhiteSpace(preferred) || preferred.Equals("source", StringComparison.OrdinalIgnoreCase))
             return 0;
-        var exact = variants.ToList().FindIndex(v => v.Name.Equals(preferred, StringComparison.OrdinalIgnoreCase));
+        var list = variants.ToList();
+        var exact = list.FindIndex(v => v.Name.Equals(preferred, StringComparison.OrdinalIgnoreCase));
         if (exact >= 0) return exact;
-        var prefix = variants.ToList().FindIndex(v => v.Name.StartsWith(preferred, StringComparison.OrdinalIgnoreCase));
-        return prefix >= 0 ? prefix : 0;
+        var prefix = list.FindIndex(v => v.Name.StartsWith(preferred, StringComparison.OrdinalIgnoreCase));
+        if (prefix >= 0) return prefix;
+        var p = preferred.IndexOf('p', StringComparison.OrdinalIgnoreCase);
+        if (p <= 0 || !int.TryParse(preferred.AsSpan(0, p), NumberStyles.None, CultureInfo.InvariantCulture, out var height))
+            return 0;
+        var capped = list.FindIndex(v => !v.IsAudioOnly && v.Height > 0 && v.Height <= height);
+        if (capped >= 0) return capped;
+        // Smaller than anything offered: the smallest video.
+        var smallest = list.FindLastIndex(v => !v.IsAudioOnly);
+        return smallest >= 0 ? smallest : 0;
     }
 
     public static HlsMediaPlaylist ParseMedia(string text, Uri baseUri)

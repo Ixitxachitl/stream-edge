@@ -72,9 +72,10 @@ public class CatchUpControllerTests
         var c = Controller();
         c.Update(At(0, 0, stalled: true));
         // A cushion builds after the stall: keep it rather than spend it.
-        Assert.Equal(1.0, Hold(c, 1, 20, 5.0).Speed);
-        // Half a minute on, catching up is fine again.
-        Assert.Equal(1.08, Hold(c, 21, 15, 5.0).Speed);
+        Assert.Equal(1.0, Hold(c, 1, 20, 6.0).Speed);
+        // Half a minute on, catching up is fine again (above the threshold
+        // the stall's cushion raised by a second).
+        Assert.Equal(1.08, Hold(c, 21, 15, 6.0).Speed);
     }
 
     [Fact]
@@ -250,5 +251,46 @@ public class CatchUpControllerTests
         Assert.Equal(CatchUpAction.None, c.Update(At(60, 2)).Action);
         Assert.Equal(CatchUpAction.QualityUp, c.Update(At(10 + 181, 2)).Action);
         Assert.Equal(0, c.QualityOffset);
+    }
+
+    [Fact]
+    public void StallsBuildASmallCushionThatCatchUpLeavesAlone()
+    {
+        var c = Controller();
+        Assert.Equal(1.0, c.ResumeBuffer);
+        c.Update(At(0, 0, stalled: true));
+        c.Update(At(1, 2));
+        Assert.Equal(1.0, c.Cushion);
+        c.Update(At(2, 0, stalled: true));
+        c.Update(At(3, 2));
+        c.Update(At(4, 0, stalled: true));
+        Assert.Equal(2.0, c.Cushion);
+        Assert.Equal(3.0, c.ResumeBuffer);
+        // 5 s buffered would normally be played off faster; with the cushion
+        // it's where the buffer is meant to sit.
+        Assert.Equal(1.0, Hold(c, 40, 20, 5.0).Speed);
+    }
+
+    [Fact]
+    public void TheCushionWearsOffAfterQuietMinutes()
+    {
+        var c = Controller();
+        c.Update(At(0, 0, stalled: true));
+        Hold(c, 1, 119, 2);
+        Assert.Equal(1.0, c.Cushion);
+        Hold(c, 120, 2, 2);
+        Assert.Equal(0, c.Cushion);
+    }
+
+    [Fact]
+    public void ABandwidthDropAddsCushionAndANewChannelClearsIt()
+    {
+        var c = Controller();
+        Assert.True(c.SetQualityOffset(2, T0));
+        Assert.Equal(1.0, c.Cushion);
+        c.Reset(T0, keepQuality: true);
+        Assert.Equal(1.0, c.Cushion);
+        c.Reset(T0, keepQuality: false);
+        Assert.Equal(0, c.Cushion);
     }
 }

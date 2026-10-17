@@ -373,6 +373,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             IsFront = false,
         };
+        // Open tabs follow a new pick too, so the next one brought to the
+        // front isn't still at the old quality.
+        tab.QualityPicked = quality =>
+        {
+            foreach (var other in Tabs)
+                if (other != tab && other.Session is { } session) session.PreferredQuality = quality;
+        };
         tab.Chat.CanSend = _chat?.Token is not null;
         tab.Chat.Status = _chat is null ? "" : "Connected";
         tab.Chat.Add(ChatMessage.System(login, $"### Joining #{login} ###", DateTimeOffset.Now));

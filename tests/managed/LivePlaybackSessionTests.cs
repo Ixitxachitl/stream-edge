@@ -111,6 +111,8 @@ public sealed class LivePlaybackSessionTests : IDisposable
         public void Stop() => _reading?.Cancel();
         public void SetSpeed(double speed) => Speeds.Add(speed);
         public VideoPlayerStats GetStats() => Stats;
+        public double ResumeBuffer;
+        public void SetResumeBuffer(double seconds) => ResumeBuffer = seconds;
         public void ShowMessage(string text) { }
         public void SetVolume(int percent) { }
         public void SetMute(bool mute) { }

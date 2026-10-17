@@ -76,8 +76,31 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             target => target.EndsWith("?n=" + Volatile.Read(ref _loadCount), StringComparison.Ordinal));
     }
 
-    /// <summary>"source", "720p60", "480p"…; matched loosely.</summary>
-    public string? PreferredQuality { get; set; }
+    /// <summary>"source", "720p60", "480p"…; matched loosely, and a cap
+    /// where the channel doesn't have it (see <see cref="HlsPlaylist.Pick"/>).
+    /// Changing it while playing moves there, unless this channel's quality
+    /// was picked by hand.</summary>
+    public string? PreferredQuality
+    {
+        get => _preferredQuality;
+        set
+        {
+            if (_preferredQuality == value) return;
+            _preferredQuality = value;
+            if (_manualPick || Variants.Count == 0) return;
+            var index = HlsPlaylist.Pick(Variants, value);
+            if (index == _preferredIndex) return;
+            _preferredIndex = index;
+            _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
+            _controller.MaxDowngrade = MaxDowngradeFrom(index);
+            if (Status.State == PlaybackState.Playing) ChangeVariant(DateTimeOffset.UtcNow);
+        }
+    }
+
+    private string? _preferredQuality;
+
+    /// <summary>The user picked this channel's quality from the menu.</summary>
+    private bool _manualPick;
 
     /// <summary>Drop ad segments instead of playing them. Off: skipping
     /// leaves the connection to the player silent for the whole break, and
@@ -103,6 +126,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         Stop();
         _login = login;
         _authToken = string.IsNullOrWhiteSpace(authToken) ? null : authToken;
+        _manualPick = false;
         _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
         await ResolveAsync().ConfigureAwait(true);
     }
@@ -126,6 +150,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     {
         if (index < 0 || index >= Variants.Count) return;
         _preferredIndex = index;
+        _manualPick = true;
         _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
         _controller.MaxDowngrade = MaxDowngradeFrom(index);
         ChangeVariant(DateTimeOffset.UtcNow);
@@ -252,6 +277,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         if (Variants.Count == 0) return;
         var target = Variants[TierIndex()];
         if (target == Current) return;
+        ApplyResumeBuffer();
         if (_reader is { IsFragmentedMp4: false } reader && Current is { IsAudioOnly: false } && !target.IsAudioOnly
             && Status.State == PlaybackState.Playing)
         {
@@ -380,6 +406,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     private void Reload(DateTimeOffset now)
     {
         ResetDelivery();
+        ApplyResumeBuffer();
         var index = TierIndex();
         Current = Variants.Count > 0 ? Variants[index] : null;
         if (Current is null) return;
@@ -470,6 +497,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             now, stats.BufferSeconds, stats.Stalled, reader?.SegmentsBehind ?? 0, reader?.InAdBreak ?? false));
 
         if (decision.Notice is { } notice) _player.ShowMessage(notice);
+        ApplyResumeBuffer();
         switch (decision.Action)
         {
             case CatchUpAction.Resync:
@@ -509,6 +537,19 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     private bool _showingAd;
     private long _lastBytes = -1;
     private DateTimeOffset _lastProgressAt;
+
+    private double _resumeBuffer = double.NaN;
+
+    /// <summary>Hands the controller's cushion to the player: it waits for
+    /// that much before starting or resuming, so a struggling connection
+    /// gets a little more buffer to ride out the next hiccup.</summary>
+    private void ApplyResumeBuffer()
+    {
+        var seconds = _controller.ResumeBuffer;
+        if (Math.Abs(seconds - _resumeBuffer) < 0.01) return;
+        _resumeBuffer = seconds;
+        _player.SetResumeBuffer(seconds);
+    }
 
     private void GoOffline()
     {

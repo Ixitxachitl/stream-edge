@@ -44,6 +44,10 @@ public class HlsPlaylistTests
     [InlineData("720p", 1)]
     [InlineData("480p", 2)]
     [InlineData("4k", 0)]
+    [InlineData("1440p60", 0)]
+    [InlineData("900p60", 1)]
+    [InlineData("720p30", 1)]
+    [InlineData("360p", 2)]
     public void PickMatchesLoosely(string? preferred, int expected) =>
         Assert.Equal(expected, HlsPlaylist.Pick(HlsPlaylist.ParseMaster(Master, Base), preferred));
 

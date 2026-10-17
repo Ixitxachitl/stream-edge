@@ -51,8 +51,10 @@ public sealed class AppSettings
     /// screen once the stream ends. Needs a signed-in account.</summary>
     public bool FollowRaids { get; set; } = true;
 
-    /// <summary>Quality to start at ("source", "720p60", "480p"…). Catch-up
-    /// may drop below it while the connection struggles.</summary>
+    /// <summary>Quality to start at ("source", "720p60", "480p"…), set by the
+    /// last pick from the quality menu. A channel without it gets the best
+    /// quality no taller; catch-up may drop below it while the connection
+    /// struggles, but never goes above it.</summary>
     public string PreferredQuality { get; set; } = "source";
 
     public int Volume { get; set; } = 100;

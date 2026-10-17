@@ -23,7 +23,18 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
         _volume = settings.ChannelVolumes.TryGetValue(login, out var volume) ? volume : settings.Volume;
         Player = new PlayerViewModel { Channel = login };
         Player.MuteHandler = muted => Video?.SetMute(muted);
-        Player.SelectQualityHandler = index => Session?.SelectQuality(index);
+        Player.SelectQualityHandler = index =>
+        {
+            if (Session is not { } s) return;
+            s.SelectQuality(index);
+            // A video pick becomes the cap for every channel; audio only is
+            // a one-off for this one.
+            if (index < s.Variants.Count && s.Variants[index] is { IsAudioOnly: false } picked)
+            {
+                settings.PreferredQuality = picked.IsSource ? "source" : picked.Name;
+                QualityPicked?.Invoke(settings.PreferredQuality);
+            }
+        };
         Player.Captions = settings.Captions;
         Player.CaptionsHandler = on =>
         {
@@ -37,6 +48,9 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
     }
 
     public string Login { get; }
+
+    /// <summary>The user picked a video quality on this tab, now the preference.</summary>
+    internal Action<string>? QualityPicked { get; set; }
 
     /// <summary>"LofiGirl" for "lofigirl", once known.</summary>
     public string? DisplayName { get; set; }

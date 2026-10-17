@@ -70,6 +70,23 @@ public sealed record CatchUpOptions
     /// <summary>Time constant of the buffer smoothing: long enough to see
     /// through a segment's swing, short enough to notice real drift.</summary>
     public TimeSpan Smoothing { get; init; } = TimeSpan.FromSeconds(4);
+
+    /// <summary>Buffered seconds the player waits for before starting or
+    /// resuming after a stall, on a good connection (mpv's cache-pause-wait).</summary>
+    public double ResumeBuffer { get; init; } = 1.0;
+
+    /// <summary>Each stall, or drop in quality for bandwidth, adds this much
+    /// cushion: the player waits for that much more before resuming, and
+    /// every buffer threshold above moves up by it, so catch-up doesn't play
+    /// it straight off again. A bad connection trades a little latency for
+    /// smoother playback, including across the quality changes it causes…</summary>
+    public double CushionStep { get; init; } = 1.0;
+
+    /// <summary>…up to this much…</summary>
+    public double MaxCushion { get; init; } = 2.0;
+
+    /// <summary>…and gives a step back after this long without a stall.</summary>
+    public TimeSpan CushionDecay { get; init; } = TimeSpan.FromMinutes(2);
 }
 
 /// <summary>What the player is doing right now, sampled a few times a second.</summary>
@@ -138,6 +155,21 @@ public sealed class CatchUpController(CatchUpOptions options)
     /// <summary>The smoothed buffer decisions are made on.</summary>
     public double SmoothedBuffer => _smoothed ?? 0;
 
+    /// <summary>Extra buffer held because the connection has been struggling
+    /// (see <see cref="CatchUpOptions.CushionStep"/>).</summary>
+    public double Cushion { get; private set; }
+
+    /// <summary>What the player should wait for before resuming after a stall.</summary>
+    public double ResumeBuffer => options.ResumeBuffer + Cushion;
+
+    private DateTimeOffset _lastCushionChange;
+
+    private void RaiseCushion(DateTimeOffset now)
+    {
+        Cushion = Math.Min(options.MaxCushion, Cushion + options.CushionStep);
+        _lastCushionChange = now;
+    }
+
     /// <summary>Call after any reload (new channel, manual quality change,
     /// resync) so stale history and the empty start don't count.</summary>
     public void Reset(DateTimeOffset now, bool keepQuality = true)
@@ -154,6 +186,7 @@ public sealed class CatchUpController(CatchUpOptions options)
         if (keepQuality) return;
         // A new channel or the user's own pick: nothing learnt carries over.
         QualityOffset = 0;
+        Cushion = 0;
         FailedUpgrades = 0;
         _lastUpgrade = DateTimeOffset.MinValue;
         _upgradeHolding = false;
@@ -166,7 +199,11 @@ public sealed class CatchUpController(CatchUpOptions options)
     {
         offset = Math.Clamp(offset, 0, MaxDowngrade);
         if (offset == QualityOffset) return false;
-        if (offset > QualityOffset) NoteDowngrade(now);
+        if (offset > QualityOffset)
+        {
+            NoteDowngrade(now);
+            RaiseCushion(now);
+        }
         else NoteUpgrade(now);
         QualityOffset = offset;
         _stalls.Clear();
@@ -223,8 +260,15 @@ public sealed class CatchUpController(CatchUpOptions options)
         {
             _stalls.Enqueue(s.At);
             _lastStallOrStep = s.At;
+            RaiseCushion(s.At);
         }
         while (_stalls.Count > 0 && s.At - _stalls.Peek() > options.StallWindow) _stalls.Dequeue();
+        if (Cushion > 0 && !s.Stalled && s.At - _lastCushionChange >= options.CushionDecay
+            && s.At - _lastStall >= options.CushionDecay)
+        {
+            Cushion = Math.Max(0, Cushion - options.CushionStep);
+            _lastCushionChange = s.At;
+        }
 
         if (_stalls.Count >= options.StallsForDowngrade && QualityOffset < MaxDowngrade)
         {
@@ -247,7 +291,9 @@ public sealed class CatchUpController(CatchUpOptions options)
         // --- Way behind → jump to live -------------------------------------
         // On the raw reading as well as the smoothed one: a big jump (after a
         // long stall) shouldn't wait for the average to catch up.
-        var farBehind = Math.Min(buffer, s.BufferSeconds) > options.ResyncAbove
+        var resyncAbove = options.ResyncAbove + Cushion;
+        var speedUpAbove = options.SpeedUpAbove + Cushion;
+        var farBehind = Math.Min(buffer, s.BufferSeconds) > resyncAbove
                         || s.SegmentsBehind >= options.ResyncSegmentsBehind;
         if (farBehind && !s.Stalled && s.At - _lastResync >= options.ResyncCooldown)
         {
@@ -258,11 +304,11 @@ public sealed class CatchUpController(CatchUpOptions options)
 
         // --- A little behind → play faster ----------------------------------
         if (s.Stalled) return Set(1.0, CatchUpAction.None, null);
-        if (!_speeding && buffer > options.SpeedUpAbove && s.At - _lastStall >= options.NoCatchUpAfterStall) _speeding = true;
-        if (_speeding && buffer <= options.TargetBuffer + 0.5) _speeding = false;
+        if (!_speeding && buffer > speedUpAbove && s.At - _lastStall >= options.NoCatchUpAfterStall) _speeding = true;
+        if (_speeding && buffer <= options.TargetBuffer + Cushion + 0.5) _speeding = false;
         if (!_speeding) return Set(1.0, CatchUpAction.None, null);
 
-        var wellBehind = buffer > (options.SpeedUpAbove + options.ResyncAbove) / 2;
+        var wellBehind = buffer > (speedUpAbove + resyncAbove) / 2;
         return Set(wellBehind ? options.FastCatchUpSpeed : options.CatchUpSpeed, CatchUpAction.None, null);
     }
 

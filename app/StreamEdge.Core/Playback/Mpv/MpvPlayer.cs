@@ -70,7 +70,8 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         // resume once a second is buffered: resuming on the first frames
         // (0.3 s, as before) turned one stall into a run of micro-stutters.
         // CatchUpController treats repeated stalls as a reason to drop
-        // quality rather than to buffer more.
+        // quality, and raises this wait a little (SetResumeBuffer) while the
+        // connection struggles.
         ("cache", "yes"),
         ("cache-pause", "yes"),
         // Start once a second is buffered rather than on the first frames,
@@ -150,6 +151,12 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
     {
         if (_ctx == IntPtr.Zero) return;
         MpvNative.mpv_set_property_string(_ctx, "speed", speed.ToString("0.00", CultureInfo.InvariantCulture));
+    }
+
+    public void SetResumeBuffer(double seconds)
+    {
+        if (_ctx == IntPtr.Zero) return;
+        MpvNative.mpv_set_property_string(_ctx, "cache-pause-wait", seconds.ToString("0.0", CultureInfo.InvariantCulture));
     }
 
     public void SetVolume(int percent)
