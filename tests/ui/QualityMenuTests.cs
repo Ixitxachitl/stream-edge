@@ -32,7 +32,8 @@ public class QualityMenuTests(HeadlessAvalonia ui) : UiTest(ui)
         var flyout = (MenuFlyout)button.Flyout!;
         flyout.ShowAt(button);
         Dispatcher.UIThread.RunJobs();
-        var count = window.GetVisualDescendants().OfType<MenuFlyoutPresenter>().Single().ItemCount;
+        var count = window.GetVisualDescendants().OfType<MenuFlyoutPresenter>().Single()
+            .GetVisualDescendants().OfType<MenuItem>().Count(m => m.IsVisible);
         flyout.Hide();
         Dispatcher.UIThread.RunJobs();
         return count;
@@ -57,6 +58,17 @@ public class QualityMenuTests(HeadlessAvalonia ui) : UiTest(ui)
         Dispatcher.UIThread.RunJobs();
 
         Assert.NotSame(old, vm.Player);
+        // Picking a quality rebuilds the list while the menu is open.
+        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Flyout is MenuFlyout);
+        var flyout = (MenuFlyout)button.Flyout!;
+        flyout.ShowAt(button);
+        Dispatcher.UIThread.RunJobs();
+        vm.Player.Apply(new PlaybackStatus(PlaybackState.Playing, "720p60", 1, null, 1, false, ""), Variants, Variants[1]);
+        Dispatcher.UIThread.RunJobs();
+        var names = string.Join(",", window.GetVisualDescendants().OfType<MenuFlyoutPresenter>().Single().GetVisualDescendants().OfType<MenuItem>().Select(m => m.Header));
+        flyout.Hide();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("1080p60 (source),720p60,480p", names);
         Assert.Equal(3, Shown(window));
         window.Close();
     });

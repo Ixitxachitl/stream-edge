@@ -131,7 +131,10 @@ public sealed partial class PlayerViewModel : ObservableObject
         {
             Qualities.Clear();
             for (var i = 0; i < variants.Count; i++)
-                Qualities.Add(new QualityOption(variants[i].Name, i, variants[i] == current, SelectQualityCommand));
+                // Marked as twitch.tv does: a 720p60 broadcast also gets a
+                // 720p60 transcode, and the two would otherwise look the same.
+                Qualities.Add(new QualityOption(variants[i].IsSource ? variants[i].Name + " (source)" : variants[i].Name,
+                    i, variants[i] == current, SelectQualityCommand));
         }
     }
 }

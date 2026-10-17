@@ -388,6 +388,14 @@
   <Style Selector="ListBox.streams ListBoxItem">
     <Setter Property="Padding" Value="10,5" />
   </Style>
+  <!-- No lasting highlight on the row last clicked: what's playing is on the
+       tabs. Hover still lights a row, selected or not. -->
+  <Style Selector="ListBox.streams ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.streams ListBoxItem:selected:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListLowBrush}" />
+  </Style>
   <Style Selector="ListBox.streams Panel.avatar">
     <Setter Property="Width" Value="30" />
     <Setter Property="Height" Value="30" />

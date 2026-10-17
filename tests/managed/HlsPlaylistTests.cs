@@ -51,6 +51,22 @@ public class HlsPlaylistTests
     public void PickMatchesLoosely(string? preferred, int expected) =>
         Assert.Equal(expected, HlsPlaylist.Pick(HlsPlaylist.ParseMaster(Master, Base), preferred));
 
+    private const string SourceAt720 = """
+        #EXTM3U
+        #EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="chunked",NAME="720p60 (source)",AUTOSELECT=YES,DEFAULT=YES
+        #EXT-X-STREAM-INF:BANDWIDTH=5957031,RESOLUTION=1280x720,CODECS="avc1.640020,mp4a.40.2",VIDEO="chunked",FRAME-RATE=60.000
+        https://video.example/chunked.m3u8
+        #EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="720p60",NAME="720p60",AUTOSELECT=YES,DEFAULT=YES
+        #EXT-X-STREAM-INF:BANDWIDTH=3422999,RESOLUTION=1280x720,CODECS="avc1.4D401F,mp4a.40.2",VIDEO="720p60",FRAME-RATE=60.000
+        https://video.example/720p60.m3u8
+        """;
+
+    [Theory]
+    [InlineData("source", 0)]
+    [InlineData("720p60", 1)]
+    public void ASourceAndATranscodeOfTheSameSizeStayApart(string preferred, int expected) =>
+        Assert.Equal(expected, HlsPlaylist.Pick(HlsPlaylist.ParseMaster(SourceAt720, Base), preferred));
+
     private const string Media = """
         #EXTM3U
         #EXT-X-VERSION:3

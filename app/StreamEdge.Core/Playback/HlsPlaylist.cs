@@ -84,7 +84,10 @@ public static class HlsPlaylist
         if (string.IsNullOrWhiteSpace(preferred) || preferred.Equals("source", StringComparison.OrdinalIgnoreCase))
             return 0;
         var list = variants.ToList();
-        var exact = list.FindIndex(v => v.Name.Equals(preferred, StringComparison.OrdinalIgnoreCase));
+        // A 720p60 broadcast also has a 720p60 transcode; "720p60" means the
+        // transcode (picking the source saves "source").
+        var exact = list.FindIndex(v => !v.IsSource && v.Name.Equals(preferred, StringComparison.OrdinalIgnoreCase));
+        if (exact < 0) exact = list.FindIndex(v => v.Name.Equals(preferred, StringComparison.OrdinalIgnoreCase));
         if (exact >= 0) return exact;
         var prefix = list.FindIndex(v => v.Name.StartsWith(preferred, StringComparison.OrdinalIgnoreCase));
         if (prefix >= 0) return prefix;
