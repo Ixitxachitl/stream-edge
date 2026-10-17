@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Collections.ObjectModel;
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using StreamEdge.Chat.Emotes;
 
@@ -13,8 +15,9 @@ namespace StreamEdge.AvaloniaApp.Views.Emotes;
 /// completion. Tab completes the word at the caret and, pressed again,
 /// cycles through the other matches (Shift+Tab back); typing ':' and a few
 /// letters lists matches as you go, as on twitch.tv, for Tab, Enter or a
-/// click to pick. Up and Down move through the list, Esc closes it.</summary>
-public sealed class EmoteTextBox : TextBox
+/// click to pick. Up and Down move through the list, Esc closes it.
+/// Pasted line breaks become spaces, since a chat message is one line.</summary>
+public sealed partial class EmoteTextBox : TextBox
 {
     public static readonly DirectProperty<EmoteTextBox, bool> IsSuggestingProperty =
         AvaloniaProperty.RegisterDirect<EmoteTextBox, bool>(nameof(IsSuggesting), o => o.IsSuggesting);
@@ -46,7 +49,28 @@ public sealed class EmoteTextBox : TextBox
         // Tunnel: Tab, Enter and the arrows must be seen before focus
         // navigation, sending, or the caret moving take them.
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+        PastingFromClipboard += OnPasting;
     }
+
+    /// <summary>A single-line TextBox keeps only the first line of a
+    /// paste; this pastes it all, with each line break as a space.</summary>
+    private async void OnPasting(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+        e.Handled = true;
+        string? text;
+        try { text = await clipboard.TryGetTextAsync(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return; }
+        if (string.IsNullOrEmpty(text)) return;
+        // As if typed: replaces the selection, honours MaxLength, and undoes as one step.
+        OnTextInput(new TextInputEventArgs { RoutedEvent = TextInputEvent, Source = this, Text = OneLine(text) });
+    }
+
+    /// <summary>Line breaks, and the spaces around them, as one space.</summary>
+    public static string OneLine(string text) => LineBreaks().Replace(text, " ");
+
+    [GeneratedRegex(@"[ \t]*[\r\n]+\s*")]
+    private static partial Regex LineBreaks();
 
     /// <summary>Emote image for a word, for drawing it inline.</summary>
     public Func<string, Uri?>? EmoteLookup

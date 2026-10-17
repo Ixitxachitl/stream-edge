@@ -2,6 +2,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Media.TextFormatting;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -203,6 +204,21 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
         vm.Chat.Draft = "";
         Type(window, new string('x', 520));
         Assert.Equal(500, vm.Chat.Draft.Length);
+        window.Close();
+    });
+
+    [Fact]
+    public void PastedLineBreaksBecomeSpaces() => Ui(() =>
+    {
+        Assert.Equal("one two three", EmoteTextBox.OneLine("one \r\ntwo\n\n  three"));
+
+        var (window, vm, input) = Open();
+        Type(window, "say: ");
+        var set = window.Clipboard!.SetTextAsync("first line\r\nsecond line\n\nthird");
+        while (!set.IsCompleted) Dispatcher.UIThread.RunJobs();
+        input.Paste();
+        for (var i = 0; i < 20 && vm.Chat.Draft == "say: "; i++) Dispatcher.UIThread.RunJobs();
+        Assert.Equal("say: first line second line third", vm.Chat.Draft);
         window.Close();
     });
 }
