@@ -157,6 +157,30 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public PlayerViewModel Player => FrontTab?.Player ?? _idlePlayer;
 
+    /// <summary>The front tab's quality menu, copied into one collection that
+    /// lives as long as the app. The menu binds this rather than
+    /// <c>Player.Qualities</c>: once a MenuFlyout has been opened, giving it
+    /// a different collection leaves it drawing the old one, so after a
+    /// switch of streams it showed the closed tab's (emptied) list and
+    /// wouldn't open.</summary>
+    public ObservableCollection<QualityOption> Qualities { get; } = [];
+
+    private PlayerViewModel? _qualitiesFrom;
+
+    partial void OnFrontTabChanged(ChannelTabViewModel? value)
+    {
+        if (_qualitiesFrom is { } old) old.Qualities.CollectionChanged -= OnFrontQualitiesChanged;
+        _qualitiesFrom = Player;
+        _qualitiesFrom.Qualities.CollectionChanged += OnFrontQualitiesChanged;
+        OnFrontQualitiesChanged(null, null);
+    }
+
+    private void OnFrontQualitiesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs? e)
+    {
+        Qualities.Clear();
+        foreach (var option in Player.Qualities) Qualities.Add(option);
+    }
+
     public bool HasChannel => FrontTab is not null;
 
     public bool HasTabs => Tabs.Count > 0;

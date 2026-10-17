@@ -88,7 +88,7 @@
           <ToggleButton Classes="cc" Content="CC" IsChecked="{Binding Main.Player.Captions}" ToolTip.Tip="Closed captions (when the stream has them)" />
           <Button Content="{Binding Main.Player.QualityLabel}" ToolTip.Tip="Quality (drops automatically to keep up with live)">
             <Button.Flyout>
-              <MenuFlyout ItemsSource="{Binding Main.Player.Qualities}">
+              <MenuFlyout ItemsSource="{Binding Main.Qualities}">
                 <MenuFlyout.ItemContainerTheme>
                   <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:QualityOption">
                     <Setter Property="Header" Value="{Binding Name}" />
