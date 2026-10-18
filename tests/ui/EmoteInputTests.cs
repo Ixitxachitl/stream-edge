@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+using Avalonia;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -219,6 +222,27 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
         input.Paste();
         for (var i = 0; i < 20 && vm.Chat.Draft == "say: "; i++) Dispatcher.UIThread.RunJobs();
         Assert.Equal("say: first line second line third", vm.Chat.Draft);
+        window.Close();
+    });
+
+    [Fact]
+    public void AnimatedEmotesAnimateInTheChatBox() => Ui(() =>
+    {
+        // Kappa as a two-frame animation, already downloaded.
+        static WriteableBitmap Frame() => new(new PixelSize(4, 4), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        EmoteImageCache.Put(new Uri("https://img.example/Kappa"), new EmoteImage([Frame(), Frame()], [50, 50]));
+        var (window, vm, input) = Open();
+        var presenter = input.GetVisualDescendants().OfType<EmoteTextPresenter>().Single();
+
+        Type(window, "hi Kappa ");
+        window.CaptureRenderedFrame();
+        Assert.True(EmoteAnimator.IsRegistered(presenter));
+
+        // Gone from the text: no more redrawing for it.
+        vm.Chat.Draft = "hi";
+        Dispatcher.UIThread.RunJobs();
+        window.CaptureRenderedFrame();
+        Assert.False(EmoteAnimator.IsRegistered(presenter));
         window.Close();
     });
 }

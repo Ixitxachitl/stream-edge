@@ -110,7 +110,7 @@ public sealed class EmoteView : Control
             done(image);
             InvalidateMeasure();
             InvalidateVisual();
-            if (IsAnimated && IsAttached) Animator.Register(this);
+            if (IsAnimated && IsAttached) EmoteAnimator.Register(this);
         });
     }
 
@@ -121,13 +121,13 @@ public sealed class EmoteView : Control
     {
         base.OnAttachedToVisualTree(e);
         IsAttached = true;
-        if (IsAnimated) Animator.Register(this);
+        if (IsAnimated) EmoteAnimator.Register(this);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         IsAttached = false;
-        Animator.Unregister(this);
+        EmoteAnimator.Unregister(this);
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -154,7 +154,7 @@ public sealed class EmoteView : Control
             context.DrawText(text, new Point(1, (Bounds.Height - text.Height) / 2));
             return;
         }
-        var now = Animator.ElapsedMs;
+        var now = EmoteAnimator.ElapsedMs;
         Draw(context, _image, now);
         foreach (var overlay in _overlayImages) Draw(context, overlay, now);
     }
@@ -173,35 +173,5 @@ public sealed class EmoteView : Control
         var rect = new Rect((Bounds.Width - w) / 2, (Bounds.Height - h) / 2, w, h);
         var frame = image.FrameAt(now);
         context.DrawImage(frame, new Rect(frame.Size), rect);
-    }
-
-    /// <summary>The shared animation clock: ~30 fps while anything animated
-    /// is on screen, stopped otherwise.</summary>
-    private static class Animator
-    {
-        private static readonly Stopwatch Clock = Stopwatch.StartNew();
-        private static readonly HashSet<EmoteView> Views = [];
-        private static DispatcherTimer? _timer;
-
-        public static long ElapsedMs => Clock.ElapsedMilliseconds;
-
-        public static void Register(EmoteView view)
-        {
-            Views.Add(view);
-            if (_timer is not null) return;
-            _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, (_, _) =>
-            {
-                foreach (var v in Views) v.InvalidateVisual();
-            });
-            _timer.Start();
-        }
-
-        public static void Unregister(EmoteView view)
-        {
-            Views.Remove(view);
-            if (Views.Count > 0 || _timer is null) return;
-            _timer.Stop();
-            _timer = null;
-        }
     }
 }

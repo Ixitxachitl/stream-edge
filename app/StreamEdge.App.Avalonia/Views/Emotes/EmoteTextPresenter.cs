@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
@@ -41,8 +42,23 @@ public sealed class EmoteTextPresenter : TextPresenter
     /// <summary>Re-lays out the text: emote sets loaded, or the channel changed.</summary>
     public void Refresh() => InvalidateTextLayout();
 
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        EmoteAnimator.Unregister(this);
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    /// <summary>An animated emote was drawn: keep redrawing while it shows.
+    /// A new layout drops this, and drawing it takes it up again only if an
+    /// animated emote is still in the text.</summary>
+    private void Animate()
+    {
+        if (TopLevel.GetTopLevel(this) is not null) EmoteAnimator.Register(this);
+    }
+
     protected override TextLayout CreateTextLayout()
     {
+        EmoteAnimator.Unregister(this);
         var text = Text;
         if (EmoteLookup is not { } lookup || string.IsNullOrEmpty(text) || PasswordChar != default
             || !string.IsNullOrEmpty(PreeditText))
@@ -148,8 +164,12 @@ public sealed class EmoteTextPresenter : TextPresenter
         public override void Draw(DrawingContext context, Point origin)
         {
             var box = new Rect(origin.X + 1, origin.Y, Size.Width - 2, _height);
+            _image ??= EmoteImageCache.TryGet(_url);
             if (_image is { } image)
-                context.DrawImage(image.FrameAt(0), box);
+            {
+                context.DrawImage(image.FrameAt(EmoteAnimator.ElapsedMs), box);
+                if (image.IsAnimated) _owner.Animate();
+            }
             else
                 context.DrawRectangle(new SolidColorBrush(Colors.Gray, 0.3), null, box, 3, 3);
         }

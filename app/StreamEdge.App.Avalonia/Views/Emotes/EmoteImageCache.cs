@@ -89,6 +89,10 @@ public static class EmoteImageCache
             ? lazy.Value.Result
             : null;
 
+    /// <summary>For tests: an image as if already downloaded.</summary>
+    public static void Put(Uri url, EmoteImage image) =>
+        Loaded[ForScale(url, Scale)] = new Lazy<Task<EmoteImage?>>(Task.FromResult<EmoteImage?>(image));
+
     /// <summary>The image, or null if it can't be had right now; a later
     /// call (after <see cref="RetryAfter"/>) tries again.</summary>
     public static async Task<EmoteImage?> GetAsync(Uri url)
