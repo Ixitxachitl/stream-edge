@@ -18,7 +18,10 @@ public sealed record LiveStream(
     string? UserId = null,
     Uri? ProfileImage = null,
     bool IsLive = true,
-    IReadOnlyList<ChannelInfo>? SharedWith = null)
+    IReadOnlyList<ChannelInfo>? SharedWith = null,
+    IReadOnlyList<string>? Tags = null,
+    IReadOnlyList<string>? ContentLabels = null,
+    LastBroadcast? LastLive = null)
 {
     /// <summary>In a shared chat session with these channels (not itself).</summary>
     public bool IsSharedChat => SharedWith is { Count: > 0 };
@@ -28,6 +31,30 @@ public sealed record LiveStream(
     /// <summary>The list header: "CometCrumb (57 | 2.4h)".</summary>
     public string Header(DateTimeOffset now) =>
         !IsLive || Viewers < 0 ? DisplayName : $"{DisplayName} ({UiFormats.Viewers(Viewers)} | {UiFormats.Uptime(Uptime(now))})";
+}
+
+/// <summary>A channel's most recent stream, for offline rows: when it
+/// started, its title and game.</summary>
+public sealed record LastBroadcast(DateTimeOffset StartedAt, string Title, string? Game);
+
+/// <summary>Twitch's content classification labels, as its own pages name
+/// them (Helix gives ids).</summary>
+public static class ContentLabels
+{
+    public const string BrandedContent = "BrandedContent";
+
+    public static string Describe(string id) => id switch
+    {
+        "DebatedSocialIssuesAndPolitics" => "Politics and Sensitive Social Issues",
+        "DrugsIntoxication" => "Drugs, Intoxication, or Excessive Tobacco Use",
+        "Gambling" => "Gambling",
+        "MatureGame" => "Mature-rated game",
+        "ProfanityVulgarity" => "Significant Profanity or Vulgarity",
+        "SexualThemes" => "Sexual Themes",
+        "ViolentGraphic" => "Violent and Graphic Depictions",
+        BrandedContent => "Branded content",
+        _ => id,
+    };
 }
 
 public enum StreamSortOrder

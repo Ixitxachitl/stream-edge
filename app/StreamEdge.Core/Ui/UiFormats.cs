@@ -18,6 +18,16 @@ public static class UiFormats
     }
 
     /// <summary>Viewer count with thousands separators ("11,455").</summary>
+    /// <summary>How long ago, coarsely: "45m", "5h", "3d", "2mo".</summary>
+    public static string Ago(TimeSpan span)
+    {
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        return span.TotalMinutes < 60 ? ((int)span.TotalMinutes).ToString(CultureInfo.InvariantCulture) + "m"
+            : span.TotalHours < 48 ? ((int)span.TotalHours).ToString(CultureInfo.InvariantCulture) + "h"
+            : span.TotalDays < 60 ? ((int)span.TotalDays).ToString(CultureInfo.InvariantCulture) + "d"
+            : ((int)(span.TotalDays / 30)).ToString(CultureInfo.InvariantCulture) + "mo";
+    }
+
     public static string Viewers(int viewers) =>
         viewers.ToString("N0", CultureInfo.InvariantCulture);
 

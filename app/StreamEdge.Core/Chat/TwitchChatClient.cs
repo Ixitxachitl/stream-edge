@@ -71,11 +71,19 @@ public sealed class TwitchChatClient : IAsyncDisposable
         await SendAsync($"PART #{channel}").ConfigureAwait(false);
     }
 
-    public Task SendMessageAsync(string channel, string text)
+    /// <param name="replyToId">Answer this message (its <c>id</c> tag), shown
+    /// as a reply as on twitch.tv.</param>
+    public Task SendMessageAsync(string channel, string text, string? replyToId = null)
     {
         if (Token is null) throw new InvalidOperationException("Sending needs a signed-in account.");
-        return SendAsync($"PRIVMSG #{channel.TrimStart('#')} :{text}");
+        return SendAsync(Privmsg(channel, text, replyToId));
     }
+
+    /// <summary>The IRC line for a message, with Twitch's reply tag when it
+    /// answers one.</summary>
+    public static string Privmsg(string channel, string text, string? replyToId = null) =>
+        (replyToId is { Length: > 0 } id ? $"@reply-parent-msg-id={id} " : "")
+        + $"PRIVMSG #{channel.TrimStart('#')} :{text}";
 
     private async Task RunAsync(CancellationToken stop)
     {

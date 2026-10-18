@@ -92,4 +92,24 @@ public static class SampleData
         new("next-game", "Pick the next game", 2500, "#392E5C", null, "Name a game", true, true),
         new("vip", "VIP for a week", 50000, "#E91916", null, null, false, true),
     ], 12345);
+
+    /// <summary>About panels for any demo channel, written as streamers write
+    /// them (Markdown, links), so the panel shows its layout offline.</summary>
+    public static IReadOnlyList<ChannelPanel> Panels()
+    {
+        ChannelPanel Panel(string? title, string markdown, string? link = null) =>
+            new(title, null, ChannelPanels.PlainText(markdown), link is null ? null : new Uri(link))
+            {
+                Runs = ChannelPanels.Format(markdown),
+            };
+        return
+        [
+            Panel("About me", "Cozy games most evenings. **Be kind**, have fun.\n\nRunning a charity stream every December."),
+            Panel("Schedule", "## Mon, Wed, Fri\n7 pm to late (UTC)\n\n## Sunday\nCommunity game night"),
+            Panel("Rules", "1. No spoilers\n2. No backseating unless asked\n3. English in chat, please"),
+            Panel("Socials", "[Discord](https://discord.example/pip) · [YouTube](https://youtube.example/@pip)\nClips at https://clips.example/pip",
+                "https://discord.example/pip"),
+            Panel("Setup", "Keyboard: a very loud one\nMic: a dynamic one on a boom arm"),
+        ];
+    }
 }

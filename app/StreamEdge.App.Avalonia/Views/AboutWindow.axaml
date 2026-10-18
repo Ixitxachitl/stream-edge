@@ -14,8 +14,11 @@
     <TextBlock Text="StreamEdge" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"
                Foreground="{StaticResource SeText}" />
     <TextBlock x:Name="VersionText" HorizontalAlignment="Center" Foreground="{StaticResource SeAccent}" />
-    <TextBlock Text="A Twitch client for small ultrawide secondary displays: chat, the stream and your live follows in one short row."
-               TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource SeTextDim}" Margin="0,6,0,6" />
+    <TextBlock Text="For small ultrawide secondary displays: chat, the stream and your live follows in one short row."
+               TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource SeTextDim}" Margin="0,6,0,0" />
+    <!-- The wording Twitch's trademark guidelines allow for third-party apps. -->
+    <TextBlock Text="Compatible with Twitch. Not affiliated with or endorsed by Twitch."
+               TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource SeTextDim}" Margin="0,2,0,6" />
     <TextBlock x:Name="CommitText" HorizontalAlignment="Center" Foreground="{StaticResource SeTextFaint}"
                FontSize="{StaticResource SeSmallFontSize}" />
     <TextBlock x:Name="RuntimeText" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"

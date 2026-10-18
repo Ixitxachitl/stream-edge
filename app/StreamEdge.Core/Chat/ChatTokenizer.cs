@@ -17,6 +17,9 @@ public enum ChatTokenKind
     /// <summary>A GIF; <see cref="ChatToken.Url"/> is its image and
     /// <see cref="ChatToken.Text"/> its "[title]".</summary>
     Gif,
+    /// <summary>A cheer ("Cheer100") in a message with bits;
+    /// <see cref="ChatToken.Cheer"/> is set.</summary>
+    Cheer,
 }
 
 /// <summary>One run of a chat line. <see cref="Text"/> is always the
@@ -31,6 +34,8 @@ public sealed record ChatToken(ChatTokenKind Kind, string Text)
     public IReadOnlyList<Emote> Overlays { get; init; } = [];
 
     public Uri? Url { get; init; }
+
+    public Cheer? Cheer { get; init; }
 
     /// <summary>The mentioned login without '@' or trailing punctuation.</summary>
     public string? MentionLogin { get; init; }
@@ -50,9 +55,13 @@ public static class ChatTokenizer
     /// <c>code =&gt; registry.Lookup(roomId, code)</c>).</summary>
     /// <param name="selfLogin">Signed-in login, to flag mentions of it; null when anonymous.</param>
     /// <param name="gifs">Draw GIFs; off, a GIF stays its "[title]" text.</param>
+    /// <param name="cheermotes">The channel's cheermotes, matched only in
+    /// messages that carry bits (elsewhere "Cheer100" is just a word).</param>
     public static IReadOnlyList<ChatToken> Tokenize(
-        ChatMessage message, Func<string, Emote?>? thirdPartyLookup, string? selfLogin, bool gifs = true)
+        ChatMessage message, Func<string, Emote?>? thirdPartyLookup, string? selfLogin, bool gifs = true,
+        IReadOnlyList<Cheermote>? cheermotes = null)
     {
+        var cheers = message.Bits > 0 && cheermotes is { Count: > 0 } ? cheermotes : null;
         var text = message.Text;
         var builder = new Builder();
         var pos = 0;
@@ -63,19 +72,19 @@ public static class ChatTokenizer
         foreach (var span in spans)
         {
             if (span.Start < pos || span.Start + span.Length > text.Length) continue;
-            Words(builder, text, pos, span.Start, thirdPartyLookup, selfLogin);
+            Words(builder, text, pos, span.Start, thirdPartyLookup, selfLogin, cheers);
             var code = text.Substring(span.Start, span.Length);
             if (span.Emote is { } range) builder.AddEmote(new Emote(code, range.ImageUrl, EmoteProvider.Twitch));
             else if (gifs && span.Gif is { } gif) builder.Add(new ChatToken(ChatTokenKind.Gif, code) { Url = gif.Url });
             else builder.AddText(code);
             pos = span.Start + span.Length;
         }
-        Words(builder, text, pos, text.Length, thirdPartyLookup, selfLogin);
+        Words(builder, text, pos, text.Length, thirdPartyLookup, selfLogin, cheers);
         return builder.Finish();
     }
 
     private static void Words(Builder b, string text, int from, int to,
-        Func<string, Emote?>? lookup, string? selfLogin)
+        Func<string, Emote?>? lookup, string? selfLogin, IReadOnlyList<Cheermote>? cheers)
     {
         var i = from;
         while (i < to)
@@ -88,13 +97,20 @@ public static class ChatTokenizer
             }
             var end = text.IndexOf(' ', i, to - i);
             if (end < 0) end = to;
-            Word(b, text[i..end], lookup, selfLogin);
+            Word(b, text[i..end], lookup, selfLogin, cheers);
             i = end;
         }
     }
 
-    private static void Word(Builder b, string word, Func<string, Emote?>? lookup, string? selfLogin)
+    private static void Word(Builder b, string word, Func<string, Emote?>? lookup, string? selfLogin,
+        IReadOnlyList<Cheermote>? cheers)
     {
+        if (cheers is not null && Cheermotes.Match(cheers, word) is { } cheer)
+        {
+            b.Add(new ChatToken(ChatTokenKind.Cheer, word) { Cheer = cheer });
+            return;
+        }
+
         if (lookup?.Invoke(word) is { } emote)
         {
             b.AddEmote(emote);

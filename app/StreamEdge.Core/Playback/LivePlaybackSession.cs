@@ -19,8 +19,9 @@ public enum PlaybackTier
     Full,
     /// <summary>A picture-in-picture thumbnail: the smallest video variant.</summary>
     Thumbnail,
-    /// <summary>A background tab nobody can see: audio only, if offered.</summary>
-    AudioOnly,
+    /// <summary>A background tab with picture-in-picture off: nothing plays
+    /// or downloads until it comes back.</summary>
+    Off,
 }
 
 /// <summary>A snapshot for the UI.</summary>
@@ -50,6 +51,11 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     /// <summary>Playing with no new bytes for this long counts as stuck.
     /// Generous: a prefetch segment alone can take a few seconds to start.</summary>
     internal static TimeSpan NoProgressTimeout { get; set; } = TimeSpan.FromSeconds(12);
+
+    /// <summary>Playing with the playback position stuck for this long counts
+    /// as frozen, however many bytes are arriving. Longer than the bytes
+    /// watchdog: a slow connection may buffer for a while before resuming.</summary>
+    internal static TimeSpan NoPlaybackTimeout { get; set; } = TimeSpan.FromSeconds(20);
 
     private readonly HttpClient _http;
     private readonly IVideoPlayer _player;
@@ -102,19 +108,18 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     /// <summary>The user picked this channel's quality from the menu.</summary>
     private bool _manualPick;
 
-    /// <summary>Drop ad segments instead of playing them. Off: skipping
-    /// leaves the connection to the player silent for the whole break, and
-    /// mpv abandons a silent connection after about 30 s, mid pre-roll; the
-    /// reconnect then gets a fresh pre-roll, and so on. Ads play as on
-    /// twitch.tv (none at all with an auth-token and a sub or Turbo), with an
-    /// "Ad break" label on the video.</summary>
-    public bool SkipAds { get; set; }
-
     public IReadOnlyList<HlsVariant> Variants { get; private set; } = [];
 
     public HlsVariant? Current { get; private set; }
 
     public PlaybackStatus Status { get; private set; } = PlaybackStatus.Stopped;
+
+    /// <summary>The channel was live when last checked: playing now, or it
+    /// was when the tab was turned <see cref="PlaybackTier.Off"/> (it isn't
+    /// checked again until it's back on).</summary>
+    public bool LastKnownLive => Status.State == PlaybackState.Playing || (_tier == PlaybackTier.Off && _liveWhenHalted);
+
+    private bool _liveWhenHalted;
 
     public event Action? StatusChanged;
 
@@ -129,6 +134,23 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         _manualPick = false;
         _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
         await ResolveAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Stops playing and downloading but keeps the channel, for
+    /// <see cref="PlaybackTier.Off"/>.</summary>
+    private void Halt()
+    {
+        _liveWhenHalted = Status.State == PlaybackState.Playing;
+        _fellBehind = false;
+        _cts.Cancel();
+        _cts = new CancellationTokenSource();
+        _server.Disconnect();
+        _player.Stop();
+        Current = null;
+        _probe = null;
+        _probing = null;
+        _retryAt = DateTimeOffset.MaxValue;
+        Publish(Status with { State = PlaybackState.Stopped, Quality = null, Speed = 1, Message = "" });
     }
 
     public void Stop()
@@ -181,7 +203,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
 
     private async Task ResolveAsync()
     {
-        if (_login is not { } login) return;
+        if (_login is not { } login || _tier == PlaybackTier.Off) return;
         var ct = _cts.Token;
         Publish(Status with { State = PlaybackState.Resolving, Message = "Resolving stream…" });
         try
@@ -206,8 +228,9 @@ public sealed class LivePlaybackSession : IAsyncDisposable
                 GoOffline();
                 return;
             }
-            // Keep a manual pick across token refreshes; otherwise use the preference.
-            if (Current is null || _preferredIndex >= Variants.Count)
+            // Keep a manual pick across token refreshes and time spent off;
+            // otherwise use the preference.
+            if (!_manualPick || _preferredIndex >= Variants.Count)
                 _preferredIndex = HlsPlaylist.Pick(Variants, PreferredQuality);
             _controller.MaxDowngrade = MaxDowngradeFrom(_preferredIndex);
             _server.Start();
@@ -234,15 +257,29 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     private int MaxDowngradeFrom(int index) =>
         _tier != PlaybackTier.Full ? 0 : Math.Max(0, Variants.Count(v => !v.IsAudioOnly) - 1 - index);
 
-    /// <summary>Front, thumbnail or background. Changing it reloads at the
-    /// live edge in the matching variant (a second or so of silence).</summary>
+    /// <summary>Front, thumbnail or off. Between front and thumbnail it moves
+    /// to the matching variant, in place where it can; off stops everything,
+    /// and coming back reconnects at the live edge with a fresh token.</summary>
     public PlaybackTier Tier
     {
         get => _tier;
         set
         {
             if (_tier == value) return;
+            var wasOff = _tier == PlaybackTier.Off;
             _tier = value;
+            if (value == PlaybackTier.Off)
+            {
+                Halt();
+                return;
+            }
+            if (wasOff)
+            {
+                _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
+                _player.SetCaptions(_captions && value == PlaybackTier.Full);
+                _ = ResolveAsync();
+                return;
+            }
             // Quality steps only make sense for the tab being watched; other
             // tiers already sit at the bottom. Jumping to live still applies.
             _controller.Reset(DateTimeOffset.UtcNow, keepQuality: value == PlaybackTier.Full);
@@ -261,8 +298,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         while (lastVideo > 0 && Variants[lastVideo].IsAudioOnly) lastVideo--;
         return _tier switch
         {
-            PlaybackTier.AudioOnly when Variants.ToList().FindIndex(v => v.IsAudioOnly) is >= 0 and var audio => audio,
-            PlaybackTier.AudioOnly or PlaybackTier.Thumbnail => lastVideo,
+            PlaybackTier.Thumbnail or PlaybackTier.Off => lastVideo,
             _ => Math.Min(_preferredIndex + _controller.QualityOffset, Math.Max(0, Variants.Count - 1)),
         };
     }
@@ -405,6 +441,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
 
     private void Reload(DateTimeOffset now)
     {
+        if (_tier == PlaybackTier.Off) return;
         ResetDelivery();
         ApplyResumeBuffer();
         var index = TierIndex();
@@ -412,6 +449,9 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         if (Current is null) return;
         _playlistGone = false;
         _loadedAt = now;
+        // Both watchdogs measure from this load.
+        _lastProgressAt = _lastPlayedAt = now;
+        _lastPosition = null;
         _retryAt = DateTimeOffset.MaxValue;
         _player.SetSpeed(1.0);
         // A fresh URL each time makes the player drop its buffer and reconnect,
@@ -430,7 +470,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     private async Task ServeAsync(Stream output, CancellationToken ct)
     {
         if (Current is not { } variant) return;
-        var reader = new LiveHlsReader(_http, variant.Uri, SkipAds);
+        var reader = new LiveHlsReader(_http, variant.Uri);
         reader.Notice += m => Notice?.Invoke(m);
         _reader = reader;
         try
@@ -442,6 +482,11 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             // Token expired or stream ended; Tick notices the player going
             // idle and re-resolves.
             _playlistGone = true;
+        }
+        catch (FellBehindException)
+        {
+            // Tick reloads at the live edge.
+            _fellBehind = true;
         }
         finally
         {
@@ -465,6 +510,16 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         var stats = _player.GetStats();
         var reader = _reader;
 
+        // The reader lost its place after an outage: a clean load at the
+        // live edge rather than a jump in time mid-stream.
+        if (_fellBehind)
+        {
+            _fellBehind = false;
+            _player.ShowMessage("Rejoining live");
+            Reload(now);
+            return;
+        }
+
         // The player went idle: the reader hit the end of the playlist or
         // its URL expired. Resolve again rather than leave a black pane.
         if (stats.Idle && now - _loadedAt > LoadGrace)
@@ -484,9 +539,23 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         }
         else if (now - _lastProgressAt > NoProgressTimeout && !(reader?.InAdBreak ?? false))
         {
-            _server.Disconnect();
-            ScheduleRetry(now, "Stream stalled, reconnecting…");
-            _retryAt = now;
+            Reconnect(now, "Stream stalled, reconnecting…");
+            return;
+        }
+
+        // And the other end: bytes going in, but the playback position not
+        // moving (a demuxer that can't make sense of what it's given, or a
+        // connection that trickles just enough to look alive). The bytes
+        // check above can't see either; this does, whatever the cause.
+        var position = stats.Position;
+        if (position != _lastPosition || now - _loadedAt < LoadGrace || (reader?.InAdBreak ?? false))
+        {
+            _lastPosition = position;
+            _lastPlayedAt = now;
+        }
+        else if (now - _lastPlayedAt > NoPlaybackTimeout)
+        {
+            Reconnect(now, "Playback stuck, reconnecting…");
             return;
         }
 
@@ -524,8 +593,8 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             Message = decision.Notice ?? (stats.Stalled ? "Buffering…" : reader?.InAdBreak == true ? "Ad break" : ""),
         });
 
-        // Skipped ads leave the picture black; say why, on the video itself
-        // (it's the only thing visible in a PIP thumbnail).
+        // An "Ad break" label on the video while ads play, as twitch.tv
+        // shows one, so an ad isn.t mistaken for the stream.
         var inAd = reader?.InAdBreak == true;
         if (inAd != _showingAd)
         {
@@ -537,6 +606,18 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     private bool _showingAd;
     private long _lastBytes = -1;
     private DateTimeOffset _lastProgressAt;
+    private double? _lastPosition;
+    private DateTimeOffset _lastPlayedAt;
+    private volatile bool _fellBehind;
+
+    /// <summary>Drops the connection and starts over with a fresh token and
+    /// fresh connections, at once.</summary>
+    private void Reconnect(DateTimeOffset now, string message)
+    {
+        _server.Disconnect();
+        ScheduleRetry(now, message);
+        _retryAt = now;
+    }
 
     private double _resumeBuffer = double.NaN;
 

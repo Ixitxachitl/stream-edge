@@ -11,6 +11,10 @@ public sealed class PlaylistGoneException(HttpStatusCode status)
     public HttpStatusCode Status { get; } = status;
 }
 
+/// <summary>The segments the reader needed next are no longer on the
+/// playlist. The session reloads the player at the live edge.</summary>
+public sealed class FellBehindException() : Exception("Fell behind the live playlist.");
+
 /// <summary>Follows one Twitch media playlist from the live edge and writes
 /// its MPEG-TS segments, in order, to an output stream.
 ///
@@ -19,7 +23,7 @@ public sealed class PlaylistGoneException(HttpStatusCode status)
 /// still being encoded. Bytes are forwarded as they arrive rather than per
 /// whole segment, which is what keeps this a couple of seconds behind the
 /// broadcaster instead of three segments.</summary>
-public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist, bool skipAds = true)
+public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist)
 {
     /// <summary>How long any one request may go without a response, or a
     /// segment without a byte. Prefetch segments arrive as they're encoded,
@@ -116,11 +120,13 @@ public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist, bool skipA
             }
             else if (next < segments[0].Sequence || next > segments[^1].Sequence + 1)
             {
-                // Fell off the back of the window (or a variant switch landed
-                // on a playlist numbered differently): rejoin at the edge
-                // rather than wait for, or replay, what isn't there.
-                next = LiveEdge(segments);
-                Notice?.Invoke("Skipped ahead to live");
+                // Fell off the back of the window (an outage longer than the
+                // playlist) or a variant switch landed on a playlist numbered
+                // differently. Splicing the live edge onto what the player
+                // already has is a jump in time mid-stream, which could leave
+                // it frozen for good while bytes kept arriving; the session
+                // reloads at the live edge instead.
+                throw new FellBehindException();
             }
 
             var pending = segments.Where(s => s.Sequence >= next).ToList();
@@ -137,12 +143,9 @@ public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist, bool skipA
             var segment = pending[0];
             var wasAd = InAdBreak;
             InAdBreak = segment.IsAd;
-            if (segment.IsAd && skipAds)
-            {
-                if (!wasAd) Notice?.Invoke("Ad break: waiting for the stream");
-                next = segment.Sequence + 1;
-                continue;
-            }
+            // Ads are written like any other segment: they play, as on
+            // twitch.tv, when Twitch inserts them.
+            if (!wasAd && segment.IsAd) Notice?.Invoke("Ad break");
             if (wasAd && !segment.IsAd) Notice?.Invoke("Back to the stream");
 
             // fMP4 needs its init segment ahead of the first media segment

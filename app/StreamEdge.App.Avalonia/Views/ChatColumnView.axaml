@@ -4,51 +4,40 @@
              xmlns:em="using:StreamEdge.AvaloniaApp.Views.Emotes"
              xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
              xmlns:emotes="using:StreamEdge.Chat.Emotes"
+             xmlns:se="using:StreamEdge"
              x:Class="StreamEdge.AvaloniaApp.Views.ChatColumnView"
              x:DataType="vm:ChatColumnViewModel">
   <!-- One chat column; several sit side by side in the chat pane. -->
   <DockPanel Background="{StaticResource SePanelBg}">
-    <!-- This column's channels. Clicking one shows its chat here and puts
-         it on video; drag a tab to reorder it, move it to another column,
-         or drop it on a column's edge to split it into a new column. -->
-    <Border DockPanel.Dock="Top" Classes="tabStrip" IsVisible="{Binding HasTabs}">
-      <DockPanel>
-        <ToggleButton DockPanel.Dock="Right" Classes="pip" Content="⧉ PIP" IsChecked="{Binding Main.ShowPip}"
-                      IsVisible="{Binding IsLast}"
-                      ToolTip.Tip="Show background tabs as small videos over the player (off: audio only)" />
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-          <ItemsControl ItemsSource="{Binding Tabs}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:ChannelTabViewModel">
-                <Border Classes="tab" Classes.selected="{Binding IsSelected}" Classes.front="{Binding IsFront}">
-                  <StackPanel Orientation="Horizontal" Spacing="2">
-                    <!-- A TextBlock, not string content: that would take the
-                         '_' in names like some_one for an access key. -->
-                    <Button Classes="tabName" Command="{Binding SelectCommand}"
-                            ToolTip.Tip="Show this channel (drag to move the tab)">
-                      <TextBlock Text="{Binding Title}" />
-                    </Button>
-                    <Button Classes="tabIcon" Content="{Binding Player.MuteGlyph}" Command="{Binding Player.ToggleMuteCommand}"
-                            ToolTip.Tip="{Binding VolumeTip}" />
-                    <Button Classes="tabIcon" Content="✕" Command="{Binding CloseCommand}" ToolTip.Tip="Close tab" />
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
-      </DockPanel>
-    </Border>
     <Border DockPanel.Dock="Top" Classes="paneHeader">
       <DockPanel>
+        <TextBlock DockPanel.Dock="Left" Classes="dragGrip" Text="⠿" ToolTip.Tip="Drag to move: drop on a side of the video" />
+        <!-- The app's own controls, on the last chat's toolbar: settings beside
+             PIP, always here wherever the panes are docked. -->
+        <Button DockPanel.Dock="Right" Classes="pip" IsVisible="{Binding IsLast}" ToolTip.Tip="Settings">
+          <PathIcon Classes="icon" Data="{StaticResource IconGear}" />
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedRight">
+              <v:SettingsView DataContext="{Binding Main}" />
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+        <ToggleButton DockPanel.Dock="Right" Classes="pip" Content="⧉" IsChecked="{Binding Main.ShowPip}"
+                      IsVisible="{Binding IsLast}"
+                      ToolTip.Tip="Picture-in-picture: background tabs as small videos over the player (off: they pause until you switch to them)" />
+        <!-- Which panes show (each moves by dragging its header). -->
+        <Button DockPanel.Dock="Right" Classes="pip" Content="▦" IsVisible="{Binding IsLast}" ToolTip.Tip="Layout">
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <MenuItem Header="Live list" ToggleType="CheckBox" IsChecked="{Binding Main.ShowStreamList, Mode=TwoWay}" />
+              <MenuItem Header="About panels" ToggleType="CheckBox" IsChecked="{Binding Main.ShowChannelPanel, Mode=TwoWay}" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
         <!-- Mod menu: only in channels the user moderates. -->
-        <Button DockPanel.Dock="Right" x:Name="ModMenuButton" Content="🛡" ToolTip.Tip="Moderation"
+        <Button DockPanel.Dock="Right" x:Name="ModMenuButton" ToolTip.Tip="Moderation"
                 IsVisible="{Binding Chat.IsModerator}">
+          <PathIcon Classes="icon" Data="{StaticResource IconShield}" />
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedRight">
               <StackPanel Width="280" Spacing="8" DataContext="{Binding Main.ModMenu}" x:DataType="vm:ModMenuViewModel">
@@ -106,10 +95,58 @@
         <Panel />
       </DockPanel>
     </Border>
+    <!-- This column's channels. Clicking one shows its chat here and puts
+         it on video; drag a tab to reorder it, move it to another column,
+         or drop it on a column's edge to split it into a new column. -->
+    <Border DockPanel.Dock="Top" Classes="tabStrip" IsVisible="{Binding HasTabs}">
+      <DockPanel>
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding Tabs}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ChannelTabViewModel">
+                <Border Classes="tab" Classes.selected="{Binding IsSelected}" Classes.front="{Binding IsFront}">
+                  <StackPanel Orientation="Horizontal" Spacing="2">
+                    <!-- A TextBlock, not string content: that would take the
+                         '_' in names like some_one for an access key. -->
+                    <Button Classes="tabName" Command="{Binding SelectCommand}"
+                            ToolTip.Tip="Show this channel (drag to move the tab)">
+                      <TextBlock Text="{Binding Title}" />
+                    </Button>
+                    <Button Classes="tabIcon" Command="{Binding Player.ToggleMuteCommand}"
+                            ToolTip.Tip="{Binding VolumeTip}">
+                      <Panel>
+                        <PathIcon Classes="icon" Data="{StaticResource IconSpeaker}" IsVisible="{Binding !Player.Muted}" />
+                        <PathIcon Classes="icon" Data="{StaticResource IconMuted}" IsVisible="{Binding Player.Muted}" />
+                      </Panel>
+                    </Button>
+                    <Button Classes="tabIcon" Content="✕" Command="{Binding CloseCommand}" ToolTip.Tip="Close tab" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
     <DockPanel DockPanel.Dock="Bottom" Margin="4">
-      <!-- Emote menu, like twitch.tv's smiley in the chat box. -->
-      <Button DockPanel.Dock="Right" x:Name="EmoteButton" Classes="emoteMenu" Content="☺"
+      <!-- Emote menu, like twitch.tv's smiley in the chat box. Drawn, not the
+           ☺ character: Windows shows that in its colour emoji font, and this
+           stays a plain outline in the button's text colour everywhere. -->
+      <Button DockPanel.Dock="Right" x:Name="EmoteButton" Classes="emoteMenu"
               ToolTip.Tip="Emotes" Margin="4,0,0,0">
+        <Canvas Width="18" Height="18">
+          <Ellipse Canvas.Left="1" Canvas.Top="1" Width="16" Height="16" StrokeThickness="1.5"
+                   Stroke="{Binding $parent[Button].Foreground}" />
+          <Ellipse Canvas.Left="5.5" Canvas.Top="6" Width="2" Height="2.5" Fill="{Binding $parent[Button].Foreground}" />
+          <Ellipse Canvas.Left="10.5" Canvas.Top="6" Width="2" Height="2.5" Fill="{Binding $parent[Button].Foreground}" />
+          <Path Data="M 5.5,11 Q 9,14.5 12.5,11" StrokeThickness="1.5" StrokeLineCap="Round"
+                Stroke="{Binding $parent[Button].Foreground}" />
+        </Canvas>
         <Button.Flyout>
           <Flyout Placement="TopEdgeAlignedRight">
             <DockPanel Width="344" DataContext="{Binding Main.EmoteMenu}" x:DataType="vm:EmoteMenuViewModel">
@@ -250,6 +287,16 @@
         </Popup>
       </Panel>
     </DockPanel>
+    <!-- Answering a line (its ↩): what's being replied to, above the box. -->
+    <Border DockPanel.Dock="Bottom" IsVisible="{Binding Chat.IsReplying}" Margin="4,4,4,0" Padding="8,3"
+            CornerRadius="4" Background="#26262C">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="✕" Command="{Binding Chat.CancelReplyCommand}" Padding="6,0"
+                Background="Transparent" ToolTip.Tip="Cancel the reply" />
+        <TextBlock Text="{Binding Chat.ReplyText}" Foreground="{StaticResource SeTextDim}" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" FontSize="{StaticResource SeSmallFontSize}" />
+      </DockPanel>
+    </Border>
     <!-- Shared chat: which channels' chats are mixed in, as twitch.tv says
          above its chat. Each line carries its channel's icon. -->
     <Border Classes="sharedStrip" IsVisible="{Binding Chat.IsShared}" ToolTip.Tip="{Binding Chat.SharedSummary}">

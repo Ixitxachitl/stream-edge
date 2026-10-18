@@ -10,6 +10,9 @@ public enum ChatMessageKind
     Membership,
     /// <summary>Client and server notices, subs, raids.</summary>
     System,
+    /// <summary>A whisper (direct message), to or from the user; shown in
+    /// whichever chat is open when it arrives.</summary>
+    Whisper,
 }
 
 /// <summary>A Twitch-native emote inside <see cref="ChatMessage.Text"/>.
@@ -78,6 +81,10 @@ public sealed record ChatMessage(
     /// <summary>Set when this line is a reply: who and what it answers.</summary>
     public string? ReplyParentName { get; init; }
     public string? ReplyParentBody { get; init; }
+
+    /// <summary>A whisper the user sent: who to (display name). Null on
+    /// whispers they received, and on everything else.</summary>
+    public string? WhisperTo { get; init; }
 
     /// <summary>Bits cheered with this message, 0 for none.</summary>
     public int Bits { get; init; }

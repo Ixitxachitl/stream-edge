@@ -21,6 +21,7 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
         _close = close;
         Chat = new ChatViewModel(settings, services) { Channel = login };
         _volume = settings.ChannelVolumes.TryGetValue(login, out var volume) ? volume : settings.Volume;
+        PipCell = settings.PipCells.TryGetValue(login, out var cell) ? cell : null;
         Player = new PlayerViewModel { Channel = login };
         Player.MuteHandler = muted => Video?.SetMute(muted);
         Player.SelectQualityHandler = index =>
@@ -48,6 +49,10 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
     }
 
     public string Login { get; }
+
+    /// <summary>The thumbnail's cell over the player, once it has been
+    /// dragged somewhere; null lines it up along the bottom.</summary>
+    public PipCell? PipCell { get; set; }
 
     /// <summary>The user picked a video quality on this tab, now the preference.</summary>
     internal Action<string>? QualityPicked { get; set; }

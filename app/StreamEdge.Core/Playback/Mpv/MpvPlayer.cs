@@ -231,7 +231,8 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         var buffer = MpvNative.mpv_get_property(_ctx, "demuxer-cache-duration", MpvNative.FormatDouble, out var d) >= 0 ? d : 0;
         var stalled = MpvNative.mpv_get_property_flag(_ctx, "paused-for-cache", MpvNative.FormatFlag, out var p) >= 0 && p != 0;
         var idle = MpvNative.mpv_get_property_flag(_ctx, "idle-active", MpvNative.FormatFlag, out var i) >= 0 && i != 0;
-        return new VideoPlayerStats(buffer, stalled, idle);
+        double? position = MpvNative.mpv_get_property(_ctx, "time-pos", MpvNative.FormatDouble, out var t) >= 0 ? t : null;
+        return new VideoPlayerStats(buffer, stalled, idle, position);
     }
 
     public void Dispose()

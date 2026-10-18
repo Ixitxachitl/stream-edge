@@ -42,6 +42,7 @@ public sealed class RemoteImage : Control
         base.OnPropertyChanged(change);
         if (change.Property != SourceProperty) return;
         _image = null;
+        InvalidateMeasure();
         InvalidateVisual();
         if (change.NewValue is not Uri url) return;
         _image = EmoteImageCache.TryGet(url);
@@ -53,9 +54,26 @@ public sealed class RemoteImage : Control
             {
                 if (Source != url) return;
                 _image = image;
+                // Without a set size (About panel images), it takes the
+                // picture's, which is only known now.
+                InvalidateMeasure();
                 InvalidateVisual();
             });
         });
+    }
+
+    /// <summary>With no size set, the picture's own size, scaled down to fit
+    /// the width it's given (keeping its shape); nothing until it has loaded.
+    /// Avatars and banners set their size, or are stretched to fill.</summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (_image?.Frames[0] is not { } frame || frame.Size.Width <= 0 || frame.Size.Height <= 0) return default;
+        var size = frame.Size;
+        if (double.IsFinite(availableSize.Width) && size.Width > availableSize.Width)
+            size = new Size(availableSize.Width, size.Height * availableSize.Width / size.Width);
+        if (double.IsFinite(availableSize.Height) && size.Height > availableSize.Height)
+            size = new Size(size.Width * availableSize.Height / size.Height, availableSize.Height);
+        return size;
     }
 
     public override void Render(DrawingContext context)

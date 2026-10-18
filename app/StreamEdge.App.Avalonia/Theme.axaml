@@ -114,7 +114,48 @@
       </ControlTemplate>
     </Setter>
     </ControlTheme>
+
+    <!-- Icons, drawn rather than typed: symbols like 🛡 or 🔊 come out in a
+         colour emoji font on Windows. These are one colour, the text's, and
+         look the same everywhere. A 24×24 box; PathIcon scales them. -->
+    <StreamGeometry x:Key="IconGear">F0 M19.27,9.79 L22.34,10.15 L22.34,13.85 L19.27,14.21 L18.7,15.58 L20.61,18 L18,20.61 L15.58,18.7 L14.21,19.27 L13.85,22.34 L10.15,22.34 L9.79,19.27 L8.42,18.7 L6,20.61 L3.39,18 L5.3,15.58 L4.73,14.21 L1.66,13.85 L1.66,10.15 L4.73,9.79 L5.3,8.42 L3.39,6 L6,3.39 L8.42,5.3 L9.79,4.73 L10.15,1.66 L13.85,1.66 L14.21,4.73 L15.58,5.3 L18,3.39 L20.61,6 L18.7,8.42 Z M8.8,12 A3.2,3.2 0 1 0 15.2,12 A3.2,3.2 0 1 0 8.8,12 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconShield">M12,2 L20,5 L20,11 C20,16.5 16.6,20.7 12,22 C7.4,20.7 4,16.5 4,11 L4,5 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconSpeaker">M3,9 L7,9 L12,5 L12,19 L7,15 L3,15 Z M14.6,9.2 A4,4 0 0 1 14.6,14.8 L13.5,13.7 A2.5,2.5 0 0 0 13.5,10.3 Z M16.9,6.9 A7.2,7.2 0 0 1 16.9,17.1 L15.8,16 A5.7,5.7 0 0 0 15.8,8 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconMuted">M1,9 L5,9 L10,5 L10,19 L5,15 L1,15 Z M12.5,8.8 L14.3,7 L23,15.7 L21.2,17.5 Z M21.2,7 L23,8.8 L14.3,17.5 L12.5,15.7 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconLayout">M3,3 L10,3 L10,10 L3,10 Z M14,3 L21,3 L21,10 L14,10 Z M3,14 L10,14 L10,21 L3,21 Z M14,14 L21,14 L21,21 L14,21 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconPerson">M8,8 A4,4 0 1 0 16,8 A4,4 0 1 0 8,8 Z M4,20 C4,15.6 7.6,13 12,13 C16.4,13 20,15.6 20,20 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconBell">M12,3 C8.7,3 6,5.7 6,9 L6,14 L4,17 L20,17 L18,14 L18,9 C18,5.7 15.3,3 12,3 Z M10,18.5 A2,2 0 0 0 14,18.5 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconBubble">M4,4 L20,4 L20,16 L9,16 L5,20 L5,16 L4,16 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconPlug">M8,2 L10,2 L10,7 L14,7 L14,2 L16,2 L16,7 L18,7 L18,11 C18,14 16,16 13,16.5 L13,22 L11,22 L11,16.5 C8,16 6,14 6,11 L6,7 L8,7 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconTicket">M3,7 L21,7 L21,10 A2,2 0 0 0 21,14 L21,17 L3,17 L3,14 A2,2 0 0 0 3,10 Z</StreamGeometry>
+
+    <!-- Fluent's own roundings, a little softer than its defaults: buttons,
+         text boxes and toggles; and flyouts, menus and tooltips. -->
+    <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
   </Styles.Resources>
+
+  <!-- Panes: rounded cards on the window's dark ground (the gaps between
+       them are the drag lines). Content is clipped to the rounding. -->
+  <Style Selector="Border.pane">
+    <Setter Property="Background" Value="{StaticResource SePanelBg}" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+
+  <!-- A gap all round, as between the cards; none for video-only fullscreen. -->
+  <Style Selector="v|UltrawideLayout">
+    <Setter Property="Margin" Value="5" />
+  </Style>
+  <Style Selector="v|UltrawideLayout[VideoOnly=True]">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+
+  <!-- A drawn icon in a button or a heading: the text's colour, text-sized. -->
+  <Style Selector="PathIcon.icon">
+    <Setter Property="Width" Value="13" />
+    <Setter Property="Height" Value="13" />
+  </Style>
 
   <Style Selector="Window">
     <Setter Property="Background" Value="{StaticResource SeWindowBg}" />
@@ -123,10 +164,12 @@
 
   <!-- Thin title strip at the top of each pane: replaces the menu bar and
        window chrome, which a 480-pixel-tall display can't spare. -->
+  <!-- Every pane's toolbar (chat, the live list, the About panels): one
+       height, whatever is on it, so they line up side by side. -->
   <Style Selector="Border.paneHeader">
     <Setter Property="Background" Value="{StaticResource SeHeaderBg}" />
-    <Setter Property="Padding" Value="8,3" />
-    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="Height" Value="30" />
   </Style>
   <!-- Child selectors, not descendant: a header button's flyout is a
        logical descendant of the header too, and these would shrink
@@ -152,24 +195,27 @@
     <Setter Property="Background" Value="#5C16C5" />
   </Style>
 
-  <!-- Tab strip above each chat column's header. The tab the column shows
-       is lit; the one on video also gets the accent bar. -->
+  <!-- Tab strip above each chat column's chat. Tabs are rounded on top
+       and sit on the strip's floor; the tab the column shows takes the
+       chat's colour so it runs into it, and the one on video also gets
+       the accent along its top. -->
   <Style Selector="Border.tabStrip">
-    <Setter Property="Background" Value="{StaticResource SeWindowBg}" />
-    <Setter Property="Padding" Value="2,2,2,0" />
-  </Style>
-  <Style Selector="Border.tab">
     <Setter Property="Background" Value="{StaticResource SePanelAltBg}" />
-    <Setter Property="CornerRadius" Value="4,4,0,0" />
-    <Setter Property="Margin" Value="0,0,2,0" />
-    <Setter Property="Padding" Value="2,0" />
+    <Setter Property="Padding" Value="6,4,6,0" />
   </Style>
   <Style Selector="Border.tab">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="6,6,0,0" />
+    <Setter Property="Margin" Value="0,0,2,0" />
+    <Setter Property="Padding" Value="2,0,2,2" />
     <Setter Property="BorderBrush" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0,2,0,0" />
   </Style>
-  <Style Selector="Border.tab.selected">
+  <Style Selector="Border.tab:pointerover">
     <Setter Property="Background" Value="{StaticResource SeHeaderBg}" />
+  </Style>
+  <Style Selector="Border.tab.selected">
+    <Setter Property="Background" Value="{StaticResource SePanelBg}" />
   </Style>
   <Style Selector="Border.tab.front">
     <Setter Property="BorderBrush" Value="{StaticResource SeAccent}" />
@@ -193,6 +239,21 @@
   <Style Selector="Border.tab Button.tabIcon">
     <Setter Property="Padding" Value="3,0" />
     <Setter Property="Foreground" Value="{StaticResource SeTextFaint}" />
+  </Style>
+  <!-- While a tab is dragged it is the lit one in its strip. -->
+  <Style Selector="Border.tabStrip.dragging Border.tab.selected">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Border.tabStrip.dragging Border.tab.selected Button.tabName">
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Border.tab.dragging">
+    <Setter Property="Background" Value="{StaticResource SePanelBg}" />
+  </Style>
+  <Style Selector="Border.tab.dragging Button.tabName">
+    <Setter Property="Foreground" Value="{StaticResource SeText}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <!-- Channel name and status over an offline banner: bottom-left, on a
        backdrop so it reads on any artwork. -->
@@ -263,7 +324,7 @@
   </Style>
 
   <Style Selector="ToggleButton.cc">
-    <Setter Property="Height" Value="20" />
+    <Setter Property="Height" Value="22" />
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="Padding" Value="5,0" />
     <Setter Property="FontSize" Value="10" />
@@ -275,6 +336,49 @@
   <Style Selector="Border.dropIndicator">
     <Setter Property="Background" Value="{StaticResource SeAccent}" />
     <Setter Property="CornerRadius" Value="2" />
+  </Style>
+
+  <!-- Where a dragged pane will land: drawn where the layout would put it. -->
+  <Style Selector="Border.dockPreview">
+    <Setter Property="Background" Value="#409147FF" />
+    <Setter Property="BorderBrush" Value="{StaticResource SeAccent}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <!-- Where a dragged pane can dock, over the (stepped-aside) video. -->
+  <Style Selector="Border.dockTarget">
+    <Setter Property="Margin" Value="4" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="BorderBrush" Value="#409147FF" />
+    <Setter Property="Background" Value="#14FFFFFF" />
+  </Style>
+  <Style Selector="Border.dockTarget > TextBlock">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.dockTarget.active">
+    <Setter Property="BorderBrush" Value="{StaticResource SeAccent}" />
+    <Setter Property="Background" Value="#559147FF" />
+  </Style>
+  <Style Selector="Border.dockTarget.active > TextBlock">
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
+  <!-- Pane headers are drag handles (to dock the pane elsewhere); the ⠿ says so. -->
+  <Style Selector="TextBlock.dragGrip">
+    <Setter Property="Foreground" Value="{StaticResource SeTextFaint}" />
+    <Setter Property="Margin" Value="0,0,6,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.paneHeader">
+    <Setter Property="Cursor" Value="SizeAll" />
+  </Style>
+  <Style Selector="Border.paneHeader Button, Border.paneHeader ToggleButton, Border.paneHeader TextBox">
+    <Setter Property="Cursor" Value="Arrow" />
   </Style>
   <Style Selector="Border.dropIndicator.split">
     <Setter Property="Background" Value="#409147FF" />
@@ -299,8 +403,8 @@
     <Setter Property="Background" Value="{StaticResource SePanelAltBg}" />
     <Setter Property="BorderBrush" Value="{StaticResource SeRule}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="4" />
-    <Setter Property="Padding" Value="2" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="3" />
     <Setter Property="Margin" Value="0,0,0,4" />
   </Style>
   <Style Selector="ListBox.suggestions">
@@ -316,7 +420,8 @@
     <Setter Property="Foreground" Value="{StaticResource SeTextFaint}" />
     <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
   </Style>
-  <Style Selector="ToggleButton.pip">
+  <!-- The small buttons and toggles along the tab strip (and list header). -->
+  <Style Selector="ToggleButton.pip, Button.pip">
     <Setter Property="Height" Value="22" />
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="Padding" Value="6,0" />
@@ -324,12 +429,14 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
 
-  <!-- Resize handles beside the player: a faint line that lights up on hover. -->
+  <!-- Resize handles beside the player: just the gap between the cards,
+       lit softly on hover. -->
   <Style Selector="v|PaneGrip.grip">
-    <Setter Property="Background" Value="{StaticResource SeRule}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="3" />
   </Style>
   <Style Selector="v|PaneGrip.grip:pointerover">
-    <Setter Property="Background" Value="{StaticResource SeAccent}" />
+    <Setter Property="Background" Value="#669147FF" />
   </Style>
 
   <!-- The star toggle on stream list entries: borderless glyph, gold when on. -->
@@ -386,7 +493,9 @@
 
   <!-- Stream list rows, after twitch.tv's followed channels sidebar. -->
   <Style Selector="ListBox.streams ListBoxItem">
-    <Setter Property="Padding" Value="10,5" />
+    <Setter Property="Padding" Value="6,4" />
+    <Setter Property="Margin" Value="4,1" />
+    <Setter Property="CornerRadius" Value="6" />
   </Style>
   <!-- No lasting highlight on the row last clicked: what's playing is on the
        tabs. Hover still lights a row, selected or not. -->
@@ -477,7 +586,7 @@
   </Style>
   <Style Selector="Border.sharedStrip">
     <Setter Property="DockPanel.Dock" Value="Top" />
-    <Setter Property="Background" Value="{StaticResource SePanelAltBg}" />
+    <Setter Property="Background" Value="{StaticResource SePanelBg}" />
     <Setter Property="BorderBrush" Value="{StaticResource SeRule}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
     <Setter Property="Padding" Value="8,4" />
@@ -490,7 +599,7 @@
   <Style Selector="ListBox.streams Border.listSeparator">
     <Setter Property="Height" Value="1" />
     <Setter Property="Background" Value="{StaticResource SeRule}" />
-    <Setter Property="Margin" Value="-10,10,-10,-5" />
+    <Setter Property="Margin" Value="-6,8,-6,-4" />
   </Style>
   <Style Selector="ListBox.streams Grid.offline TextBlock.streamName">
     <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
@@ -544,7 +653,7 @@
   <Style Selector="Border.paneHeader > DockPanel > Button, Border.paneHeader > DockPanel > StackPanel > Button">
     <Setter Property="Padding" Value="6,0" />
     <Setter Property="MinHeight" Value="0" />
-    <Setter Property="Height" Value="20" />
+    <Setter Property="Height" Value="22" />
     <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
     <Setter Property="Background" Value="Transparent" />
   </Style>

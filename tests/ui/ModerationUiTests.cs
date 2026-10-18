@@ -22,7 +22,9 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
     /// <summary>The glyphs of clickable bits (mod icons, names) in a line.</summary>
     private static List<string> Clickables(ChatLine line)
     {
-        var text = (SelectableTextBlock)((StackPanel)line.Child!).Children[^1];
+        // Lines that can be replied to wrap the stack with their ↩.
+        var stack = line.Child as StackPanel ?? ((Panel)line.Child!).Children.OfType<StackPanel>().First();
+        var text = (SelectableTextBlock)stack.Children[^1];
         // Icons come wrapped to centre them on the text; names don't.
         return [.. text.Inlines!.OfType<InlineUIContainer>().Select(c => c.Child is InlineMiddle m ? m.Child : c.Child)
             .OfType<TextBlock>().Select(t => t.Text ?? "")];

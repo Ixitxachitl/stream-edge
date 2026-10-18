@@ -4,9 +4,11 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Notifications;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
 using StreamEdge.Playback.Mpv;
 
@@ -19,14 +21,16 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        StreamList.DoubleTapped += OnStreamDoubleTapped;
-        WireChannelSearch();
-        AboutButton.Click += (_, _) => _ = new AboutWindow().ShowDialog(this);
         WatchTabDrags();
+        Videos.PipsMoved += moved => _vm?.MovePips(moved);
+        // Columns and rows resized by dragging the lines between them.
+        Layout.PlacesResized += places => _vm?.SetPanePlaces(places);
         // Names, mentions and mod icons in chat lines (and in user cards,
         // whose recent messages are chat lines too).
         AddHandler(ChatLine.UserClickedEvent, OnUserClicked);
         AddHandler(ChatLine.ModActionEvent, OnModAction);
+        AddHandler(ChatLine.ReplyRequestedEvent, OnReplyRequested);
+        WatchPaneDrags();
         Opened += (_, _) =>
         {
             // 1x emote images at up to 125% scaling, 2x above.
@@ -51,12 +55,14 @@ public partial class MainWindow : Window
             _vm.PropertyChanged -= OnViewModelChanged;
             _vm.Tabs.CollectionChanged -= OnTabsChanged;
             _vm.SplitLayoutChanged -= OnSplitLayoutChanged;
+            _vm.Notify -= OnNotify;
         }
         _vm = DataContext as MainViewModel;
         if (_vm is null) return;
         _vm.PropertyChanged += OnViewModelChanged;
         _vm.Tabs.CollectionChanged += OnTabsChanged;
         _vm.SplitLayoutChanged += OnSplitLayoutChanged;
+        _vm.Notify += OnNotify;
         RestorePlacement();
         // Tabs opened before the window existed (demo, or restored at start-up).
         foreach (var tab in _vm.Tabs) AddVideo(tab);
@@ -142,6 +148,9 @@ public partial class MainWindow : Window
         // Clicks, double-clicks and the wheel over the video land on the
         // native window, never on Avalonia.
         surface.Input += input => vm.OnVideoInput(tab, input);
+        // Thumbnails drag; the stage works in logical pixels.
+        surface.DragMoved += delta => Videos.DragPip(surface, new Vector(delta.X, delta.Y) / RenderScaling);
+        surface.DragEnded += () => Videos.DropPip(surface);
         surface.Hover += over => vm.OnVideoHover(tab, over);
         tab.PropertyChanged += OnTabChanged;
         tab.Player.PropertyChanged += OnTabPlayerChanged;
@@ -166,59 +175,6 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(PlayerViewModel.IsVideoVisible)) Videos.InvalidateArrange();
     }
 
-    // ----- Stream list ----------------------------------------------------
-
-    /// <summary>Double-click opens; a single click only selects, so browsing
-    /// the list never interrupts what's playing.</summary>
-    private void OnStreamDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (StreamList.SelectedItem is StreamItemViewModel item) item.OpenCommand.Execute(null);
-    }
-
-    // ----- Channel search -------------------------------------------------
-
-    /// <summary>Up/Down pick a suggestion, Enter joins it in a new tab
-    /// (Shift+Enter: in the background), Esc clears the box; a click on a
-    /// suggestion joins it too.</summary>
-    private void WireChannelSearch()
-    {
-        // Tunnel: the text box would otherwise take Up/Down for the caret.
-        ChannelSearchBox.AddHandler(KeyDownEvent, (_, e) =>
-        {
-            if (_vm?.Search is not { } search) return;
-            switch (e.Key)
-            {
-                case Key.Down:
-                    search.Move(1);
-                    e.Handled = true;
-                    break;
-                case Key.Up:
-                    search.Move(-1);
-                    e.Handled = true;
-                    break;
-                case Key.Enter:
-                    search.Accept(search.SelectedIndex,
-                        e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? OpenMode.Background : OpenMode.NewTab);
-                    e.Handled = true;
-                    break;
-                case Key.Escape:
-                    search.Cancel();
-                    e.Handled = true;
-                    break;
-            }
-        }, RoutingStrategies.Tunnel);
-        ChannelSearchBox.LostFocus += (_, _) =>
-        {
-            // Not while clicking a suggestion, which takes focus for a moment.
-            if (!ChannelSearchBox.IsKeyboardFocusWithin) _vm?.Search.Close();
-        };
-        ChannelSuggestionList.AddHandler(PointerReleasedEvent, (_, e) =>
-        {
-            if ((e.Source as Control)?.DataContext is Streams.ChannelSuggestion picked && _vm?.Search is { } search)
-                search.Accept(search.Suggestions.IndexOf(picked));
-        }, RoutingStrategies.Bubble, handledEventsToo: true);
-    }
-
     // ----- Chat -----------------------------------------------------------
 
     /// <summary>A name or : show that user's card next to it.</summary>
@@ -232,6 +188,28 @@ public partial class MainWindow : Window
         };
         flyout.ShowAt(e.Anchor);
         e.Handled = true;
+    }
+
+    /// <summary>A line's ↩: reply to it, and put the cursor in that chat's box.</summary>
+    private void OnReplyRequested(object? sender, ReplyRequestedEventArgs e)
+    {
+        _vm?.StartReply(e.Entry);
+        var column = (e.Source as Visual)?.FindAncestorOfType<ChatColumnView>();
+        column?.FindControl<Control>("ChatInput")?.Focus();
+        e.Handled = true;
+    }
+
+    // ----- Alerts -----------------------------------------------------------
+
+    private WindowNotificationManager? _notifications;
+
+    /// <summary>Go-live and whisper alerts, in the top-right corner of the
+    /// window for a few seconds; clicking one does what it offers.</summary>
+    private void OnNotify(AppNotification n)
+    {
+        _notifications ??= new WindowNotificationManager(this) { Position = NotificationPosition.TopRight, MaxItems = 3 };
+        _notifications.Show(new Notification(n.Title, n.Message, NotificationType.Information, TimeSpan.FromSeconds(8),
+            n.Open is { } open ? () => open() : null));
     }
 
     /// <summary>A chat was stacked or unstacked without the list changing.</summary>
@@ -312,9 +290,20 @@ public partial class MainWindow : Window
             _ => WindowMode.Normal,
         };
         var saved = _vm.SavedWindow;
-        _vm.SavedWindow = mode == WindowMode.Normal || saved is null
-            ? new WindowPlacement(Position.X, Position.Y, ClientSize.Width, ClientSize.Height, mode)
-            : saved with { Mode = mode };
+        if (mode == WindowMode.Normal || saved is null)
+        {
+            _vm.SavedWindow = new WindowPlacement(Position.X, Position.Y, ClientSize.Width, ClientSize.Height, mode);
+            return;
+        }
+        // Maximized or full screen: keep the size to return to, but on the
+        // display the window is on now, so it comes back there.
+        saved = saved with { Mode = mode };
+        if (Screens.ScreenFromWindow(this) is { } screen)
+        {
+            var area = screen.WorkingArea;
+            saved = saved.OnScreen((area.X, area.Y, area.Width, area.Height), screen.Scaling);
+        }
+        _vm.SavedWindow = saved;
     }
 
     /// <summary>Moves the window onto the configured monitor, the small

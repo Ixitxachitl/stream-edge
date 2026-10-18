@@ -45,6 +45,10 @@ public sealed class TwitchModeration(HttpClient http, string clientId, string to
     public Task<ModResult> DeleteMessageAsync(string broadcasterId, string messageId, CancellationToken ct) =>
         SendAsync(HttpMethod.Delete, $"moderation/chat?{Ids(broadcasterId)}&message_id={Esc(messageId)}", null, ct);
 
+    /// <summary>Clears the whole chat (a delete with no message named).</summary>
+    public Task<ModResult> ClearChatAsync(string broadcasterId, CancellationToken ct) =>
+        SendAsync(HttpMethod.Delete, $"moderation/chat?{Ids(broadcasterId)}", null, ct);
+
     public Task<ModResult> WarnAsync(string broadcasterId, string userId, string reason, CancellationToken ct) =>
         SendAsync(HttpMethod.Post, $"moderation/warnings?{Ids(broadcasterId)}",
             new JsonObject { ["data"] = new JsonObject { ["user_id"] = userId, ["reason"] = reason.Trim() } }, ct);

@@ -30,4 +30,24 @@ public sealed record WindowPlacement(int X, int Y, double Width, double Height, 
         }
         return false;
     }
+
+    /// <summary>These bounds on the screen whose working area (physical
+    /// pixels) is <paramref name="area"/>: unchanged if the window's centre
+    /// is already on it, else centred on it and shrunk to fit. For a window
+    /// maximized or full screen on another display than the one its normal
+    /// bounds are on, so it comes back on that display.</summary>
+    public WindowPlacement OnScreen((int X, int Y, int Width, int Height) area, double scaling)
+    {
+        var (cx, cy) = (X + Width * scaling / 2, Y + Height * scaling / 2);
+        if (cx >= area.X && cx < area.X + area.Width && cy >= area.Y && cy < area.Y + area.Height) return this;
+        var width = Math.Min(Width, area.Width / scaling);
+        var height = Math.Min(Height, area.Height / scaling);
+        return this with
+        {
+            X = area.X + (int)((area.Width - width * scaling) / 2),
+            Y = area.Y + (int)((area.Height - height * scaling) / 2),
+            Width = width,
+            Height = height,
+        };
+    }
 }

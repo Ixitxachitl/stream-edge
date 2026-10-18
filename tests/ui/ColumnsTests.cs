@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
@@ -85,6 +86,31 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.Same(velvet, vm.FrontTab);
         Assert.True(vm.Columns[1].HasFront);
         Assert.False(vm.Columns[0].HasFront);
+    });
+
+    [Fact]
+    public void ATabDroppedIntoTheVideosColumnLeavesItsChatShowing() => Ui(() =>
+    {
+        var vm = Demo(out _);
+        var velvet = Tab(vm, "velvetcartridge");
+        var bramble = Tab(vm, "bigtimebramble");
+        vm.MoveTabToNewColumn(velvet, 1);
+        bramble.SelectCommand.Execute(null);
+        Assert.Same(bramble, vm.FrontTab);
+
+        // Into bramble's column: bramble (marked as on video) still shows its chat.
+        vm.MoveTab(velvet, vm.Columns[0], 1);
+        var column = Assert.Single(vm.Columns);
+        Assert.Same(bramble, column.Selected);
+        Assert.True(bramble.IsSelected);
+        Assert.False(velvet.IsSelected);
+        Assert.Same(bramble, vm.FrontTab);
+
+        // Into a column without the video, the dropped tab shows.
+        vm.MoveTabToNewColumn(velvet, 1);
+        vm.MoveTabToNewColumn(Tab(vm, "pixelperegrine"), 2);
+        vm.MoveTab(velvet, vm.Columns[1], 0);
+        Assert.Same(velvet, vm.Columns[1].Selected);
     });
 
     [Fact]
@@ -216,10 +242,12 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
     [Fact]
     public void TopAndBottomEdgesStackAndTheChatsShareTheHeight() => Ui(() =>
     {
-        // A 4:3 screen, video above the list: a tall chat pane, where
-        // stacking pays off. (Three across at 1080p leaves chat 180 px wide.)
+        // A 4:3 screen with the list above the video and the About panel
+        // below it: a short video, and a tall, wide chat pane beside it,
+        // where stacking pays off.
         var vm = Demo(out var settings);
-        settings.VideoAboveList = true;
+        settings.ListDock = DockSide.Top;
+        settings.ShowChannelPanel = true;
         var window = new MainWindow { DataContext = vm, Width = 1024, Height = 768 };
         window.Show();
         Dispatcher.UIThread.RunJobs();
@@ -289,8 +317,16 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         window.MouseMove(paneRight);
         Dispatcher.UIThread.RunJobs();
         Assert.True(window.FindControl<Border>("DropIndicator")!.IsVisible);
+        // The tab in hand is the lit one while it moves, not the selected one.
+        var tabs = window.GetVisualDescendants().OfType<Border>()
+            .Where(b => b.Classes.Contains("tab") && b.DataContext is ChannelTabViewModel).ToList();
+        Border TabBorder(string login) => tabs.Single(b => ((ChannelTabViewModel)b.DataContext!).Login == login);
+        var panel = (IBrush)window.FindResource("SePanelBg")!;
+        Assert.Equal(panel, TabBorder("velvetcartridge").Background);
+        Assert.NotEqual(panel, TabBorder("bigtimebramble").Background);
         window.MouseUp(paneRight, MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("dragging"));
 
         Assert.Equal(2, vm.Columns.Count);
         Assert.Equal("velvetcartridge", Assert.Single(vm.Columns[1].Tabs).Login);

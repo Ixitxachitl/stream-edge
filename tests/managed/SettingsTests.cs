@@ -64,6 +64,28 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
+    public void PanePlacesRoundTrip()
+    {
+        var settings = new AppSettings();
+        settings.SetPanePlaces(PaneArrangement.MoveStacked(settings.PanePlaces, PaneId.Panel, PaneId.List, below: false));
+        settings.Save();
+        var loaded = AppSettings.Load();
+        Assert.Equal(settings.PanePlaces, loaded.PanePlaces);
+        Assert.True(loaded.PanePlaces[PaneId.List].Below);
+        Assert.Equal(DockSide.Left, loaded.PanePlaces[PaneId.Panel].Side);
+    }
+
+    [Fact]
+    public void ThumbnailCellsRoundTripPerChannel()
+    {
+        var settings = new AppSettings();
+        settings.PipCells["SomeOne"] = new PipCell(2, 1);
+        settings.Save();
+        var loaded = AppSettings.Load();
+        Assert.Equal(new PipCell(2, 1), loaded.PipCells["someone"]);
+    }
+
+    [Fact]
     public void CorruptFileFallsBackToDefaultsAndIsKept()
     {
         File.WriteAllText(AppData.PathFor(AppSettings.FileName), "{ not json");

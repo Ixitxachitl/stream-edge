@@ -28,7 +28,7 @@ public class QualityMenuTests(HeadlessAvalonia ui) : UiTest(ui)
     /// <summary>Opens the quality menu and counts the entries it draws.</summary>
     private static int Shown(Window window)
     {
-        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Flyout is MenuFlyout);
+        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Flyout is MenuFlyout { ItemsSource: not null });
         var flyout = (MenuFlyout)button.Flyout!;
         flyout.ShowAt(button);
         Dispatcher.UIThread.RunJobs();
@@ -59,7 +59,7 @@ public class QualityMenuTests(HeadlessAvalonia ui) : UiTest(ui)
 
         Assert.NotSame(old, vm.Player);
         // Picking a quality rebuilds the list while the menu is open.
-        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Flyout is MenuFlyout);
+        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Flyout is MenuFlyout { ItemsSource: not null });
         var flyout = (MenuFlyout)button.Flyout!;
         flyout.ShowAt(button);
         Dispatcher.UIThread.RunJobs();

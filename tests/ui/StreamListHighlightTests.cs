@@ -22,7 +22,7 @@ public class StreamListHighlightTests(HeadlessAvalonia ui) : UiTest(ui)
         vm.Streams.Selected = vm.Streams.Items[2];
         Dispatcher.UIThread.RunJobs();
 
-        var list = window.FindControl<ListBox>("StreamList")!;
+        var list = window.FindControl<StreamListView>("StreamsPane")!.FindControl<ListBox>("StreamList")!;
         var row = Assert.IsType<ListBoxItem>(list.ContainerFromIndex(2));
         Assert.True(row.IsSelected);
         var presenter = row.GetVisualDescendants().OfType<ContentPresenter>().First();

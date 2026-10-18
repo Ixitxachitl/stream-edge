@@ -44,6 +44,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("StreamEdge/0.1");
         _idleChat = new ChatViewModel(settings);
         Streams = new StreamListViewModel(settings);
+        ChannelPanel = new ChannelPanelViewModel(_http, demo: options.Demo);
         if (!options.Demo && !Playback.Mpv.MpvPlayer.IsAvailable(out var why)) PlayerUnavailable = why;
         Account = new AccountViewModel(settings, _http);
         Services = new ChatServices(_http, settings, ui, () => Account.IsSignedIn ? Account.Login : null);
@@ -67,6 +68,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_chat is not null) _chat.Token = token;
         });
         Streams.OpenRequested += (login, mode) => OpenChannel(login, mode);
+        Streams.ShowOfflineChanged += OnShowOfflineChanged;
         Search = new ChannelSearchViewModel(LocalChannels, SearchChannelsAsync, (login, mode) => OpenChannel(login, mode), ui);
 
         if (options.Demo) LoadDemo();
@@ -173,6 +175,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _qualitiesFrom = Player;
         _qualitiesFrom.Qualities.CollectionChanged += OnFrontQualitiesChanged;
         OnFrontQualitiesChanged(null, null);
+        // The panel under the video follows the channel on it.
+        if (ShowChannelPanel) _ = ChannelPanel.LoadAsync(value);
+        else ChannelPanel.Show(value);
     }
 
     private void OnFrontQualitiesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs? e)
@@ -194,27 +199,103 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(_settings.ChatShare, Math.Clamp(value, 0, 1), _settings, (s, v) => s.ChatShare = v);
     }
 
-    /// <summary>Swaps the side panes: chat left, list right.</summary>
-    public bool ChatOnLeft
+    /// <summary>Each pane's place around the video: side, position along it,
+    /// stacked or not; kept where it was left.</summary>
+    public IReadOnlyDictionary<PaneId, PanePlace> PanePlaces => _settings.PanePlaces;
+
+    public PanePlace ChatPlace => PanePlaces[PaneId.Chat];
+    public PanePlace ListPlace => PanePlaces[PaneId.List];
+    public PanePlace PanelPlace => PanePlaces[PaneId.Panel];
+
+    /// <summary>Which side of the video chat docks to.</summary>
+    public DockSide ChatDock => ChatPlace.Side;
+
+    /// <summary>Which side of the video the live list docks to.</summary>
+    public DockSide ListDock => ListPlace.Side;
+
+    /// <summary>Which side of the video the About panels dock to.</summary>
+    public DockSide PanelDock => PanelPlace.Side;
+
+    /// <summary>Puts the panes where a drag dropped them (see
+    /// <see cref="PaneArrangement"/>) and remembers it. A pane moved
+    /// somewhere is shown, if it was hidden.</summary>
+    public void SetPanePlaces(IReadOnlyDictionary<PaneId, PanePlace> places, PaneId? moved = null)
     {
-        get => _settings.ChatOnLeft;
-        set => SetProperty(_settings.ChatOnLeft, value, _settings, (s, v) => s.ChatOnLeft = v);
+        _settings.SetPanePlaces(places);
+        foreach (var name in new[] { nameof(PanePlaces), nameof(ChatPlace), nameof(ListPlace), nameof(PanelPlace),
+                     nameof(ChatDock), nameof(ListDock), nameof(PanelDock), nameof(MinWindowWidth) })
+            OnPropertyChanged(name);
+        if (moved == PaneId.List) ShowStreamList = true;
+        if (moved == PaneId.Panel) ShowChannelPanel = true;
     }
 
-    /// <summary>The 4:3 layout: video above the stream list, chat beside them.</summary>
-    public bool VideoAboveList
+    /// <summary>Moves chat to a side of the video, next to it.</summary>
+    [RelayCommand]
+    private void DockChat(DockSide side) => SetPanePlaces(PaneArrangement.MoveToSide(PanePlaces, PaneId.Chat, side), PaneId.Chat);
+
+    /// <summary>Moves the live list to a side of the video, next to it, showing it.</summary>
+    [RelayCommand]
+    private void DockList(DockSide side) => SetPanePlaces(PaneArrangement.MoveToSide(PanePlaces, PaneId.List, side), PaneId.List);
+
+    /// <summary>The live list is shown (where <see cref="ListDock"/> says);
+    /// off, chat takes its room.</summary>
+    public bool ShowStreamList
     {
-        get => _settings.VideoAboveList;
+        get => _settings.ShowStreamList;
         set
         {
-            if (SetProperty(_settings.VideoAboveList, value, _settings, (s, v) => s.VideoAboveList = v))
+            if (SetProperty(_settings.ShowStreamList, value, _settings, (s, v) => s.ShowStreamList = v))
                 OnPropertyChanged(nameof(MinWindowWidth));
         }
     }
 
-    /// <summary>Three across needs room for 16:9 between two minimum-width
-    /// sides; stacked fits an 800×600 screen.</summary>
-    public double MinWindowWidth => VideoAboveList ? 640 : 960;
+    /// <summary>Panes on both sides of the video need room for it between
+    /// two minimum-width sides; otherwise less will do.</summary>
+    public double MinWindowWidth
+    {
+        get
+        {
+            var docks = new List<DockSide> { ChatDock };
+            if (ShowStreamList) docks.Add(ListDock);
+            if (ShowChannelPanel) docks.Add(PanelDock);
+            return docks.Contains(DockSide.Left) && docks.Contains(DockSide.Right) ? 960 : 640;
+        }
+    }
+
+    /// <summary>The channel's About panels, docked where <see cref="PanelDock"/> says.</summary>
+    public bool ShowChannelPanel
+    {
+        get => _settings.ShowChannelPanel;
+        set
+        {
+            if (!SetProperty(_settings.ShowChannelPanel, value, _settings, (s, v) => s.ShowChannelPanel = v)) return;
+            OnPropertyChanged(nameof(MinWindowWidth));
+            if (value) _ = ChannelPanel.LoadAsync(FrontTab);
+        }
+    }
+
+    /// <summary>Moves the About panels to a side of the video, next to it, showing them.</summary>
+    [RelayCommand]
+    private void DockChannelPanel(DockSide side) =>
+        SetPanePlaces(PaneArrangement.MoveToSide(PanePlaces, PaneId.Panel, side), PaneId.Panel);
+
+    /// <summary>Share of the height the row above the video takes; two-way,
+    /// as dragging the line under it writes it back.</summary>
+    public double TopRowShare
+    {
+        get => _settings.TopRowShare;
+        set => SetProperty(_settings.TopRowShare, Math.Clamp(value, 0.1, 0.7), _settings, (s, v) => s.TopRowShare = v);
+    }
+
+    /// <summary>The same for the row below the video.</summary>
+    public double BottomRowShare
+    {
+        get => _settings.BottomRowShare;
+        set => SetProperty(_settings.BottomRowShare, Math.Clamp(value, 0.1, 0.7), _settings, (s, v) => s.BottomRowShare = v);
+    }
+
+    /// <summary>The front channel's About panels.</summary>
+    public ChannelPanelViewModel ChannelPanel { get; }
 
     public bool ReopenLastChannel
     {
@@ -223,7 +304,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Background tabs as small live videos over the player; off,
-    /// they play audio only.</summary>
+    /// they don't play at all until brought to the front.</summary>
     public bool ShowPip
     {
         get => _settings.ShowPip;
@@ -358,8 +439,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ----- Tabs -----------------------------------------------------------
 
+    /// <summary>Open channels at most: the main video and a full 4×4 grid
+    /// of thumbnails. Each is a live stream and a chat connection.</summary>
+    public const int MaxTabs = 17;
+
     /// <summary>Opens a channel. An already-open channel is just brought
-    /// forward (or left where it is, for background).</summary>
+    /// forward (or left where it is, for background). Null when nothing
+    /// opened: no name, or <see cref="MaxTabs"/> already open (replacing the
+    /// front tab in place still works then).</summary>
     public ChannelTabViewModel? OpenChannel(string login, OpenMode mode)
     {
         login = login.Trim().TrimStart('#').ToLowerInvariant();
@@ -372,6 +459,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         var column = ActiveColumn ?? Columns[0];
+        var replacing = mode == OpenMode.Front && column.Selected is not null;
+        if (!replacing && Tabs.Count >= MaxTabs)
+        {
+            ActiveTab?.Chat.Add(ChatMessage.System(ActiveTab.Login,
+                $"{MaxTabs} channels are open, the most there's room for: close one to open {login}.", DateTimeOffset.Now));
+            return null;
+        }
         var index = column.Tabs.Count;
         if (mode == OpenMode.Front && column.Selected is { } replaced)
         {
@@ -489,7 +583,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             target.Tabs.Insert(Math.Clamp(index, 0, target.Tabs.Count), tab);
             DropEmptyColumn(source);
         }
-        target.Selected = tab;
+        // The column with the video keeps showing its chat (dragging doesn't
+        // change the video, and its tab is the one marked); elsewhere the
+        // dropped tab is shown.
+        target.Selected = FrontTab is { } front && front != tab && target.Tabs.Contains(front) ? front : tab;
         Activate(target);
         UpdateColumnFlags();
         SaveTabs();
@@ -677,14 +774,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settings.Channel = FrontTab?.Login;
     }
 
-    /// <summary>Front: full quality. Others: a thumbnail with PIP on, audio
-    /// only with it off. Background tabs keep playing either way.</summary>
+    /// <summary>Front: full quality. Others: a thumbnail with PIP on; with it
+    /// off they stop, silent and downloading nothing, until brought forward.</summary>
     private void ApplyTiers()
     {
         foreach (var tab in Tabs)
         {
             if (tab.Session is { } session)
-                session.Tier = tab.IsFront ? PlaybackTier.Full : ShowPip ? PlaybackTier.Thumbnail : PlaybackTier.AudioOnly;
+                session.Tier = tab.IsFront ? PlaybackTier.Full : ShowPip ? PlaybackTier.Thumbnail : PlaybackTier.Off;
         }
     }
 
@@ -695,20 +792,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var text = tab.Chat.Draft.Trim();
         if (text.Length == 0 || _chat is null || !tab.Chat.CanSend) return;
         tab.Chat.Draft = "";
-        await _chat.SendMessageAsync(tab.Login, text);
+
+        // Slash commands (other than /me) go through Helix, not IRC.
+        if (ChatCommand.Parse(text) is { } command)
+        {
+            await RunCommandAsync(tab, command);
+            return;
+        }
+
+        var reply = tab.Chat.ReplyTo?.Message;
+        tab.Chat.ReplyTo = null;
+        await _chat.SendMessageAsync(tab.Login, text, reply?.Id);
 
         // Twitch doesn't echo our own PRIVMSG back, so draw it here, the way
         // Twitch would: from the USERSTATE it sent for this channel (badges,
-        // colour, display name). Other /commands aren't chat lines.
+        // colour, display name).
         var kind = ChatMessageKind.Message;
         if (text.StartsWith("/me ", StringComparison.OrdinalIgnoreCase))
         {
             kind = ChatMessageKind.Action;
             text = text[4..];
-        }
-        else if (text.StartsWith('/'))
-        {
-            return;
         }
         var state = _userStates.GetValueOrDefault(tab.Login);
         tab.Chat.AddOwn(new ChatMessage(DateTimeOffset.Now, kind, tab.Login, Account.Login,
@@ -716,6 +819,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             state?.Color ?? _globalUserState?.Color, state?.Badges ?? [], text)
         {
             UserId = _globalUserState?.UserId ?? Account.UserId,
+            ReplyParentName = reply?.Sender,
+            ReplyParentBody = reply?.Text,
         });
     }
 
@@ -944,7 +1049,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         tab.Chat.RoomId = roomId;
         _ = Services.Emotes.LoadChannelAsync(roomId, _stop.Token);
         if (Account.IsSignedIn && Account.AccessToken is { } token)
+        {
             _ = Services.Badges.LoadChannelAsync(_http, _settings.EffectiveClientId, token, roomId, _stop.Token);
+            _ = LoadCheermotesAsync(token, roomId);
+        }
         // Follower emotes are only listed when asked for by channel.
         _ = LoadMyEmotesAsync(roomId);
         _eventSub?.Watch(roomId);
@@ -959,6 +1067,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await Services.Badges.LoadGlobalAsync(_http, _settings.EffectiveClientId, token, _stop.Token);
         foreach (var room in Tabs.Select(t => t.RoomId).OfType<string>().Distinct().ToList())
             await Services.Badges.LoadChannelAsync(_http, _settings.EffectiveClientId, token, room, _stop.Token);
+    }
+
+    /// <summary>The channel's cheermotes (Twitch's and its own), so cheers
+    /// draw as pictures; signed out they stay text.</summary>
+    private async Task LoadCheermotesAsync(string token, string roomId)
+    {
+        var cheermotes = await Cheermotes.FetchAsync(_http, _settings.EffectiveClientId, token, roomId, _stop.Token);
+        if (cheermotes.Count == 0) return;
+        Services.SetCheermotes(roomId, cheermotes);
+        RenderChats(roomId);
     }
 
     /// <summary>Redraws chats after emotes or badges loaded: one room's tabs,
@@ -1046,7 +1164,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public void AttachPlayer(ChannelTabViewModel tab, IVideoPlayer? player)
     {
         if (!Tabs.Contains(tab)) return;
-        var tier = tab.IsFront ? PlaybackTier.Full : ShowPip ? PlaybackTier.Thumbnail : PlaybackTier.AudioOnly;
+        var tier = tab.IsFront ? PlaybackTier.Full : ShowPip ? PlaybackTier.Thumbnail : PlaybackTier.Off;
         tab.Attach(player, _http, _settings, tier, SecretStore.Get(SecretStore.PlaybackAuthToken));
     }
 
@@ -1079,6 +1197,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             case VideoInput.Escape:
                 VideoOnly = false;
                 break;
+        }
+    }
+
+    /// <summary>A thumbnail was dragged: the cells the thumbnails on show now
+    /// have, kept per channel so they come back there.</summary>
+    public void MovePips(IReadOnlyList<(ChannelTabViewModel Tab, PipCell Cell)> moved)
+    {
+        foreach (var (tab, cell) in moved)
+        {
+            if (!Tabs.Contains(tab)) continue;
+            tab.PipCell = cell;
+            _settings.PipCells[tab.Login] = cell;
         }
     }
 
@@ -1219,6 +1349,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(_settings.FollowRaids, value, _settings, (s, v) => s.FollowRaids = v);
     }
 
+    /// <summary>An alert when a favourite (★) goes live.</summary>
+    public bool NotifyGoLive
+    {
+        get => _settings.NotifyGoLive;
+        set => SetProperty(_settings.NotifyGoLive, value, _settings, (s, v) => s.NotifyGoLive = v);
+    }
+
     /// <summary>Raids out of open channels come over EventSub, which needs
     /// a signed-in user; signed out, a raiding channel just goes offline.</summary>
     private EventSubClient? CreateEventSub()
@@ -1226,7 +1363,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_options.Demo || !Account.IsSignedIn) return null;
         var client = new EventSubClient(_http, _settings.EffectiveClientId, () => Account.AccessToken);
         client.Raided += raid => _ui.Post(() => OnRaid(raid));
+        client.Whispered += whisper => _ui.Post(() => OnWhisper(whisper));
         client.Start();
+        if (Account.CanUseUserActions && Account.UserId is { } me) client.WatchWhispers(me);
         foreach (var room in Tabs.Select(t => t.RoomId).OfType<string>().Distinct()) client.Watch(room);
         return client;
     }
@@ -1322,12 +1461,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (signedIn && (t.RoomId is not { } room || _follows.GetValueOrDefault(room, true))) continue;
             watched.Add(_watchedLive.TryGetValue(t.Login, out var live)
                 ? WithSharedChat(live with { ProfileImage = live.ProfileImage ?? t.Player.ProfileImage })
-                // No stream info: live is whether it's playing.
+                // No stream info: live is whether it's playing (or was, when
+                // a background tab stopped with PIP off).
                 : new LiveStream(t.Login, t.DisplayName ?? t.Login, "", t.Player.Game, -1, default,
                     ProfileImage: t.Player.ProfileImage,
-                    IsLive: t.Session?.Status.State == PlaybackState.Playing));
+                    IsLive: t.Session?.LastKnownLive == true,
+                    LastLive: LastLiveFor(t.Login)));
         }
         Streams.SetWatched(watched, DateTimeOffset.Now);
+        // Offline ones: when they were last live, for the hover card.
+        _ = LoadWatchedLastLiveAsync(watched.Where(w => !w.IsLive).Select(w => w.Login));
     }
 
     /// <summary>Asks Twitch which open channels the user follows and which
@@ -1347,7 +1490,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             foreach (var room in others.Select(t => t.RoomId).OfType<string>().Where(r => !_follows.ContainsKey(r)).ToList())
                 _follows[room] = await helix.IsFollowingAsync(me, room, _stop.Token);
             var live = others.Count == 0 ? [] : await helix.GetStreamsAsync([.. others.Select(t => t.Login)], _stop.Token);
-            live = await WithAvatarsAsync(helix, live);
+            live = await WithLabelsAsync(helix, await WithAvatarsAsync(helix, live));
             _watchedLive.Clear();
             foreach (var s in live) _watchedLive[s.Login] = s;
         }
@@ -1415,17 +1558,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 helix = new HelixClient(_http, _settings.EffectiveClientId, renewed);
                 live = await helix.GetFollowedStreamsAsync(me, _stop.Token);
             }
-            live = await WithAvatarsAsync(helix, live);
+            live = await WithLabelsAsync(helix, await WithAvatarsAsync(helix, live));
             if (mine != _streamRefreshes) return;
             // The list first; who shares chat is filled in after (one
             // request per live channel) and the list redrawn with it.
             Streams.Set([.. live.Select(WithSharedChat)], DateTimeOffset.Now);
+            AlertGoLive(live);
             Streams.EmptyText = "No followed channels are live.";
             Streams.RefreshProblem = null;
             foreach (var tab in Tabs) ShowChannelInfo(tab);
             await RefreshWatchedAsync();
             await RefreshSharedChatsAsync(helix, live);
             if (mine == _streamRefreshes) Streams.Set([.. live.Select(WithSharedChat)], DateTimeOffset.Now);
+            // Offline followed channels last: slow to change, fetched seldom.
+            if (mine == _streamRefreshes) await RefreshOfflineAsync(helix, me, live);
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException && !_stop.IsCancellationRequested)
         {

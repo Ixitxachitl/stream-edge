@@ -93,15 +93,22 @@ playlist resolution (with optional auth-token), secrets store.
 - [x] Chat history on open: Twitch's recentChatMessages (auth-token), else recent-messages.robotty.de
 - [x] App icon (icon.png → scripts/make-icon.ps1)
 - [ ] 7TV cosmetics (name paints, badges): need its EventAPI websocket
-- [ ] Cheermotes (bits are shown as a count for now)
-- [ ] Recent-message history on join (recent-messages.robotty.de), ended with "### Finished with history logs. ###"
-- [ ] Mention and highlight rules, name click → user card flyout
+- [x] Cheermotes: Helix "Get Cheermotes" per channel (signed in), the tier picture and amount in its colour
+- [x] Recent-message history on join (see "Chat history on open" above)
+- [x] Name click → user card flyout
+- [ ] Mention and highlight rules
 - [ ] Virtualised list for busy channels and a "scroll to resume" pill when paused
-- [ ] Clickable links (open in the default browser)
+- [x] Clickable links (open in the default browser)
+- [x] Replies: ↩ on a line (hover), sent with IRC's reply tag, a "Replying to" bar above the box
+- [x] Slash commands through Helix (IRC only runs /me since 2023): /ban, /timeout, /warn, chat modes, /announce, /shield, /color, /block, /w; /help lists them
+- [x] Whispers: sent with Helix (needs a verified phone), received over EventSub `user.whisper.message`; shown in the open chat, /r answers. No history: Twitch has no API for it
 
 ### Phase 2: stream list
-- [ ] Favourite toggle (context menu) → `Favorites`
-- [ ] Go-live notifications (OS toast) for favourites
+- [x] Favourite toggle (context menu) → `Favorites`
+- [x] Go-live alerts for favourites, inside the window (top right), from the followed-live refresh; OS toasts still to do
+- [x] "◌ Offline" toggle: followed channels that are offline listed below the live ones, most recently live first (Helix followed channels + GQL `users.lastBroadcast`, both every 10 min); offline rows and offline tabs say "Last live 3h ago · Game" on hover
+- [x] Hover card: content classification labels (Helix "Get Channel Information") and tags
+- Pinned messages: no EventSub type exists, and Helix `GET /chat/pins` needs a moderator, so viewers can't see pins through the official API (checked Oct 2026)
 - [ ] Hourly token re-validation, plus 401 → refresh → retry in Helix calls
 - [ ] Remember the selected channel. The list is followed-only; add a search box for others
 
@@ -132,9 +139,9 @@ Twitch CDN ──HLS + prefetch──▶ LiveHlsReader ──TS bytes──▶ L
   - Bandwidth: if less than 0.85 s of video arrives per second (over 8 s), jump straight to the highest quality that fits. Otherwise 3 stalls in 60 s drop one step; stalls in the first 10 s after a load and during ads don't count. Three stall-free minutes: one step back up.
   - mpv starts and resumes after 1 s buffered (not on the first frames), with a 100 ms audio buffer.
 - Twitch serves MPEG-TS on some channels and fragmented MP4 on others (`#EXT-X-MAP` init segment): the reader sends the init segment first, mpv detects the format, and MP4 quality changes reload (each quality has its own init segment).
-- Ads play, as on twitch.tv, with an "Ad break" label on the video (none at all with the `auth-token` and a sub or Turbo). Skipping them (`SkipAds`, off) left the player's connection silent, and mpv drops a silent connection after ~30 s, mid pre-roll, which reconnected into a fresh pre-roll.
+- Ads play, as on twitch.tv, with an "Ad break" label on the video (none at all with the `auth-token` and a sub or Turbo). There is no way to skip them: Twitch's developer agreement forbids it.
 - Quality changes between video variants are seamless: the reader switches playlists at the next segment on the same connection (Twitch variants share segment numbers and timestamps), so there's no reload or rebuffer.
-- Recovery: every network step has a timeout; a stream with no new bytes for 12 s (outside ad breaks) reconnects with a fresh token; any resolve failure, timeouts included, schedules a retry; ⟳ retries offline tabs at once.
+- Recovery: every network step has a timeout; a stream with no new bytes for 12 s, or whose playback position hasn't moved for 20 s (outside ad breaks), reconnects with a fresh token; a reader that fell off the playlist (an outage) reloads at the live edge rather than splice a jump in time; any resolve failure, timeouts included, schedules a retry; ⟳ retries offline tabs at once. With PIP off, background tabs stop entirely until brought forward.
 - Closed captions (CEA-608 in the video) via mpv's caption track, toggled with CC; front tab only.
 - Offline channels show their offline banner (or avatar), from GQL.
 - Token expiry or a dropped stream: the player goes idle, and the session re-resolves with backoff. Offline channels are re-checked every 30 s.
@@ -151,11 +158,15 @@ Still to do:
 
 ### Phase 4: ultrawide polish
 - [x] Draggable grips beside the player: the video keeps its full-height 16:9 size and slides, one side growing by what the other loses. Saved as a share, so it scales with the window; double-click to re-center
+- [x] Docking: chat, the live list and the About panels (GQL `user.panels`) each dock left of, right of, above or below the video by dragging their header onto a side of it (the videos step aside during the drag so the targets can be drawn), saved where left. Rows above and below shorten the video, which narrows to stay 16:9; panes on one side share it. The list and panels show or hide from ▦ by PIP. Replaces the 4:3 "video above the list" layout and the chat-on-the-left switch (older settings keep their side)
+- [x] Resizing everything but the video: drag the gaps between columns on a side, between stacked panes, and between a row above or below the video and the video. Sizes are weights on the pane places (and a share per row), saved; moving a pane evens out the sides it left and joined
+- [x] Settings live under ⚙ beside PIP, as cards of switches with a line each
 - [ ] Player show/hide toggle
 - [ ] Screen picker in the flyout (`ScreenIndex`), borderless/fullscreen toggle, always-on-top
 - [ ] Font-size scale for tiny high-DPI bars, and layout presets (1920×480, 1920×440, 2560×720, 3840×1100)
-- [x] Channel tabs: double-click opens, right-click opens in a new or background tab; background tabs keep playing as audio only, or as PIP thumbnails over the player (lowest quality); selecting a tab brings it forward
-- [ ] PIP z-order on Linux/macOS (Windows raises thumbnails explicitly); clicking a PIP thumbnail to bring it forward
+- [x] Channel tabs: double-click opens, right-click opens in a new or background tab; background tabs keep playing as PIP thumbnails over the player (lowest quality), or pause with PIP off; selecting a tab brings it forward
+- [x] Clicking a PIP thumbnail brings it forward; dragging snaps it to a 4×4 grid spread corner to corner, remembered per channel (Windows); 17 channels at most
+- [ ] PIP z-order and dragging on Linux/macOS (Windows raises thumbnails explicitly)
 
 ### Phase 5: packaging
 - [ ] App icon, macOS `.app` bundle and signing notes, Linux `.desktop` entry

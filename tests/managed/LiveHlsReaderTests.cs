@@ -19,6 +19,11 @@ public class LiveHlsReaderTests
         public bool Mp4;
         public readonly List<string> Requests = [];
 
+        /// <summary>The playlist jumps this far ahead after its second fetch,
+        /// as after an outage longer than the playlist window.</summary>
+        public long JumpAfterSecond;
+        private int _fetches;
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = request.RequestUri!.AbsolutePath;
@@ -26,6 +31,7 @@ public class LiveHlsReaderTests
             if (path.EndsWith(".m3u8", StringComparison.Ordinal))
             {
                 if (Gone) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
+                if (Interlocked.Increment(ref _fetches) == 3) Interlocked.Add(ref Edge, JumpAfterSecond);
                 var edge = Interlocked.Increment(ref Edge) - 1;
                 var sb = new StringBuilder("#EXTM3U\n#EXT-X-TARGETDURATION:2\n");
                 if (Mp4) sb.Append("#EXT-X-MAP:URI=\"init.mp4\"\n");
@@ -43,9 +49,9 @@ public class LiveHlsReaderTests
         }
     }
 
-    private static async Task<string> Run(FakeTwitch twitch, int bytes, bool skipAds = true)
+    private static async Task<string> Run(FakeTwitch twitch, int bytes)
     {
-        var reader = new LiveHlsReader(new HttpClient(twitch), new Uri("https://video.example/720p60.m3u8"), skipAds);
+        var reader = new LiveHlsReader(new HttpClient(twitch), new Uri("https://video.example/720p60.m3u8"));
         // A synchronised stream: the reader writes from the pool while this
         // thread polls its length.
         using var output = Stream.Synchronized(new MemoryStream());
@@ -78,11 +84,22 @@ public class LiveHlsReaderTests
     }
 
     [Fact]
-    public async Task SkipsAdSegments()
+    public async Task PlaysAdSegmentsInOrder()
     {
         var text = await Run(new FakeTwitch { AdAt12 = true }, bytes: 40);
-        Assert.DoesNotContain("seg12.ts", text);
-        Assert.Contains("seg13.ts", text);
+        Assert.Contains("seg11.ts;seg12.ts;seg13.ts;", text);
+    }
+
+    [Fact]
+    public async Task FallingOffThePlaylistStopsRatherThanSplicingAJump()
+    {
+        var reader = new LiveHlsReader(new HttpClient(new FakeTwitch { JumpAfterSecond = 100 }), new Uri("https://video.example/x.m3u8"));
+        using var output = Stream.Synchronized(new MemoryStream());
+        await Assert.ThrowsAsync<FellBehindException>(() => reader.RunAsync(output, CancellationToken.None));
+        output.Position = 0;
+        // What came before the jump was written; nothing from after it.
+        var text = new StreamReader(output).ReadToEnd();
+        Assert.Equal("seg10.ts;seg11.ts;", text);
     }
 
     [Fact]

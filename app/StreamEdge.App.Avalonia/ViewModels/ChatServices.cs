@@ -177,5 +177,20 @@ public sealed class ChatServices
     public IReadOnlyList<ChatToken> Tokenize(ChatMessage message, string? roomId, bool own = false) =>
         ChatTokenizer.Tokenize(message,
             own ? code => MyEmote(code) ?? Emotes.Lookup(roomId, code) : code => Emotes.Lookup(roomId, code),
-            SelfLogin(), Settings.ShowGifs);
+            SelfLogin(), Settings.ShowGifs, CheermotesFor(message.SourceRoomId) ?? CheermotesFor(roomId));
+
+    // ----- Cheermotes, by room id ------------------------------------------
+
+    private readonly Dictionary<string, IReadOnlyList<Cheermote>> _cheermotes = new(StringComparer.Ordinal);
+
+    public void SetCheermotes(string roomId, IReadOnlyList<Cheermote> cheermotes)
+    {
+        lock (_gate) _cheermotes[roomId] = cheermotes;
+    }
+
+    private IReadOnlyList<Cheermote>? CheermotesFor(string? roomId)
+    {
+        if (roomId is null) return null;
+        lock (_gate) return _cheermotes.GetValueOrDefault(roomId);
+    }
 }

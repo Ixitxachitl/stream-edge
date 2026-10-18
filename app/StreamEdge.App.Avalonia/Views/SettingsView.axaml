@@ -1,0 +1,208 @@
+<!-- Settings (⚙ beside PIP): grouped into cards, each setting a switch with
+     a line saying what it does. Changes apply at once and are saved. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="using:StreamEdge.AvaloniaApp.Views"
+             xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
+             x:Class="StreamEdge.AvaloniaApp.Views.SettingsView"
+             x:DataType="vm:MainViewModel">
+  <UserControl.Styles>
+    <Style Selector="Border.settingsCard">
+      <Setter Property="Background" Value="#1F1F23" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="12,8" />
+    </Style>
+    <!-- A card's heading: its icon, then its name, in the accent colour. -->
+    <Style Selector="StackPanel.cardTitle">
+      <Setter Property="Orientation" Value="Horizontal" />
+      <Setter Property="Spacing" Value="6" />
+      <Setter Property="Margin" Value="2,0,0,4" />
+    </Style>
+    <Style Selector="StackPanel.cardTitle > PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource SeAccent}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.cardTitle">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource SeAccent}" />
+    </Style>
+    <Style Selector="TextBlock.settingName">
+      <Setter Property="Foreground" Value="{StaticResource SeText}" />
+    </Style>
+    <Style Selector="TextBlock.settingHint">
+      <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+      <Setter Property="FontSize" Value="{StaticResource SeSmallFontSize}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- A row: name and hint on the left, the switch on the right. -->
+    <Style Selector="Grid.settingRow">
+      <Setter Property="Margin" Value="0,4" />
+    </Style>
+    <Style Selector="Grid.settingRow > ToggleSwitch">
+      <Setter Property="Grid.Column" Value="1" />
+      <Setter Property="OnContent" Value="{x:Null}" />
+      <Setter Property="OffContent" Value="{x:Null}" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Margin" Value="12,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- Taller than a bar display: it scrolls rather than clips. -->
+  <ScrollViewer MaxHeight="420" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Width="340" Spacing="10" Margin="0,0,12,0">
+
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <PathIcon Data="{StaticResource IconGear}" Width="16" Height="16" Foreground="{StaticResource SeText}" />
+        <TextBlock Text="Settings" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource SeText}" />
+      </StackPanel>
+
+      <!-- The account first: logging in is what most people open this for. -->
+      <Border Classes="settingsCard" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
+        <StackPanel Spacing="6">
+          <StackPanel Classes="cardTitle"><PathIcon Classes="icon" Data="{StaticResource IconPerson}" /><TextBlock Classes="cardTitle" Text="Account" /></StackPanel>
+          <TextBlock Text="{Binding Summary}" Classes="settingName" TextWrapping="Wrap" />
+          <v:LoginBox IsVisible="{Binding !IsSignedIn}" />
+          <Button Content="Log out" Command="{Binding SignOutCommand}" IsVisible="{Binding IsSignedIn}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="settingsCard">
+        <StackPanel>
+          <StackPanel Classes="cardTitle"><PathIcon Classes="icon" Data="{StaticResource IconLayout}" /><TextBlock Classes="cardTitle" Text="Layout" /></StackPanel>
+          <TextBlock Classes="settingHint" Margin="0,0,0,4"
+                     Text="Drag chat, the live list or the About panels by their header to the left, right, top or bottom of the video; each stays where you leave it. ▦ beside PIP shows or hides the list and panels." />
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="Live list" />
+              <TextBlock Classes="settingHint" Text="Your live follows beside the player; off, chat gets the room" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ShowStreamList}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="About panels" />
+              <TextBlock Classes="settingHint" Text="The channel's own info cards, as on twitch.tv; the video makes room" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ShowChannelPanel}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="Picture-in-picture" />
+              <TextBlock Classes="settingHint" Text="Background tabs as small videos; off, they pause" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ShowPip}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="Reopen tabs at startup" />
+              <TextBlock Classes="settingHint" Text="Start where you left off" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ReopenLastChannel}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="settingsCard">
+        <StackPanel>
+          <StackPanel Classes="cardTitle"><PathIcon Classes="icon" Data="{StaticResource IconBell}" /><TextBlock Classes="cardTitle" Text="Alerts and raids" /></StackPanel>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="Favourite goes live" />
+              <TextBlock Classes="settingHint" Text="An alert when a ★ channel starts streaming" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding NotifyGoLive}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="Follow raids" />
+              <TextBlock Classes="settingHint" Text="Move the tab to the raided channel (needs a login)" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding FollowRaids}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="settingsCard">
+        <StackPanel>
+          <StackPanel Classes="cardTitle"><PathIcon Classes="icon" Data="{StaticResource IconBubble}" /><TextBlock Classes="cardTitle" Text="Chat" /></StackPanel>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <TextBlock Classes="settingName" Text="Timestamps" VerticalAlignment="Center" />
+            <ToggleSwitch IsChecked="{Binding ShowTimestamps}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="Join and part messages" />
+              <TextBlock Classes="settingHint" Text="Busy chats get noisy with these" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ShowJoinPart}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="GIFs" />
+              <TextBlock Classes="settingHint" Text="Drawn in chat; off, they show as their title" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ShowGifs}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="History when a channel opens" />
+              <TextBlock Classes="settingHint" Text="Recent messages, so a new tab isn't empty" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding LoadChatHistory}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="settingsCard">
+        <StackPanel>
+          <StackPanel Classes="cardTitle"><PathIcon Classes="icon" Data="{StaticResource IconPlug}" /><TextBlock Classes="cardTitle" Text="Third-party extras" /></StackPanel>
+          <TextBlock Classes="settingHint" Text="Each one asks someone else's server, so each is optional." Margin="0,0,0,4" />
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="Pronouns" />
+              <TextBlock Classes="settingHint" Text="pronouns.alejo.io" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ShowPronouns}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <TextBlock Classes="settingName" Text="BetterTTV emotes" VerticalAlignment="Center" />
+            <ToggleSwitch IsChecked="{Binding UseBttv}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <TextBlock Classes="settingName" Text="FrankerFaceZ emotes and badges" VerticalAlignment="Center" />
+            <ToggleSwitch IsChecked="{Binding UseFfz}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <TextBlock Classes="settingName" Text="7TV emotes" VerticalAlignment="Center" />
+            <ToggleSwitch IsChecked="{Binding UseSevenTv}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="History without an auth-token" />
+              <TextBlock Classes="settingHint" Text="recent-messages.robotty.de" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding UseRecentMessages}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="settingsCard" DataContext="{Binding Account}" x:DataType="vm:AccountViewModel">
+        <StackPanel Spacing="6">
+          <StackPanel Classes="cardTitle"><PathIcon Classes="icon" Data="{StaticResource IconTicket}" /><TextBlock Classes="cardTitle" Text="Ad-free playback (optional)" /></StackPanel>
+          <TextBlock Classes="settingHint"
+                     Text="For channels you're subscribed to, or everywhere with Turbo: paste the auth-token cookie from a browser signed in to twitch.tv. It's stored encrypted and sent only to gql.twitch.tv." />
+          <TextBox Text="{Binding PlaybackTokenDraft}" PasswordChar="•" PlaceholderText="auth-token" />
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Content="Save token" Command="{Binding SavePlaybackTokenCommand}" />
+            <Button Content="Clear" Command="{Binding ClearPlaybackTokenCommand}" IsEnabled="{Binding HasPlaybackToken}" />
+            <TextBlock Text="✓ token set" Foreground="{StaticResource SeAccent}" VerticalAlignment="Center"
+                       IsVisible="{Binding HasPlaybackToken}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Button x:Name="AboutButton" Content="About StreamEdge" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

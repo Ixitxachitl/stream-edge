@@ -24,4 +24,17 @@ public class WindowPlacementTests
     public void ScalingAppliesToTheSize() =>
         // 60×40 DIPs is 120×80 px at 200%: enough once scaled, not before.
         Assert.True(new WindowPlacement(0, 0, 60, 40).IsVisibleOn([(0, 0, 1920, 1040)], 2));
+
+    [Fact]
+    public void MaximizedOnAnotherDisplayMovesTheNormalBoundsThere()
+    {
+        // Normal bounds on the main screen; maximized on the bar below it.
+        var saved = new WindowPlacement(1005, 325, 2450, 1360, WindowMode.Maximized);
+        var bar = (466, 1440, 2560, 672);
+        var moved = saved.OnScreen(bar, 1);
+        Assert.Equal(new WindowPlacement(521, 1440, 2450, 672, WindowMode.Maximized), moved);
+        Assert.True(moved.IsVisibleOn([bar], 1));
+        // Already there: left alone.
+        Assert.Same(moved, moved.OnScreen(bar, 1));
+    }
 }

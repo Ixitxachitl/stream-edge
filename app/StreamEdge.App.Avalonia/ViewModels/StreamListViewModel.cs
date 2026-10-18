@@ -14,7 +14,7 @@ public enum OpenMode
     Front,
     /// <summary>In a new tab brought to the front.</summary>
     NewTab,
-    /// <summary>In a new tab that stays behind, playing audio or as PIP.</summary>
+    /// <summary>In a new tab that stays behind: a PIP thumbnail, or paused with PIP off.</summary>
     Background,
 }
 
@@ -48,14 +48,31 @@ public sealed partial class StreamItemViewModel : ObservableObject
     public string SharedText => Stream.SharedWith is { Count: > 0 } others
         ? "Shared chat with " + string.Join(", ", others.Select(o => o.DisplayName))
         : "";
-    public string Game => Stream.IsLive ? Stream.Game : "Offline";
+    public string Game => Stream.IsLive ? Stream.Game
+        : Stream.LastLive is { } last ? "Offline · " + UiFormats.Ago(DateTimeOffset.Now - last.StartedAt) + " ago" : "Offline";
+
+    /// <summary>The hover card's title: the stream's, or the last one's when offline.</summary>
+    public string CardTitle => Stream.IsLive ? Stream.Title : Stream.LastLive?.Title ?? "";
+
+    /// <summary>Content classification labels ("Mature-rated game"…), as
+    /// twitch.tv warns of them; empty when there are none.</summary>
+    public string LabelsText => Stream.ContentLabels is { Count: > 0 } labels
+        ? "⚠ " + string.Join(", ", labels.Select(ContentLabels.Describe))
+        : "";
+
+    public bool HasLabels => LabelsText.Length > 0;
+
+    public string TagsText => Stream.Tags is { Count: > 0 } tags ? string.Join("  ", tags.Select(t => "#" + t)) : "";
+
+    public bool HasTags => TagsText.Length > 0;
     public bool IsLive => Stream.IsLive;
 
     /// <summary>Open in a tab but not followed: listed above the followed
     /// channels, which <see cref="SeparatorBelow"/> marks off.</summary>
     public bool IsWatched { get; init; }
 
-    /// <summary>The last watched channel, with followed ones below it.</summary>
+    /// <summary>The last of a group (watched, or live above offline), with
+    /// the next group below it.</summary>
     public bool SeparatorBelow { get; init; }
 
     /// <summary>twitch.tv/name, where following and unfollowing happen.</summary>
@@ -94,7 +111,10 @@ public sealed partial class StreamItemViewModel : ObservableObject
     private void OpenInBackground() => _open(Stream.Login, OpenMode.Background);
 
     private static string UptimeText(LiveStream s, DateTimeOffset now) =>
-        !s.IsLive ? "Offline" : s.Viewers < 0 ? "Live" : "Live for " + UiFormats.Uptime(s.Uptime(now));
+        s.IsLive ? s.Viewers < 0 ? "Live" : "Live for " + UiFormats.Uptime(s.Uptime(now))
+        : s.LastLive is { } last
+            ? $"Last live {UiFormats.Ago(now - last.StartedAt)} ago" + (last.Game is { Length: > 0 } g ? " · " + g : "")
+            : "Offline";
 
     public void Tick(DateTimeOffset now)
     {
@@ -152,6 +172,39 @@ public sealed partial class StreamListViewModel : ObservableObject
     /// <summary>The followed live channels, as last set.</summary>
     public IReadOnlyList<LiveStream> Followed => _source;
 
+    private IReadOnlyList<LiveStream> _offline = [];
+
+    /// <summary>Followed channels that aren't live, listed below the live
+    /// ones (with <see cref="ShowOffline"/>), most recently live first.</summary>
+    public void SetOffline(IReadOnlyList<LiveStream> offline, DateTimeOffset now)
+    {
+        _offline = offline;
+        if (ShowOffline) Rebuild(now);
+    }
+
+    /// <summary>List followed channels that are offline too.</summary>
+    public bool ShowOffline
+    {
+        get => _settings.ShowOffline;
+        set
+        {
+            if (_settings.ShowOffline == value) return;
+            _settings.ShowOffline = value;
+            OnPropertyChanged();
+            Rebuild(DateTimeOffset.Now);
+            ShowOfflineChanged?.Invoke();
+        }
+    }
+
+    /// <summary>The toggle was flipped: the offline list may need fetching.</summary>
+    public event Action? ShowOfflineChanged;
+
+    /// <summary>Offline channels in the order they were last live, newest
+    /// first; never-live ones after, by name.</summary>
+    public static IEnumerable<LiveStream> OfflineOrder(IEnumerable<LiveStream> offline) =>
+        offline.OrderByDescending(s => s.LastLive?.StartedAt ?? DateTimeOffset.MinValue)
+            .ThenBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase);
+
     private IReadOnlyList<LiveStream> _watched = [];
 
     /// <summary>Channels open in tabs that the user doesn't follow, listed
@@ -208,8 +261,18 @@ public sealed partial class StreamListViewModel : ObservableObject
                 IsWatched = true,
                 SeparatorBelow = i == _watched.Count - 1,
             });
-        foreach (var s in StreamSort.Apply(starred, Sort))
-            Items.Add(new StreamItemViewModel(s, now, ToggleFavorite, Open));
+        var live = StreamSort.Apply(starred, Sort).ToList();
+        var listed = new HashSet<string>(_watched.Concat(live).Select(s => s.Login), StringComparer.OrdinalIgnoreCase);
+        var offline = ShowOffline
+            ? OfflineOrder(_offline.Where(s => !listed.Contains(s.Login))).ToList()
+            : [];
+        for (var i = 0; i < live.Count; i++)
+            Items.Add(new StreamItemViewModel(live[i], now, ToggleFavorite, Open)
+            {
+                SeparatorBelow = i == live.Count - 1 && offline.Count > 0,
+            });
+        foreach (var s in offline)
+            Items.Add(new StreamItemViewModel(s with { IsFavorite = _settings.IsFavorite(s.Login) }, now, ToggleFavorite, Open));
         Selected = Items.FirstOrDefault(i => i.Stream.Login == keep);
         OnPropertyChanged(nameof(Header));
         OnPropertyChanged(nameof(IsEmpty));

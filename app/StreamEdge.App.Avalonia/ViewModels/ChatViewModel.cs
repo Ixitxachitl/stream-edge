@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using StreamEdge.Chat;
 using StreamEdge.Streams;
 
@@ -150,6 +151,19 @@ public sealed partial class ChatViewModel : ObservableObject
 
     [ObservableProperty]
     private string _draft = "";
+
+    /// <summary>The line the next message answers, shown above the chat box
+    /// until sent or cancelled.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReplying), nameof(ReplyText))]
+    private ChatEntry? _replyTo;
+
+    public bool IsReplying => ReplyTo is not null;
+
+    public string ReplyText => ReplyTo?.Message is { } m ? $"Replying to @{m.Sender}: {m.Text}" : "";
+
+    [RelayCommand]
+    private void CancelReply() => ReplyTo = null;
 
     /// <summary>Sending needs a signed-in account; anonymous chat is read-only.</summary>
     [ObservableProperty]

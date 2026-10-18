@@ -154,7 +154,13 @@ public sealed partial class AccountViewModel : ObservableObject
         OnPropertyChanged(nameof(CanModerate));
         CanReadChatters = identity.Scopes?.Contains(TwitchAuth.ChattersScope) == true;
         OnPropertyChanged(nameof(CanReadChatters));
+        CanUseUserActions = identity.Scopes?.Contains(TwitchAuth.UserActionsScope) == true;
+        OnPropertyChanged(nameof(CanUseUserActions));
     }
+
+    /// <summary>The token may whisper (send and receive), change the chat
+    /// colour and block users.</summary>
+    public bool CanUseUserActions { get; private set; }
 
     public Task RestoreAsync(CancellationToken ct) => FreshTokenAsync(ct, force: true);
 

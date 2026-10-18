@@ -10,14 +10,19 @@ namespace StreamEdge.Streams;
 /// <summary>A channel raided another: viewers on it move to the target.</summary>
 public sealed record RaidEvent(string FromId, string FromLogin, string ToId, string ToLogin, string ToName, int Viewers);
 
+/// <summary>A whisper (direct message) to the user.</summary>
+public sealed record WhisperEvent(string Id, string FromId, string FromLogin, string FromName, string Text);
+
 /// <summary>Twitch EventSub over WebSocket, for raids out of the channels the
-/// user has open (<c>channel.raid</c> by <c>from_broadcaster_user_id</c>).
-/// Needs a signed-in user's token, no particular scope; reconnects with
+/// user has open (<c>channel.raid</c> by <c>from_broadcaster_user_id</c>) and
+/// whispers to the user (<c>user.whisper.message</c>). Needs a signed-in
+/// user's token (whispers need <c>user:manage:whispers</c>); reconnects with
 /// backoff and subscribes again, since Twitch drops a closed session's
 /// subscriptions.</summary>
 /// <remarks>Twitch charges one unit per channel watched this way and allows
 /// ten per user, so channels past the tenth aren't watched until others
-/// close. Events are raised on the socket's thread.</remarks>
+/// close; whispers, being the user's own, cost nothing. Events are raised on
+/// the socket's thread.</remarks>
 public sealed class EventSubClient(HttpClient http, string clientId, Func<string?> token) : IAsyncDisposable
 {
     public static readonly Uri Endpoint = new("wss://eventsub.wss.twitch.tv/ws");
@@ -26,13 +31,31 @@ public sealed class EventSubClient(HttpClient http, string clientId, Func<string
     private readonly CancellationTokenSource _stop = new();
     private readonly object _lock = new();
     private readonly HashSet<string> _watched = [];
-    // Broadcaster id → subscription id, for the ones Twitch accepted.
+    // Broadcaster id (or WhisperKey) → subscription id, for the ones Twitch accepted.
     private readonly Dictionary<string, string> _subscriptions = [];
     private readonly Queue<string> _recentIds = new();
     private string? _sessionId;
     private Task? _loop;
 
     public event Action<RaidEvent>? Raided;
+
+    public event Action<WhisperEvent>? Whispered;
+
+    private const string WhisperKey = "whispers";
+    private string? _whisperUser;
+
+    /// <summary>Receive whispers to this user (the signed-in one).</summary>
+    public void WatchWhispers(string userId)
+    {
+        string? session;
+        lock (_lock)
+        {
+            if (_whisperUser == userId) return;
+            _whisperUser = userId;
+            session = _sessionId;
+        }
+        if (session is not null) _ = SubscribeAsync(WhisperKey, session);
+    }
 
     public void Start() => _loop ??= Task.Run(() => RunAsync(_stop.Token));
 
@@ -65,7 +88,7 @@ public sealed class EventSubClient(HttpClient http, string clientId, Func<string
 
     /// <summary>The parts of an EventSub message this client uses.</summary>
     public sealed record Message(string Type, string? Id, string? SessionId = null, int? KeepaliveSeconds = null,
-        Uri? ReconnectUrl = null, RaidEvent? Raid = null, string? RevokedSubscription = null);
+        Uri? ReconnectUrl = null, RaidEvent? Raid = null, string? RevokedSubscription = null, WhisperEvent? Whisper = null);
 
     /// <summary>Null for anything that isn't a well-formed EventSub message.</summary>
     public static Message? Parse(string json)
@@ -93,7 +116,14 @@ public sealed class EventSubClient(HttpClient http, string clientId, Func<string
                 case "notification":
                 {
                     var subscription = meta?["subscription_type"]?.GetValue<string>();
-                    if (subscription != "channel.raid" || payload?["event"] is not JsonObject e) return new(type, id);
+                    if (payload?["event"] is not JsonObject e) return new(type, id);
+                    if (subscription == "user.whisper.message")
+                    {
+                        var whisper = new WhisperEvent(Text(e, "whisper_id"), Text(e, "from_user_id"), Text(e, "from_user_login"),
+                            Text(e, "from_user_name"), e["whisper"]?["text"]?.GetValue<string>() ?? "");
+                        return whisper.FromLogin.Length == 0 ? new(type, id) : new(type, id, Whisper: whisper);
+                    }
+                    if (subscription != "channel.raid") return new(type, id);
                     var raid = new RaidEvent(Text(e, "from_broadcaster_user_id"), Text(e, "from_broadcaster_user_login"),
                         Text(e, "to_broadcaster_user_id"), Text(e, "to_broadcaster_user_login"), Text(e, "to_broadcaster_user_name"),
                         e["viewers"]?.GetValue<int>() ?? 0);
@@ -151,6 +181,9 @@ public sealed class EventSubClient(HttpClient http, string clientId, Func<string
                             break;
                         case "notification" when m.Raid is { } raid:
                             Raided?.Invoke(raid);
+                            break;
+                        case "notification" when m.Whisper is { } whisper:
+                            Whispered?.Invoke(whisper);
                             break;
                         case "revocation" when m.RevokedSubscription is { } revoked:
                             lock (_lock)
@@ -210,18 +243,30 @@ public sealed class EventSubClient(HttpClient http, string clientId, Func<string
     private async Task SubscribeAllAsync(string session)
     {
         List<string> pending;
-        lock (_lock) pending = [.. _watched.Where(b => !_subscriptions.ContainsKey(b))];
+        lock (_lock)
+        {
+            pending = [.. _watched.Where(b => !_subscriptions.ContainsKey(b))];
+            if (_whisperUser is not null && !_subscriptions.ContainsKey(WhisperKey)) pending.Insert(0, WhisperKey);
+        }
         foreach (var broadcaster in pending) await SubscribeAsync(broadcaster, session).ConfigureAwait(false);
     }
 
+    /// <param name="broadcasterId">A channel to follow raids out of, or
+    /// <see cref="WhisperKey"/> for the user's whispers.</param>
     private async Task SubscribeAsync(string broadcasterId, string session)
     {
         if (token() is not { } bearer) return;
+        string? whisperUser;
+        lock (_lock) whisperUser = _whisperUser;
+        var whispers = broadcasterId == WhisperKey;
+        if (whispers && whisperUser is null) return;
         var body = new JsonObject
         {
-            ["type"] = "channel.raid",
+            ["type"] = whispers ? "user.whisper.message" : "channel.raid",
             ["version"] = "1",
-            ["condition"] = new JsonObject { ["from_broadcaster_user_id"] = broadcasterId },
+            ["condition"] = whispers
+                ? new JsonObject { ["user_id"] = whisperUser }
+                : new JsonObject { ["from_broadcaster_user_id"] = broadcasterId },
             ["transport"] = new JsonObject { ["method"] = "websocket", ["session_id"] = session },
         };
         try
@@ -242,7 +287,7 @@ public sealed class EventSubClient(HttpClient http, string clientId, Func<string
             bool stale;
             lock (_lock)
             {
-                stale = !_watched.Contains(broadcasterId) || _sessionId != session;
+                stale = (whispers ? _whisperUser is null : !_watched.Contains(broadcasterId)) || _sessionId != session;
                 if (!stale) _subscriptions[broadcasterId] = id;
             }
             // Closed while the request was out: take it back.

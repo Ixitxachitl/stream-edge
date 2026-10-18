@@ -82,11 +82,9 @@ public sealed partial class PlayerViewModel : ObservableObject
     private bool _adFree;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MuteGlyph))]
     private bool _muted;
 
     public string QualityLabel => (Quality ?? "Quality") + " ▾";
-    public string MuteGlyph => Muted ? "🔇" : "🔊";
 
     /// <summary>Closed captions (the CC button). Shown only when the stream
     /// carries them; many don't.</summary>
@@ -121,8 +119,7 @@ public sealed partial class PlayerViewModel : ObservableObject
             _ => Status,
         };
         // Only the settled states change visibility: a restart passes through
-        // Stopped, and hiding the surface for that blink could tear down the
-        // native window mpv is drawing into.
+        // Stopped, and hiding the video for that moment would make it blink.
         IsOffline = status.State == PlaybackState.Offline;
         if (status.State == PlaybackState.Offline) IsVideoVisible = false;
         else if (status.State == PlaybackState.Playing) IsVideoVisible = true;

@@ -121,12 +121,12 @@ public class ChannelSearchUiTests(HeadlessAvalonia ui) : UiTest(ui)
         var vm = Demo();
         var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
         window.Show();
-        var box = window.FindControl<TextBox>("ChannelSearchBox")!;
+        var box = window.FindControl<StreamListView>("StreamsPane")!.FindControl<TextBox>("ChannelSearchBox")!;
         box.Focus();
         vm.Search.Query = "Velvet";
         Dispatcher.UIThread.RunJobs();
 
-        var popup = window.FindControl<Avalonia.Controls.Primitives.Popup>("ChannelSuggestionPopup")!;
+        var popup = window.FindControl<StreamListView>("StreamsPane")!.FindControl<Avalonia.Controls.Primitives.Popup>("ChannelSuggestionPopup")!;
         Assert.True(popup.IsOpen);
         var frame = window.CaptureRenderedFrame();
         if (Environment.GetEnvironmentVariable("STREAMEDGE_SNAPSHOT") is { Length: > 0 } path)

@@ -88,7 +88,78 @@ public sealed class ChatLine : Border
         var text = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
         text.Inlines = BuildInlines(entry);
         stack.Children.Add(text);
-        Child = stack;
+        _replyButton = CanReply(entry) ? ReplyButton(entry) : null;
+        if (_replyButton is null)
+        {
+            Child = stack;
+            return;
+        }
+        // The reply arrow sits in the top-right corner, shown while the
+        // mouse is over the line, as on twitch.tv.
+        var panel = new Panel();
+        panel.Children.Add(stack);
+        panel.Children.Add(_replyButton);
+        Child = panel;
+    }
+
+    // ----- Replying ---------------------------------------------------------
+
+    /// <summary>The ↩ on the line under the mouse.</summary>
+    private Control? _replyButton;
+
+    /// <summary>Someone else's message (or a whisper to the user) that a
+    /// reply can answer.</summary>
+    private static bool CanReply(ChatEntry entry)
+    {
+        var m = entry.Message;
+        if (entry.IsDeleted || entry.IsOwn || m.Login is null) return false;
+        return m.Kind == ChatMessageKind.Whisper ? m.WhisperTo is null
+            : m.Kind is ChatMessageKind.Message or ChatMessageKind.Action && m.Id is not null;
+    }
+
+    private Control ReplyButton(ChatEntry entry)
+    {
+        var button = new Border
+        {
+            Child = new TextBlock { Text = "↩", Foreground = TextBrush, FontSize = 14 },
+            Background = Brush("#CC18181B"),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(6, 0),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            IsVisible = IsPointerOver,
+        };
+        ToolTip.SetTip(button, entry.Message.Kind == ChatMessageKind.Whisper ? "Whisper back" : "Reply");
+        button.PointerPressed += (_, e) =>
+        {
+            if (!e.GetCurrentPoint(button).Properties.IsLeftButtonPressed) return;
+            RaiseEvent(new ReplyRequestedEventArgs(ReplyRequestedEvent, entry));
+            e.Handled = true;
+        };
+        return button;
+    }
+
+    protected override void OnPointerEntered(PointerEventArgs e)
+    {
+        base.OnPointerEntered(e);
+        if (_replyButton is not null) _replyButton.IsVisible = true;
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (_replyButton is not null) _replyButton.IsVisible = false;
+    }
+
+    /// <summary>The ↩ on a line was clicked: answer it.</summary>
+    public static readonly RoutedEvent<ReplyRequestedEventArgs> ReplyRequestedEvent =
+        RoutedEvent.Register<ChatLine, ReplyRequestedEventArgs>(nameof(ReplyRequested), RoutingStrategies.Bubble);
+
+    public event EventHandler<ReplyRequestedEventArgs>? ReplyRequested
+    {
+        add => AddHandler(ReplyRequestedEvent, value);
+        remove => RemoveHandler(ReplyRequestedEvent, value);
     }
 
     /// <summary>Row background and left bar for the special message types,
@@ -96,7 +167,11 @@ public sealed class ChatLine : Border
     private void StyleRow(ChatEntry entry, StackPanel stack)
     {
         var m = entry.Message;
-        if (entry.IsSelfMention)
+        if (m.Kind == ChatMessageKind.Whisper)
+        {
+            Bar("#BF94FF", "#241A33");
+        }
+        else if (entry.IsSelfMention)
         {
             Bar("#E91916", "#3B1416");
         }
@@ -228,7 +303,10 @@ public sealed class ChatLine : Border
             inlines.Add(new Run(" (" + pronoun + ")") { Foreground = DimBrush, FontSize = 11.5 });
         if (m.Bits > 0)
             inlines.Add(new Run($" ♦{m.Bits:N0}") { Foreground = Brush("#BF94FF"), FontWeight = FontWeight.SemiBold });
-        inlines.Add(new Run(isAction ? " " : isNotice ? " · " : ": ") { Foreground = TextBrush });
+        inlines.Add(new Run(m.Kind == ChatMessageKind.Whisper
+                ? m.WhisperTo is { } to ? $" ▸ {to}: " : " whispers: "
+                : isAction ? " " : isNotice ? " · " : ": ")
+            { Foreground = m.Kind == ChatMessageKind.Whisper ? LinkBrush : TextBrush });
 
         if (entry.IsDeleted)
         {
@@ -248,6 +326,9 @@ public sealed class ChatLine : Border
             {
                 case ChatTokenKind.Emote when token.Emote is { } emote:
                     inlines.Add(token == gigantic ? GiganticEmote(emote, token.Overlays) : Emote(emote, token.Overlays, EmoteHeight));
+                    break;
+                case ChatTokenKind.Cheer when token.Cheer is { } cheer:
+                    inlines.Add(Cheer(cheer));
                     break;
                 case ChatTokenKind.Gif when token.Url is { } gif:
                     inlines.Add(Gif(gif, token.Text));
@@ -373,6 +454,28 @@ public sealed class ChatLine : Border
         };
     }
 
+    /// <summary>A cheer as twitch.tv draws it: the tier's picture, then the
+    /// amount in the tier's colour.</summary>
+    private static Inline Cheer(Cheer cheer)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(new EmoteView(cheer.Image, null, $"{cheer.Prefix} {cheer.Bits:N0} bits")
+        {
+            EmoteHeight = EmoteHeight,
+            FallbackText = cheer.Prefix,
+            Margin = new Thickness(1, 0, 1, 0),
+        });
+        var color = Color.TryParse(cheer.Color, out var c) ? c : Color.Parse("#9147FF");
+        row.Children.Add(new TextBlock
+        {
+            Text = cheer.Bits.ToString("N0"),
+            Foreground = new SolidColorBrush(Readable(color)),
+            FontWeight = FontWeight.Bold,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        return new InlineUIContainer(new InlineMiddle(row)) { BaselineAlignment = BaselineAlignment.Baseline };
+    }
+
     /// <summary>A GIF in the line, its title as the tooltip and as the text
     /// shown if it can't be loaded.</summary>
     private static Inline Gif(Uri url, string title)
@@ -488,6 +591,11 @@ public sealed class UserClickedEventArgs(RoutedEvent routedEvent, string login, 
     public ChatEntry? Entry { get; } = entry;
 
     public Control Anchor { get; } = anchor;
+}
+
+public sealed class ReplyRequestedEventArgs(RoutedEvent routedEvent, ChatEntry entry) : RoutedEventArgs(routedEvent)
+{
+    public ChatEntry Entry { get; } = entry;
 }
 
 public sealed class ModActionEventArgs(RoutedEvent routedEvent, ModAction action, ChatEntry entry)

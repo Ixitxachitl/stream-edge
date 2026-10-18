@@ -37,6 +37,7 @@ public partial class MainWindow
     private const double MinStackHeight = 140;
 
     private ChannelTabViewModel? _pressedTab;
+    private Border? _pressedTabBorder;
     private Point _pressedAt;
     private bool _draggingTab;
     private TabDropTarget? _drop;
@@ -55,10 +56,11 @@ public partial class MainWindow
     {
         _pressedTab = null;
         if (!e.GetCurrentPoint(ChatPane).Properties.IsLeftButtonPressed) return;
-        var tab = (e.Source as Visual)?.GetSelfAndVisualAncestors()
-            .OfType<Border>().FirstOrDefault(b => b.Classes.Contains("tab"))?.DataContext as ChannelTabViewModel;
-        if (tab is null) return;
+        var border = (e.Source as Visual)?.GetSelfAndVisualAncestors()
+            .OfType<Border>().FirstOrDefault(b => b.Classes.Contains("tab"));
+        if (border?.DataContext is not ChannelTabViewModel tab) return;
         _pressedTab = tab;
+        _pressedTabBorder = border;
         _pressedAt = e.GetPosition(ChatPane);
     }
 
@@ -73,6 +75,9 @@ public partial class MainWindow
             // Taken from the button, so letting go doesn't also click it.
             e.Pointer.Capture(ChatPane);
             ChatPane.Cursor = new Cursor(StandardCursorType.DragMove);
+            // The tab in hand is the lit one in its strip while it moves
+            // (it isn't selected: that would put it on video).
+            MarkDraggedTab(true);
         }
         _drop = DropTargetAt(tab, at);
         ShowDropIndicator(_drop);
@@ -98,11 +103,22 @@ public partial class MainWindow
 
     private void EndTabDrag()
     {
+        MarkDraggedTab(false);
         _pressedTab = null;
+        _pressedTabBorder = null;
         _draggingTab = false;
         _drop = null;
         ChatPane.Cursor = null;
         ShowDropIndicator(null);
+    }
+
+    private void MarkDraggedTab(bool dragging)
+    {
+        if (_pressedTabBorder is not { } border) return;
+        border.Classes.Set("dragging", dragging);
+        // Its strip too, so the selected tab there steps back meanwhile.
+        border.GetVisualAncestors().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("tabStrip"))
+            ?.Classes.Set("dragging", dragging);
     }
 
     private void ShowDropIndicator(TabDropTarget? drop)

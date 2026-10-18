@@ -29,7 +29,7 @@ public interface IVideoPlayer
     void SetCaptions(bool on);
 
     /// <summary>Text that stays on the video until cleared (null), e.g.
-    /// "Ad break" while ads are being skipped and the picture is black.</summary>
+    /// "Ad break" while an ad plays.</summary>
     void SetStatusText(string? text);
 
     /// <summary>The stream-info strip along the bottom of the video, shown
@@ -40,4 +40,6 @@ public interface IVideoPlayer
 /// <param name="BufferSeconds">Media buffered ahead of the playhead.</param>
 /// <param name="Stalled">Paused waiting for data.</param>
 /// <param name="Idle">Nothing loaded: never started, or the stream ended.</param>
-public readonly record struct VideoPlayerStats(double BufferSeconds, bool Stalled, bool Idle);
+/// <param name="Position">Playback position in seconds, null when unknown;
+/// only whether it moves matters.</param>
+public readonly record struct VideoPlayerStats(double BufferSeconds, bool Stalled, bool Idle, double? Position = null);

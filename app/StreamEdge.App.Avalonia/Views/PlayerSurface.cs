@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Runtime.InteropServices;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
 using StreamEdge.AvaloniaApp.ViewModels;
@@ -76,10 +77,60 @@ public sealed partial class PlayerSurface : NativeControlHost
         _wndProc = null;
     }
 
+    /// <summary>A thumbnail: a press may become a drag (<see cref="DragMoved"/>,
+    /// <see cref="DragEnded"/>), and a click is reported on release rather
+    /// than on press, so starting a drag doesn't also switch tabs.</summary>
+    public bool CanDrag { get; set; }
+
+    /// <summary>The mouse moved this far (device pixels) since the button
+    /// went down on a draggable video. Windows only.</summary>
+    public event Action<PixelVector>? DragMoved;
+
+    /// <summary>The button came up (or capture was lost) after a drag.</summary>
+    public event Action? DragEnded;
+
+    private bool _pressed;
+    private bool _dragging;
+    private Point32 _pressAt;
+
+    /// <summary>The press is over: a drop, a click, or nothing (capture lost).</summary>
+    private void EndPress(bool released)
+    {
+        if (!_pressed) return;
+        _pressed = false;
+        var dragged = _dragging;
+        _dragging = false;
+        if (dragged) DragEnded?.Invoke();
+        else if (released) Input?.Invoke(VideoInput.Click);
+    }
+
     private IntPtr OnMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (msg == WmMouseMove && _pressed && GetCursorPos(out var cursor))
+        {
+            // Screen coordinates: the window itself moves under the mouse.
+            var delta = new PixelVector(cursor.X - _pressAt.X, cursor.Y - _pressAt.Y);
+            if (!_dragging && (Math.Abs(delta.X) > GetSystemMetrics(SmCxDrag) || Math.Abs(delta.Y) > GetSystemMetrics(SmCyDrag)))
+                _dragging = true;
+            if (_dragging) DragMoved?.Invoke(delta);
+        }
         switch (msg)
         {
+            case WmLButtonDown when CanDrag:
+                if (!GetCursorPos(out _pressAt)) break;
+                _pressed = true;
+                _dragging = false;
+                SetCapture(hwnd);
+                return IntPtr.Zero;
+            case WmLButtonUp when _pressed:
+                // Released first, so the capture change that follows finds
+                // nothing left to end.
+                EndPress(released: true);
+                ReleaseCapture();
+                return IntPtr.Zero;
+            case WmCaptureChanged when _pressed:
+                EndPress(released: false);
+                break;
             case WmMouseMove when !_hovering:
                 // Ask for a WM_MOUSELEAVE once the cursor goes.
                 var track = new TrackMouseEventArgs
@@ -129,6 +180,10 @@ public sealed partial class PlayerSurface : NativeControlHost
     private const uint WmMouseLeave = 0x02A3;
     private const uint TmeLeave = 0x00000002;
     private const uint WmLButtonDown = 0x0201;
+    private const uint WmLButtonUp = 0x0202;
+    private const uint WmCaptureChanged = 0x0215;
+    private const int SmCxDrag = 68;
+    private const int SmCyDrag = 69;
     private const uint WmMouseWheel = 0x020A;
     private const int WheelDelta = 120;
     private const int SmCxDoubleClk = 36;
@@ -167,6 +222,24 @@ public sealed partial class PlayerSurface : NativeControlHost
 
     [LibraryImport("user32.dll")]
     private static partial int GetSystemMetrics(int index);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point32
+    {
+        public int X;
+        public int Y;
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetCursorPos(out Point32 point);
+
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr SetCapture(IntPtr hWnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ReleaseCapture();
 
     /// <summary>Raises this video above sibling videos, for PIP thumbnails
     /// that overlap the main one. Avalonia's draw order doesn't apply to

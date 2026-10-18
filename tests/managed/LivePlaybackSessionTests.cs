@@ -15,6 +15,7 @@ public sealed class LivePlaybackSessionTests : IDisposable
     public LivePlaybackSessionTests()
     {
         LivePlaybackSession.NoProgressTimeout = TimeSpan.FromHours(1);
+        LivePlaybackSession.NoPlaybackTimeout = TimeSpan.FromHours(1);
         LivePlaybackSession.DeliveryWindow = TimeSpan.FromHours(1);
         // Probes would step quality straight back up on the instant fake CDN.
         LivePlaybackSession.ProbeInterval = TimeSpan.FromHours(1);
@@ -23,6 +24,7 @@ public sealed class LivePlaybackSessionTests : IDisposable
     public void Dispose()
     {
         LivePlaybackSession.NoProgressTimeout = TimeSpan.FromSeconds(12);
+        LivePlaybackSession.NoPlaybackTimeout = TimeSpan.FromSeconds(20);
         LivePlaybackSession.DeliveryWindow = TimeSpan.FromSeconds(8);
         LivePlaybackSession.ProbeInterval = TimeSpan.FromSeconds(30);
     }
@@ -66,8 +68,12 @@ public sealed class LivePlaybackSessionTests : IDisposable
                     """;
             else if (uri.AbsolutePath.EndsWith(".m3u8", StringComparison.Ordinal))
             {
+                // A window of six segments, like Twitch's, so a reader a
+                // segment or two behind the edge is still on it.
                 var edge = Interlocked.Increment(ref _edge);
-                body = $"#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:{edge}\n#EXTINF:2.000,live\nseg{edge}.ts\n";
+                var sb = new StringBuilder($"#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:{edge - 5}\n");
+                for (var s = edge - 5; s <= edge; s++) sb.Append($"#EXTINF:2.000,live\nseg{s}.ts\n");
+                body = sb.ToString();
             }
             else
             {
@@ -108,7 +114,13 @@ public sealed class LivePlaybackSessionTests : IDisposable
             }, ct);
         }
 
-        public void Stop() => _reading?.Cancel();
+        public bool Stopped;
+
+        public void Stop()
+        {
+            Stopped = true;
+            _reading?.Cancel();
+        }
         public void SetSpeed(double speed) => Speeds.Add(speed);
         public VideoPlayerStats GetStats() => Stats;
         public double ResumeBuffer;
@@ -246,23 +258,66 @@ public sealed class LivePlaybackSessionTests : IDisposable
     }
 
     [Fact]
-    public async Task AudioOnlyChangesReloadAndVideoTiersSwitchInPlace()
+    public async Task VideoTiersSwitchInPlace()
     {
         var (player, session) = await Playing();
         await using var _ = session;
 
-        session.Tier = PlaybackTier.AudioOnly;
-        Assert.True(session.Current?.IsAudioOnly);
-        Assert.Equal(2, player.Loads.Count);
-
         session.Tier = PlaybackTier.Thumbnail;
         Assert.Equal("720p60", session.Current?.Name);
-        Assert.Equal(3, player.Loads.Count);
-
         await Until(() => player.Received.Contains("720;"));
+
         session.Tier = PlaybackTier.Full;
         Assert.Equal("1080p60", session.Current?.Name);
-        Assert.Equal(3, player.Loads.Count);
+        Assert.Single(player.Loads);
+    }
+
+    [Fact]
+    public async Task OffStopsEverythingAndComingBackReconnects()
+    {
+        var (player, session) = await Playing();
+        await using var _ = session;
+
+        session.Tier = PlaybackTier.Off;
+        Assert.Equal(PlaybackState.Stopped, session.Status.State);
+        Assert.Null(session.Current);
+        // Still counts as live for the stream list, as it was a moment ago.
+        Assert.True(session.LastKnownLive);
+        Assert.True(player.Stopped);
+        // Nothing restarts it while it's off, not even the retry timer.
+        session.Tick(DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
+        Assert.Single(player.Loads);
+
+        session.Tier = PlaybackTier.Thumbnail;
+        await Until(() => player.Loads.Count == 2);
+        Assert.Equal(PlaybackState.Playing, session.Status.State);
+        Assert.Equal("720p60", session.Current?.Name);
+    }
+
+    [Fact]
+    public async Task ATabOpenedOffWaitsUntilItsShown()
+    {
+        var player = new FakePlayer();
+        await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch()), player) { Tier = PlaybackTier.Off };
+        await session.StartAsync("someone", authToken: null);
+        Assert.Empty(player.Loads);
+
+        session.Tier = PlaybackTier.Full;
+        await Until(() => player.Loads.Count == 1);
+        Assert.Equal("1080p60", session.Current?.Name);
+    }
+
+    [Fact]
+    public async Task AQualityPickedByHandSurvivesTimeOff()
+    {
+        var (player, session) = await Playing();
+        await using var _ = session;
+        session.SelectQuality(1);
+
+        session.Tier = PlaybackTier.Off;
+        session.Tier = PlaybackTier.Full;
+        await Until(() => player.Loads.Count == 2);
+        Assert.Equal("720p60", session.Current?.Name);
     }
 
     [Fact]
@@ -301,6 +356,41 @@ public sealed class LivePlaybackSessionTests : IDisposable
         {
             LivePlaybackSession.NoProgressTimeout = saved;
         }
+    }
+
+    [Fact]
+    public async Task PlaybackThatFreezesWhileBytesStillArriveReconnects()
+    {
+        LivePlaybackSession.NoPlaybackTimeout = TimeSpan.FromSeconds(2);
+        var (player, session) = await Playing();
+        await using var _ = session;
+        player.Stats = new VideoPlayerStats(3, Stalled: true, Idle: false, Position: 41.5);
+        var t = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+
+        session.Tick(t);                              // past the load grace: watching
+        session.Tick(t + TimeSpan.FromSeconds(1));
+        Assert.Equal(PlaybackState.Playing, session.Status.State);
+        session.Tick(t + TimeSpan.FromSeconds(3));    // stuck at 41.5 s for 3 s: reconnect
+        Assert.Equal(PlaybackState.Error, session.Status.State);
+
+        session.Tick(t + TimeSpan.FromSeconds(4));    // the retry: resolve and load again
+        await Until(() => player.Loads.Count == 2);
+    }
+
+    [Fact]
+    public async Task MovingPlaybackIsLeftAlone()
+    {
+        LivePlaybackSession.NoPlaybackTimeout = TimeSpan.FromSeconds(2);
+        var (player, session) = await Playing();
+        await using var _ = session;
+        var t = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        for (var s = 0; s < 10; s++)
+        {
+            player.Stats = new VideoPlayerStats(2, Stalled: false, Idle: false, Position: 100 + s);
+            session.Tick(t + TimeSpan.FromSeconds(s));
+        }
+        Assert.Equal(PlaybackState.Playing, session.Status.State);
+        Assert.Single(player.Loads);
     }
 
     [Fact]

@@ -39,8 +39,19 @@ public sealed class AppSettings
     public List<ChatColumnState> ChatColumns { get; set; } = [];
 
     /// <summary>Show background tabs as small live videos over the player
-    /// (off: background tabs are audio only).</summary>
+    /// (off: background tabs pause until brought to the front).</summary>
     public bool ShowPip { get; set; } = true;
+
+    /// <summary>Where each channel's thumbnail was dragged to; channels not
+    /// in here line up along the bottom.</summary>
+    public Dictionary<string, PipCell> PipCells
+    {
+        get => _pipCells;
+        // Loading builds a plain dictionary; keep logins case-insensitive.
+        set => _pipCells = new(value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private Dictionary<string, PipCell> _pipCells = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Reopen <see cref="Channel"/> at start-up; off starts with no
     /// channel open.</summary>
@@ -71,14 +82,69 @@ public sealed class AppSettings
     /// "Frequently used" row.</summary>
     public List<RecentEmote> RecentEmotes { get; set; } = [];
 
-    /// <summary>Default layout is list | player | chat; this puts chat on the
-    /// left instead.</summary>
+    /// <summary>From older files: chat left of the player and the list right.
+    /// Read only to place <see cref="ChatDock"/> and <see cref="ListDock"/>
+    /// the first time; not written back.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool ChatOnLeft { get; set; }
 
-    /// <summary>For 4:3 and other squarish screens: the player above the
-    /// stream list in one column, chat beside it. Off is the three-across
-    /// layout for bar displays.</summary>
-    public bool VideoAboveList { get; set; }
+    /// <summary>Where chat sits around the video; null (older files) follows
+    /// <see cref="ChatOnLeft"/>: right of it unless that was set.</summary>
+    public DockSide? ChatDock { get; set; }
+
+    /// <summary>Where the live list sits around the video; null as for <see cref="ChatDock"/>.</summary>
+    public DockSide? ListDock { get; set; }
+
+    [JsonIgnore]
+    public DockSide EffectiveChatDock => ChatDock ?? (ChatOnLeft ? DockSide.Left : DockSide.Right);
+
+    [JsonIgnore]
+    public DockSide EffectiveListDock => ListDock ?? (ChatOnLeft ? DockSide.Right : DockSide.Left);
+
+    /// <summary>Where each pane docks: side, place along it, stacked or not.
+    /// Missing (older files) falls back to <see cref="ChatDock"/>,
+    /// <see cref="ListDock"/> and <see cref="PanelDock"/>.</summary>
+    public PanePlace? ChatPlace { get; set; }
+    public PanePlace? ListPlace { get; set; }
+    public PanePlace? PanelPlace { get; set; }
+
+    /// <summary>Every pane's place, filled in from the older settings where unset.</summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<PaneId, PanePlace> PanePlaces => new Dictionary<PaneId, PanePlace>
+    {
+        [PaneId.Chat] = ChatPlace ?? PaneArrangement.Default(PaneId.Chat, EffectiveChatDock),
+        [PaneId.List] = ListPlace ?? PaneArrangement.Default(PaneId.List, EffectiveListDock),
+        [PaneId.Panel] = PanelPlace ?? PaneArrangement.Default(PaneId.Panel, PanelDock),
+    };
+
+    public void SetPanePlaces(IReadOnlyDictionary<PaneId, PanePlace> places)
+    {
+        ChatPlace = places[PaneId.Chat];
+        ListPlace = places[PaneId.List];
+        PanelPlace = places[PaneId.Panel];
+        // Kept in step, so the sides read right either way.
+        ChatDock = ChatPlace.Side;
+        ListDock = ListPlace.Side;
+        PanelDock = PanelPlace.Side;
+        ChatOnLeft = false;
+    }
+
+    /// <summary>The live list beside the video (where <see cref="ListDock"/>
+    /// says); off, chat takes its room.</summary>
+    public bool ShowStreamList { get; set; } = true;
+
+    /// <summary>The channel's About panels, docked where <see cref="PanelDock"/> says.</summary>
+    public bool ShowChannelPanel { get; set; }
+
+    /// <summary>Where the channel panel sits around the video.</summary>
+    public DockSide PanelDock { get; set; } = DockSide.Bottom;
+
+    /// <summary>Share of the window height the row of panes docked above the
+    /// video takes, 0..1; dragged by the line between it and the video.</summary>
+    public double TopRowShare { get; set; } = 0.35;
+
+    /// <summary>The same for the row below the video.</summary>
+    public double BottomRowShare { get; set; } = 0.35;
 
     /// <summary>Monitor to open on, by index into the platform's screen list.
     /// Null means "wherever the OS puts it"; the point of the app is a small
@@ -97,6 +163,10 @@ public sealed class AppSettings
     public double ChatShare { get; set; } = 0.5;
 
     public StreamSortOrder StreamSort { get; set; } = StreamSortOrder.Viewers;
+
+    /// <summary>List followed channels that aren't live too, below the live
+    /// ones, most recently live first.</summary>
+    public bool ShowOffline { get; set; }
 
     /// <summary>.NET format string for chat timestamps; empty hides them.</summary>
     public string TimestampFormat { get; set; } = "h:mm tt";
@@ -124,6 +194,9 @@ public sealed class AppSettings
     /// their "[title]" text. They're full-size downloads, so this is the
     /// switch for a slow connection or a busy chat.</summary>
     public bool ShowGifs { get; set; } = true;
+
+    /// <summary>An alert in the window when a favourite goes live.</summary>
+    public bool NotifyGoLive { get; set; } = true;
 
     /// <summary>JOIN/PART lines. Off by default: official chat doesn't show
     /// them and in busy channels they drown the conversation.</summary>
@@ -188,6 +261,19 @@ public sealed class AppSettings
 /// <summary>An emote the user picked from the menu, stored with enough to
 /// draw and send it again.</summary>
 public sealed record RecentEmote(string Code, Uri ImageUrl, StreamEdge.Chat.Emotes.EmoteProvider Provider);
+
+/// <summary>A side of the video a pane docks to.</summary>
+public enum DockSide
+{
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+/// <summary>A place in the thumbnail grid over the player: column 0 is the
+/// rightmost, row 0 the bottom.</summary>
+public readonly record struct PipCell(int Column, int Row);
 
 /// <summary>A chat as saved: its tabs in order, the selected one, and
 /// whether it stacks under the one before.</summary>

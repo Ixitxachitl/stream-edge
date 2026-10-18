@@ -1,0 +1,86 @@
+<!-- The channel panel (▦ by PIP shows it), docked to any side of the video (drag its header):
+     the channel on video, and its About panels as cards side by side, as
+     twitch.tv shows them under a stream. A card with a link opens it.
+     Its DataContext is the MainViewModel; the cards come from ChannelPanel. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:em="using:StreamEdge.AvaloniaApp.Views.Emotes"
+             xmlns:v="using:StreamEdge.AvaloniaApp.Views"
+             xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
+             x:Class="StreamEdge.AvaloniaApp.Views.ChannelPanelView"
+             xmlns:se="using:StreamEdge"
+             x:DataType="vm:MainViewModel">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.panelTitle">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{StaticResource SeText}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- The image is just the picture (a link when the panel has one), no button look. -->
+    <Style Selector="Button.panelImage">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.panelImage:pointerover /template/ ContentPresenter, Button.panelImage:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Classes="pane">
+
+  <DockPanel>
+    <Border DockPanel.Dock="Top" Classes="paneHeader">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Left" Classes="dragGrip" Text="⠿" ToolTip.Tip="Drag to move: drop on a side of the video" />
+        <TextBlock Text="About" />
+      </DockPanel>
+    </Border>
+    <DockPanel DataContext="{Binding ChannelPanel}" x:DataType="vm:ChannelPanelViewModel">
+    <!-- Who's on video: avatar, name, game, title. -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="10,6,10,4" IsVisible="{Binding HasChannel}">
+      <em:RemoteImage Source="{Binding Tab.Player.ProfileImage}" Width="22" Height="22" Stretch="UniformToFill">
+        <em:RemoteImage.Clip>
+          <EllipseGeometry Rect="0,0,22,22" />
+        </em:RemoteImage.Clip>
+      </em:RemoteImage>
+      <TextBlock Text="{Binding Tab.Player.Channel}" FontWeight="SemiBold" Foreground="{StaticResource SeText}" VerticalAlignment="Center" />
+      <TextBlock Text="{Binding Tab.Player.Game}" Foreground="{StaticResource SeAccent}" VerticalAlignment="Center" />
+      <TextBlock Text="{Binding Tab.Player.Title}" Foreground="{StaticResource SeTextDim}" VerticalAlignment="Center"
+                 TextTrimming="CharacterEllipsis" />
+    </StackPanel>
+    <TextBlock DockPanel.Dock="Top" Text="{Binding Status}" IsVisible="{Binding HasStatus}" Margin="10,4"
+               Foreground="{StaticResource SeTextFaint}" FontSize="{StaticResource SeSmallFontSize}" />
+    <!-- As on twitch.tv: 320-pixel columns, as many as fit, read top to
+         bottom and scrolled vertically; one column when docked beside the video. -->
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Margin="10,4,10,8">
+      <ItemsControl ItemsSource="{Binding Cards}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <v:PanelColumns ColumnWidth="320" Gap="16" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ChannelPanelCard">
+            <!-- Title, then the image (the panel's link), then the text. -->
+            <StackPanel Spacing="8">
+              <TextBlock Classes="panelTitle" Text="{Binding Title}" IsVisible="{Binding HasTitle}" />
+              <Button Classes="panelImage" Command="{Binding OpenCommand}" ToolTip.Tip="{Binding LinkTip}"
+                      IsVisible="{Binding HasImage}" IsHitTestVisible="{Binding HasLink}">
+                <em:RemoteImage Source="{Binding Image}" Stretch="Uniform"
+                                HorizontalAlignment="Left" />
+              </Button>
+              <v:PanelText Runs="{Binding Runs}" IsVisible="{Binding HasDescription}"
+                           Foreground="{StaticResource SeText}" FontSize="13" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+    </DockPanel>
+  </DockPanel>
+  </Border>
+</UserControl>

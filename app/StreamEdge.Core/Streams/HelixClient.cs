@@ -21,10 +21,12 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         [property: JsonPropertyName("game_name")] string GameName,
         [property: JsonPropertyName("title")] string Title,
         [property: JsonPropertyName("viewer_count")] int ViewerCount,
-        [property: JsonPropertyName("started_at")] DateTimeOffset StartedAt)
+        [property: JsonPropertyName("started_at")] DateTimeOffset StartedAt,
+        [property: JsonPropertyName("tags")] List<string>? Tags = null)
     {
         public LiveStream ToLiveStream() =>
-            new(UserLogin, UserName, Title, GameName, ViewerCount, StartedAt, UserId: UserId);
+            new(UserLogin, UserName, Title, GameName, ViewerCount, StartedAt, UserId: UserId,
+                Tags: Tags is { Count: > 0 } ? Tags : null);
     }
 
     internal sealed record UsersPage([property: JsonPropertyName("data")] List<HelixUser> Data);
@@ -152,6 +154,62 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
     }
 
     internal sealed record FollowedPage([property: JsonPropertyName("data")] List<System.Text.Json.JsonElement> Data);
+
+    internal sealed record FollowedChannelsPage(
+        [property: JsonPropertyName("data")] List<FollowedChannel> Data,
+        [property: JsonPropertyName("pagination")] Pagination? Pagination);
+
+    internal sealed record FollowedChannel(
+        [property: JsonPropertyName("broadcaster_id")] string Id,
+        [property: JsonPropertyName("broadcaster_login")] string Login,
+        [property: JsonPropertyName("broadcaster_name")] string? Name);
+
+    /// <summary>Every channel the user follows, live or not (all pages):
+    /// id, login and display name.</summary>
+    public async Task<IReadOnlyList<ChannelRef>> GetFollowedChannelsAsync(string userId, CancellationToken ct)
+    {
+        var channels = new List<ChannelRef>();
+        string? cursor = null;
+        do
+        {
+            var url = $"https://api.twitch.tv/helix/channels/followed?user_id={Uri.EscapeDataString(userId)}&first=100"
+                      + (cursor is null ? "" : "&after=" + Uri.EscapeDataString(cursor));
+            var page = await GetAsync<FollowedChannelsPage>(url, ct).ConfigureAwait(false);
+            if (page is null) break;
+            channels.AddRange(page.Data.Select(c => new ChannelRef(c.Id, c.Login,
+                string.IsNullOrEmpty(c.Name) ? c.Login : c.Name)));
+            cursor = page.Pagination?.Cursor;
+        } while (!string.IsNullOrEmpty(cursor));
+        return channels;
+    }
+
+    internal sealed record ChannelInformationPage([property: JsonPropertyName("data")] List<ChannelInformation> Data);
+
+    internal sealed record ChannelInformation(
+        [property: JsonPropertyName("broadcaster_id")] string Id,
+        [property: JsonPropertyName("content_classification_labels")] List<string>? Labels,
+        [property: JsonPropertyName("is_branded_content")] bool IsBranded);
+
+    /// <summary>Helix "Get Channel Information": each channel's content
+    /// classification labels (ids, see <see cref="ContentLabels"/>), with
+    /// branded content as one more. Channels with none are left out.</summary>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetContentLabelsAsync(
+        IReadOnlyCollection<string> broadcasterIds, CancellationToken ct)
+    {
+        var labels = new Dictionary<string, IReadOnlyList<string>>();
+        foreach (var batch in broadcasterIds.Distinct().Chunk(UsersPerRequest))
+        {
+            var url = "https://api.twitch.tv/helix/channels?" + string.Join("&", batch.Select(id => "broadcaster_id=" + Uri.EscapeDataString(id)));
+            var page = await GetAsync<ChannelInformationPage>(url, ct).ConfigureAwait(false);
+            foreach (var c in page?.Data ?? [])
+            {
+                var list = (c.Labels ?? []).ToList();
+                if (c.IsBranded) list.Add(ContentLabels.BrandedContent);
+                if (list.Count > 0) labels[c.Id] = list;
+            }
+        }
+        return labels;
+    }
 
     /// <summary>Every live channel the user follows (all pages).</summary>
     public async Task<IReadOnlyList<LiveStream>> GetFollowedStreamsAsync(
