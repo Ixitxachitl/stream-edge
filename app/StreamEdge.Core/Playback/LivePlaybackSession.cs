@@ -57,6 +57,17 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     /// watchdog: a slow connection may buffer for a while before resuming.</summary>
     internal static TimeSpan NoPlaybackTimeout { get; set; } = TimeSpan.FromSeconds(20);
 
+    /// <summary>Audio and video further apart than this…</summary>
+    internal const double SyncTolerance = 0.3;
+
+    /// <summary>…for this long (not a passing blip) reloads at the live
+    /// edge, which starts the two together again.</summary>
+    internal static TimeSpan OutOfSyncFor { get; set; } = TimeSpan.FromSeconds(4);
+
+    /// <summary>At most one such reload this often, so a machine that can't
+    /// keep up at all isn't reloaded over and over.</summary>
+    internal static TimeSpan SyncReloadCooldown { get; set; } = TimeSpan.FromSeconds(60);
+
     private readonly HttpClient _http;
     private readonly IVideoPlayer _player;
     private readonly LocalStreamServer _server;
@@ -308,6 +319,31 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     /// from the new playlist at the next segment, and the player only sees
     /// the resolution change. To or from audio-only the video track appears
     /// or vanishes, which needs a reload.</summary>
+    private DateTimeOffset? _outOfSyncSince;
+    private DateTimeOffset _lastSyncReload = DateTimeOffset.MinValue;
+
+    /// <summary>Audio and video drifted apart and stayed apart (the decoder
+    /// fell behind, or an ad break or quality change left them offset):
+    /// reload at the live edge. Only for the tab being watched and heard,
+    /// and not while stalled or in an ad. True if it reloaded.</summary>
+    private bool CheckSync(DateTimeOffset now, VideoPlayerStats stats, LiveHlsReader? reader)
+    {
+        var apart = _tier == PlaybackTier.Full && !stats.Stalled && !(reader?.InAdBreak ?? false)
+                    && now - _loadedAt >= LoadGrace && Math.Abs(stats.AvSync ?? 0) > SyncTolerance;
+        if (!apart)
+        {
+            _outOfSyncSince = null;
+            return false;
+        }
+        _outOfSyncSince ??= now;
+        if (now - _outOfSyncSince < OutOfSyncFor || now - _lastSyncReload < SyncReloadCooldown) return false;
+        _outOfSyncSince = null;
+        _lastSyncReload = now;
+        _player.ShowMessage("Resyncing audio");
+        Reload(now);
+        return true;
+    }
+
     private void ChangeVariant(DateTimeOffset now)
     {
         if (Variants.Count == 0) return;
@@ -559,6 +595,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             return;
         }
 
+        if (CheckSync(now, stats, reader)) return;
         if (CheckBandwidth(now, reader)) return;
         if (CheckProbe(now, reader)) return;
 

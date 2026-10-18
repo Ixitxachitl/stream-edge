@@ -59,6 +59,10 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         // mpv's own low-latency preset: no audio buffer, single-threaded
         // decode, minimal demuxer probing, no frame interpolation.
         ("profile", "low-latency"),
+        // ...nor its single decoding thread: a thumbnail brought to the front
+        // goes from 160p to 1080p60 in place, and one thread decoding that in
+        // software falls behind the audio.
+        ("vd-lavc-threads", "0"),
         // ...but not its zero audio buffer: 100 ms costs nothing noticeable
         // in latency and stops audio crackling when a burst arrives late.
         ("audio-buffer", "0.1"),
@@ -82,8 +86,9 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         ("demuxer-max-back-bytes", "0"),
         // Speed changes keep pitch (scaletempo2) instead of chipmunking.
         ("audio-pitch-correction", "yes"),
-        // Drop late frames rather than fall further behind.
-        ("framedrop", "vo"),
+        // Drop late frames rather than fall further behind, before decoding
+        // them too when the decoder is what's slow.
+        ("framedrop", "decoder+vo"),
 
         // Twitch carries closed captions as CEA-608 inside the H.264 stream;
         // this gives every video a caption track up front, so turning CC on
@@ -232,7 +237,8 @@ public sealed class MpvPlayer : IVideoPlayer, IDisposable
         var stalled = MpvNative.mpv_get_property_flag(_ctx, "paused-for-cache", MpvNative.FormatFlag, out var p) >= 0 && p != 0;
         var idle = MpvNative.mpv_get_property_flag(_ctx, "idle-active", MpvNative.FormatFlag, out var i) >= 0 && i != 0;
         double? position = MpvNative.mpv_get_property(_ctx, "time-pos", MpvNative.FormatDouble, out var t) >= 0 ? t : null;
-        return new VideoPlayerStats(buffer, stalled, idle, position);
+        double? avsync = MpvNative.mpv_get_property(_ctx, "avsync", MpvNative.FormatDouble, out var a) >= 0 ? a : null;
+        return new VideoPlayerStats(buffer, stalled, idle, position, avsync);
     }
 
     public void Dispose()

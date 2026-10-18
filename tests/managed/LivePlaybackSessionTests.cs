@@ -378,6 +378,32 @@ public sealed class LivePlaybackSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task AudioThatStaysOutOfSyncReloadsOnceAndBlipsAreIgnored()
+    {
+        var (player, session) = await Playing();
+        await using var _ = session;
+        var t = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        void At(int s, double avsync)
+        {
+            player.Stats = new VideoPlayerStats(2, Stalled: false, Idle: false, Position: 100 + s, AvSync: avsync);
+            session.Tick(t + TimeSpan.FromSeconds(s));
+        }
+
+        // A blip: apart for 2 s, then back.
+        At(0, 0.5); At(1, 0.5); At(2, 0.5); At(3, 0.01);
+        Assert.Single(player.Loads);
+
+        // Apart and staying apart (video behind: negative): reload after 4 s.
+        for (var s = 4; s <= 8; s++) At(s, -0.6);
+        Assert.Equal(2, player.Loads.Count);
+
+        // Still apart after the reload: not again within the cooldown.
+        for (var s = 9; s <= 30; s++) At(s, -0.6);
+        Assert.Equal(2, player.Loads.Count);
+        Assert.Equal(PlaybackState.Playing, session.Status.State);
+    }
+
+    [Fact]
     public async Task MovingPlaybackIsLeftAlone()
     {
         LivePlaybackSession.NoPlaybackTimeout = TimeSpan.FromSeconds(2);

@@ -42,4 +42,7 @@ public interface IVideoPlayer
 /// <param name="Idle">Nothing loaded: never started, or the stream ended.</param>
 /// <param name="Position">Playback position in seconds, null when unknown;
 /// only whether it moves matters.</param>
-public readonly record struct VideoPlayerStats(double BufferSeconds, bool Stalled, bool Idle, double? Position = null);
+/// <param name="AvSync">How far audio and video are apart, in seconds
+/// (either sign), null when unknown.</param>
+public readonly record struct VideoPlayerStats(double BufferSeconds, bool Stalled, bool Idle, double? Position = null,
+    double? AvSync = null);
