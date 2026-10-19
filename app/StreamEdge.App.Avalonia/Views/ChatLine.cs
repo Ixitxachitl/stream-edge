@@ -85,7 +85,9 @@ public sealed class ChatLine : Border
                 TextTrimming = TextTrimming.CharacterEllipsis,
             });
 
-        var text = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap };
+        // No Copy-only menu of its own: right-click opens the chat's menu
+        // (Reply, Copy, Users in chat). A local null beats the theme's.
+        var text = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, ContextFlyout = null };
         text.Inlines = BuildInlines(entry);
         stack.Children.Add(text);
         _replyButton = CanReply(entry) ? ReplyButton(entry) : null;
@@ -112,7 +114,7 @@ public sealed class ChatLine : Border
     private static bool CanReply(ChatEntry entry)
     {
         var m = entry.Message;
-        if (entry.IsDeleted || entry.IsOwn || m.Login is null) return false;
+        if (entry.IsDeleted || entry.IsFromSelf || m.Login is null) return false;
         return m.Kind == ChatMessageKind.Whisper ? m.WhisperTo is null
             : m.Kind is ChatMessageKind.Message or ChatMessageKind.Action && m.Id is not null;
     }
@@ -291,7 +293,7 @@ public sealed class ChatLine : Border
         }
 
         // Mod tools first, as Chatterino puts them: one click, no menu.
-        if (entry.CanModerate && !entry.IsOwn && !entry.IsDeleted && m.Login is not null
+        if (entry.CanModerate && !entry.IsFromSelf && !entry.IsDeleted && m.Login is not null
             && m.Kind is ChatMessageKind.Message or ChatMessageKind.Action)
         {
             // A line shared from another channel can only be deleted there.

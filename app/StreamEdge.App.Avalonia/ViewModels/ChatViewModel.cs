@@ -25,6 +25,11 @@ public sealed partial class ChatEntry : ObservableObject
     /// <summary>The user's own line, drawn locally (Twitch doesn't echo it).</summary>
     public bool IsOwn { get; init; }
 
+    /// <summary>Sent by the signed-in user: drawn here, or come back another
+    /// way (history, or sent from twitch.tv or another app).</summary>
+    public bool IsFromSelf => IsOwn || _sentBySelf;
+    private bool _sentBySelf;
+
     [ObservableProperty]
     private IReadOnlyList<ChatToken> _tokens = [];
 
@@ -70,6 +75,7 @@ public sealed partial class ChatEntry : ObservableObject
         // channel it was sent in.
         var room = Message.SourceRoomId ?? roomId;
         IsFromOtherRoom = Message.IsFromOtherRoom(roomId);
+        _sentBySelf = Message.Login is { } login && string.Equals(login, services.SelfLogin(), StringComparison.OrdinalIgnoreCase);
         Tokens = services.Tokenize(Message, room, IsOwn);
         Badges = services.BadgesFor(Message, room);
         Source = Message.SourceRoomId is { } source ? services.ChannelById(source) : null;

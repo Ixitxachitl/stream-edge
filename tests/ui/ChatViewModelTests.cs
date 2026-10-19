@@ -22,6 +22,19 @@ public class ChatViewModelTests
     private static ChatMessage Irc(string line) => ChatMessage.FromIrc(IrcMessage.Parse(line), T)!;
 
     [Fact]
+    public void TheUsersOwnLinesFromHistoryAreKnownAsTheirs()
+    {
+        var chat = Chat();
+        ChatMessage From(string login) => new(T, ChatMessageKind.Message, "chan", login, login, null, [], "hi") { Id = login };
+        chat.InsertHistory([From("ME"), From("viewer")], "Twitch");
+
+        // Sent from twitch.tv or another app, so not drawn here: still theirs,
+        // so no ↩ or mod tools on it.
+        Assert.True(chat.Lines.Single(l => l.Message.Login == "ME").IsFromSelf);
+        Assert.False(chat.Lines.Single(l => l.Message.Login == "viewer").IsFromSelf);
+    }
+
+    [Fact]
     public void PlaceholderFollowsWhetherSendingIsPossible()
     {
         var chat = new ChatViewModel(new AppSettings());

@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
@@ -113,19 +117,29 @@ public class ChatFeaturesTests(HeadlessAvalonia ui) : UiTest(ui)
 
         var lines = window.GetVisualDescendants().OfType<ChatLine>().ToList();
         var column = lines[0].FindAncestorOfType<ChatColumnView>()!;
+        var menu = column.FindControl<ScrollViewer>("ChatScroll")!.ContextMenu!;
         var reply = column.FindControl<MenuItem>("ReplyItem")!;
-        // Right-clicked on the text, as a user would.
-        void RightClick(string text) =>
-            lines.Single(l => l.Entry?.Message.Text == text).GetVisualDescendants().OfType<SelectableTextBlock>().First()
-                .RaiseEvent(new Avalonia.Input.ContextRequestedEventArgs());
+        // Right-clicked on the text with the mouse, as a user would: the
+        // text's own Copy menu mustn't open instead.
+        void RightClick(string text)
+        {
+            menu.Close();
+            var block = lines.Single(l => l.Entry?.Message.Text == text).GetVisualDescendants().OfType<SelectableTextBlock>().First();
+            var at = block.TranslatePoint(new Point(4, block.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(at, MouseButton.Right);
+            window.MouseUp(at, MouseButton.Right);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(menu.IsOpen);
+        }
 
         RightClick("no id");
         Assert.False(reply.IsVisible);
 
         RightClick("has id");
         Assert.True(reply.IsVisible);
-        reply.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+        reply.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Assert.Equal("has id", tab.Chat.ReplyTo?.Message.Text);
+        menu.Close();
         window.Close();
     });
 

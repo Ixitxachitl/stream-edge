@@ -45,6 +45,7 @@ public partial class ChatColumnView : UserControl
         // while busy chat moves the line along.
         ChatScroll.AddHandler(ContextRequestedEvent, OnChatContextRequested, RoutingStrategies.Tunnel, handledEventsToo: true);
         ReplyItem.Click += (_, _) => _menuLine?.RequestReply();
+        CopyItem.Click += (_, _) => _menuText?.Copy();
         // What the chat box can draw and complete: emotes the user can send
         // in the channel this column shows.
         ChatInput.EmoteLookup = code => _column is { } c ? c.Main.Services.SendableEmote(code, c.Selected?.RoomId)?.ImageUrl : null;
@@ -103,10 +104,13 @@ public partial class ChatColumnView : UserControl
 
     /// <summary>The line the right-click menu was opened on.</summary>
     private ChatLine? _menuLine;
+    private SelectableTextBlock? _menuText;
 
     private void OnChatContextRequested(object? sender, ContextRequestedEventArgs e)
     {
         _menuLine = (e.Source as Visual)?.FindAncestorOfType<ChatLine>(includeSelf: true);
+        _menuText = (e.Source as Visual)?.FindAncestorOfType<SelectableTextBlock>(includeSelf: true);
+        CopyItem.IsVisible = !string.IsNullOrEmpty(_menuText?.SelectedText);
         var label = _menuLine?.ReplyLabel;
         ReplyItem.IsVisible = label is not null;
         if (label is not null) ReplyItem.Header = label;
