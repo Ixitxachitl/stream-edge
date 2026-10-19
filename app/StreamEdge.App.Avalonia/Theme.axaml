@@ -294,6 +294,11 @@
     <!-- Level with the last line as the chat box grows. -->
     <Setter Property="VerticalAlignment" Value="Bottom" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
+    <!-- Tip above the button, clear of the pointer: at the screen's bottom
+         edge one placed at the pointer flipped up under it, and closing and
+         reopening as the pointer left and re-entered made it blink. -->
+    <Setter Property="ToolTip.Placement" Value="Top" />
+    <Setter Property="ToolTip.VerticalOffset" Value="-4" />
   </Style>
   <Style Selector="Button.emoteCell">
     <Setter Property="Width" Value="40" />
