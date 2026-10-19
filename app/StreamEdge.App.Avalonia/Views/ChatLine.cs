@@ -140,6 +140,18 @@ public sealed class ChatLine : Border
         return button;
     }
 
+    /// <summary>What answering this line is called ("Reply", "Whisper
+    /// back"), or null if it can't be answered.</summary>
+    public string? ReplyLabel => Entry is { } entry && CanReply(entry)
+        ? entry.Message.Kind == ChatMessageKind.Whisper ? "Whisper back" : "Reply"
+        : null;
+
+    /// <summary>Answer this line, as its ↩ does (the right-click menu's Reply).</summary>
+    public void RequestReply()
+    {
+        if (Entry is { } entry && CanReply(entry)) RaiseEvent(new ReplyRequestedEventArgs(ReplyRequestedEvent, entry));
+    }
+
     protected override void OnPointerEntered(PointerEventArgs e)
     {
         base.OnPointerEntered(e);

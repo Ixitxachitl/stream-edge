@@ -110,5 +110,8 @@
   <Canvas x:Name="DockOverlay" IsHitTestVisible="False">
     <Border x:Name="DockPreview" Classes="dockPreview" IsVisible="False" />
   </Canvas>
+
+  <!-- Go-live and whisper alerts, top right (added in code). -->
+  <StackPanel x:Name="Alerts" Classes="alerts" />
   </Panel>
 </Window>

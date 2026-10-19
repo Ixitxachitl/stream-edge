@@ -4,9 +4,9 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Notifications;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
@@ -201,15 +201,55 @@ public partial class MainWindow : Window
 
     // ----- Alerts -----------------------------------------------------------
 
-    private WindowNotificationManager? _notifications;
+    private const int MaxAlerts = 3;
+
+    /// <summary>How long an alert stays up (shortened by tests).</summary>
+    public TimeSpan AlertTime { get; set; } = TimeSpan.FromSeconds(8);
 
     /// <summary>Go-live and whisper alerts, in the top-right corner of the
-    /// window for a few seconds; clicking one does what it offers.</summary>
+    /// window for a few seconds; clicking one does what it offers. Our own
+    /// cards on a dispatcher timer, not WindowNotificationManager: its cards
+    /// only go once their closing animation ends, and animations don't run
+    /// while the window is minimized or covered, so they piled up.</summary>
     private void OnNotify(AppNotification n)
     {
-        _notifications ??= new WindowNotificationManager(this) { Position = NotificationPosition.TopRight, MaxItems = 3 };
-        _notifications.Show(new Notification(n.Title, n.Message, NotificationType.Information, TimeSpan.FromSeconds(8),
-            n.Open is { } open ? () => open() : null));
+        var card = new Border
+        {
+            Classes = { "alert" },
+            Child = new StackPanel
+            {
+                Spacing = 2,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = n.Title, FontWeight = FontWeight.SemiBold,
+                        Foreground = (IBrush)this.FindResource("SeText")!, TextTrimming = TextTrimming.CharacterEllipsis,
+                    },
+                    new TextBlock
+                    {
+                        Text = n.Message, TextWrapping = TextWrapping.Wrap, MaxLines = 3,
+                        Foreground = (IBrush)this.FindResource("SeTextDim")!, TextTrimming = TextTrimming.CharacterEllipsis,
+                    },
+                },
+            },
+        };
+        var timer = new DispatcherTimer { Interval = AlertTime };
+        void Dismiss()
+        {
+            timer.Stop();
+            Alerts.Children.Remove(card);
+        }
+        timer.Tick += (_, _) => Dismiss();
+        card.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(card).Properties.IsLeftButtonPressed) n.Open?.Invoke();
+            Dismiss();
+            e.Handled = true;
+        };
+        Alerts.Children.Add(card);
+        while (Alerts.Children.Count > MaxAlerts) Alerts.Children.RemoveAt(0);
+        timer.Start();
     }
 
     /// <summary>A chat was stacked or unstacked without the list changing.</summary>

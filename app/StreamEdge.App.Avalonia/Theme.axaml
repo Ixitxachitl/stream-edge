@@ -346,6 +346,26 @@
     <Setter Property="CornerRadius" Value="4" />
   </Style>
 
+  <!-- Go-live and whisper alerts, stacked in the top-right corner. -->
+  <Style Selector="StackPanel.alerts">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Margin" Value="12" />
+    <Setter Property="Spacing" Value="6" />
+    <Setter Property="Width" Value="320" />
+  </Style>
+  <Style Selector="Border.alert">
+    <Setter Property="Background" Value="{StaticResource SeHeaderBg}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SeRule}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Border.alert:pointerover">
+    <Setter Property="BorderBrush" Value="{StaticResource SeAccent}" />
+  </Style>
+
   <!-- Where a dragged pane can dock, over the (stepped-aside) video. -->
   <Style Selector="Border.dockTarget">
     <Setter Property="Margin" Value="4" />

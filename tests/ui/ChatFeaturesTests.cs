@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
@@ -100,6 +101,35 @@ public class ChatFeaturesTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void RightClickingALineOffersToReplyToIt() => Ui(() =>
+    {
+        var vm = Demo();
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        var tab = vm.FrontTab!;
+        tab.Chat.Add(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, tab.Login, "viewer", "Viewer", null, [], "has id") { Id = "a" });
+        tab.Chat.Add(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, tab.Login, "viewer", "Viewer", null, [], "no id"));
+        Dispatcher.UIThread.RunJobs();
+
+        var lines = window.GetVisualDescendants().OfType<ChatLine>().ToList();
+        var column = lines[0].FindAncestorOfType<ChatColumnView>()!;
+        var reply = column.FindControl<MenuItem>("ReplyItem")!;
+        // Right-clicked on the text, as a user would.
+        void RightClick(string text) =>
+            lines.Single(l => l.Entry?.Message.Text == text).GetVisualDescendants().OfType<SelectableTextBlock>().First()
+                .RaiseEvent(new Avalonia.Input.ContextRequestedEventArgs());
+
+        RightClick("no id");
+        Assert.False(reply.IsVisible);
+
+        RightClick("has id");
+        Assert.True(reply.IsVisible);
+        reply.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+        Assert.Equal("has id", tab.Chat.ReplyTo?.Message.Text);
+        window.Close();
+    });
+
+    [Fact]
     public void FavouritesGoingLiveAlertButNotAtStartUp() => Ui(() =>
     {
         var settings = new AppSettings { Favorites = ["fav", "later"] };
@@ -120,5 +150,28 @@ public class ChatFeaturesTests(HeadlessAvalonia ui) : UiTest(ui)
         vm.AlertGoLive([Live("fav")]);
         vm.AlertGoLive([Live("fav"), Live("later")]);
         Assert.Single(alerts);
+    });
+
+    [Fact]
+    public void AlertsGoOnTheirOwnEvenWhenTheWindowIsMinimized() => Ui(() =>
+    {
+        var settings = new AppSettings { Favorites = ["a", "b", "c", "d"] };
+        var vm = Demo(settings);
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480, AlertTime = TimeSpan.FromMilliseconds(200) };
+        window.Show();
+        window.WindowState = WindowState.Minimized;
+        var stack = window.FindControl<StackPanel>("Alerts")!;
+        LiveStream Live(string login) => new(login, login.ToUpperInvariant(), "Title", "Game", 10, DateTimeOffset.Now);
+
+        vm.AlertGoLive([]);
+        vm.AlertGoLive([Live("a"), Live("b"), Live("c"), Live("d")]);
+        Assert.Equal(3, stack.Children.Count);          // the oldest makes room
+
+        // Gone on the timer alone: no closing animation to wait for, which
+        // doesn't run while the window isn't drawn.
+        using (var wait = new CancellationTokenSource(TimeSpan.FromSeconds(1)))
+            Dispatcher.UIThread.MainLoop(wait.Token);
+        Assert.Empty(stack.Children);
+        window.Close();
     });
 }

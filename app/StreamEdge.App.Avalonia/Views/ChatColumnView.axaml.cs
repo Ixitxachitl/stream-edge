@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
 
 namespace StreamEdge.AvaloniaApp.Views;
@@ -39,6 +41,10 @@ public partial class ChatColumnView : UserControl
         RedeemButton.Click += (_, _) => _column?.Main.RedeemOnTwitchCommand.Execute(null);
         ChatScroll.ScrollChanged += OnChatScrolled;
         UsersInChatItem.Click += (_, _) => { if (_column is { } c) c.Main.ShowChatters(c); };
+        // Right-clicking a line offers to answer it: easier to hit than its ↩
+        // while busy chat moves the line along.
+        ChatScroll.AddHandler(ContextRequestedEvent, OnChatContextRequested, RoutingStrategies.Tunnel, handledEventsToo: true);
+        ReplyItem.Click += (_, _) => _menuLine?.RequestReply();
         // What the chat box can draw and complete: emotes the user can send
         // in the channel this column shows.
         ChatInput.EmoteLookup = code => _column is { } c ? c.Main.Services.SendableEmote(code, c.Selected?.RoomId)?.ImageUrl : null;
@@ -93,6 +99,17 @@ public partial class ChatColumnView : UserControl
         {
             _following = ChatScroll.Offset.Y >= ChatScroll.Extent.Height - ChatScroll.Viewport.Height - FollowSlack;
         }
+    }
+
+    /// <summary>The line the right-click menu was opened on.</summary>
+    private ChatLine? _menuLine;
+
+    private void OnChatContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        _menuLine = (e.Source as Visual)?.FindAncestorOfType<ChatLine>(includeSelf: true);
+        var label = _menuLine?.ReplyLabel;
+        ReplyItem.IsVisible = label is not null;
+        if (label is not null) ReplyItem.Header = label;
     }
 
     private void OnChatInputKeyDown(object? sender, KeyEventArgs e)

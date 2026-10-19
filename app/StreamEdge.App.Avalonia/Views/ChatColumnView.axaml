@@ -329,6 +329,8 @@
     <ScrollViewer x:Name="ChatScroll" HorizontalScrollBarVisibility="Disabled">
       <ScrollViewer.ContextMenu>
         <ContextMenu>
+          <!-- On a line that can be answered: the same as its ↩. -->
+          <MenuItem x:Name="ReplyItem" Header="Reply" IsVisible="False" />
           <MenuItem x:Name="UsersInChatItem" Header="Users in chat" IsEnabled="{Binding HasChannel}" />
         </ContextMenu>
       </ScrollViewer.ContextMenu>
