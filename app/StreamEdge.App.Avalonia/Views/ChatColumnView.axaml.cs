@@ -10,7 +10,7 @@ using StreamEdge.AvaloniaApp.ViewModels;
 
 namespace StreamEdge.AvaloniaApp.Views;
 
-/// <summary>One chat column: tab strip, header, chat lines and chat box.
+/// <summary>One chat column: tab strip, chat lines and chat box.
 /// Clicking or typing anywhere in it makes it the active column, the one
 /// the chat box, emote menu and mod menu act on.</summary>
 public partial class ChatColumnView : UserControl
@@ -36,7 +36,6 @@ public partial class ChatColumnView : UserControl
         AddHandler(GotFocusEvent, (_, _) => Activate(), RoutingStrategies.Bubble, handledEventsToo: true);
         // The emote menu rebuilds as it opens: sets may have loaded since.
         EmoteButton.Click += (_, _) => _column?.Main.EmoteMenu.Open();
-        ModMenuButton.Click += (_, _) => _ = _column?.Main.ModMenu.OpenAsync();
         PointsButton.Click += (_, _) => _column?.Main.RefreshPoints();
         RedeemButton.Click += (_, _) => _column?.Main.RedeemOnTwitchCommand.Execute(null);
         ChatScroll.ScrollChanged += OnChatScrolled;

@@ -22,7 +22,9 @@ public static class ChatHistory
     private const string Query =
         "query ChatHistory($login: String!) { channel(name: $login) { id recentChatMessages {"
         + " id sentAt deletedAt"
-        + " sender { id login displayName chatColor displayBadges { setID version } }"
+        // Badges for this channel: without it, only the global one shows
+        // (no broadcaster, moderator, VIP or subscriber badges).
+        + " sender { id login displayName chatColor displayBadges(channelLogin: $login) { setID version } }"
         + " content { text fragments { text content { __typename ... on Emote { id token } } } }"
         + " } } }";
 
@@ -50,8 +52,9 @@ public static class ChatHistory
         return ParseTwitch(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false), login);
     }
 
-    /// <summary>The GQL reply as chat lines, oldest first, deleted ones left
-    /// out. Null if it carries errors or no message list. Public for tests.</summary>
+    /// <summary>The GQL reply as chat lines, oldest first, deleted ones
+    /// marked <see cref="ChatMessage.WasDeleted"/>. Null if it carries
+    /// errors or no message list. Public for tests.</summary>
     public static IReadOnlyList<ChatMessage>? ParseTwitch(string json, string login)
     {
         try
@@ -64,7 +67,7 @@ public static class ChatHistory
             var messages = new List<ChatMessage>();
             foreach (var node in list)
             {
-                if (node is null || node["deletedAt"]?.GetValue<string>() is { Length: > 0 }) continue;
+                if (node is null) continue;
                 var sender = node["sender"];
                 var senderLogin = sender?["login"]?.GetValue<string>();
                 if (senderLogin is null) continue;
@@ -98,6 +101,7 @@ public static class ChatHistory
                     badges, text.ToString())
                 {
                     Id = node["id"]?.GetValue<string>(),
+                    WasDeleted = node["deletedAt"]?.GetValue<string>() is { Length: > 0 },
                     UserId = sender?["id"]?.GetValue<string>(),
                     TwitchEmotes = emotes,
                 });
@@ -130,8 +134,8 @@ public static class ChatHistory
     }
 
     /// <summary>{"messages": ["@tags :nick!… PRIVMSG #chan :text", …]}: raw
-    /// IRC lines, parsed the same as live ones. Deleted lines (marked
-    /// <c>rm-deleted</c>) are left out. Public for tests.</summary>
+    /// IRC lines, parsed the same as live ones. Deleted lines (tagged
+    /// <c>rm-deleted</c>) are marked <see cref="ChatMessage.WasDeleted"/>. Public for tests.</summary>
     public static IReadOnlyList<ChatMessage> ParseRecentMessages(string json)
     {
         try
@@ -142,11 +146,11 @@ public static class ChatHistory
             {
                 if (line?.GetValue<string>() is not { } raw) continue;
                 var irc = IrcMessage.Parse(raw);
-                if (irc.Tag("rm-deleted") == "1") continue;
                 // Only what people said: history doesn't replay joins, parts
                 // or notices from before the user arrived.
                 if (irc.Command is not ("PRIVMSG" or "USERNOTICE")) continue;
-                if (ChatMessage.FromIrc(irc, DateTimeOffset.Now) is { } message) messages.Add(message);
+                if (ChatMessage.FromIrc(irc, DateTimeOffset.Now) is { } message)
+                    messages.Add(irc.Tag("rm-deleted") == "1" ? message with { WasDeleted = true } : message);
             }
             return messages;
         }

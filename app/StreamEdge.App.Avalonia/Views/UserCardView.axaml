@@ -64,7 +64,9 @@
         <StackPanel Spacing="6">
           <TextBlock Text="Moderation" FontWeight="SemiBold" />
           <TextBox Text="{Binding Reason}" PlaceholderText="Reason (optional; needed to warn)" />
-          <WrapPanel>
+          <TextBlock Text="{Binding CantRemove}" TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}"
+                     FontSize="{StaticResource SeSmallFontSize}" IsVisible="{Binding !CanRemove}" />
+          <WrapPanel IsEnabled="{Binding CanRemove}">
             <Button Classes="mod" Content="1m" Command="{Binding TimeoutCommand}" CommandParameter="60" ToolTip.Tip="Timeout 1 minute" />
             <Button Classes="mod" Content="10m" Command="{Binding TimeoutCommand}" CommandParameter="600" ToolTip.Tip="Timeout 10 minutes" />
             <Button Classes="mod" Content="1h" Command="{Binding TimeoutCommand}" CommandParameter="3600" ToolTip.Tip="Timeout 1 hour" />
@@ -72,9 +74,9 @@
             <Button Classes="mod" Content="1w" Command="{Binding TimeoutCommand}" CommandParameter="604800" ToolTip.Tip="Timeout 1 week" />
           </WrapPanel>
           <WrapPanel>
-            <Button Classes="mod danger" Content="Ban" Command="{Binding BanCommand}" />
+            <Button Classes="mod danger" Content="Ban" Command="{Binding BanCommand}" IsEnabled="{Binding CanRemove}" />
             <Button Classes="mod" Content="Unban" Command="{Binding UnbanCommand}" />
-            <Button Classes="mod" Content="Warn" Command="{Binding WarnCommand}" />
+            <Button Classes="mod" Content="Warn" Command="{Binding WarnCommand}" IsEnabled="{Binding CanRemove}" />
             <Button Classes="mod" Content="Delete message" Command="{Binding DeleteClickedCommand}"
                     IsVisible="{Binding CanDeleteClicked}" />
           </WrapPanel>

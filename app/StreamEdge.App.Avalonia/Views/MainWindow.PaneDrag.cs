@@ -65,7 +65,7 @@ public partial class MainWindow
                     return PaneId.List;
                 case ChannelPanelView when inHeader:
                     return PaneId.Panel;
-                case ChatColumnView when inHeader:
+                case ChatHeaderView when inHeader:
                     return PaneId.Chat;
             }
         }

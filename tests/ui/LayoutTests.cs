@@ -545,14 +545,29 @@ public class SidesAndFavoritesTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.All(headers, h => Assert.Equal(30, h.Bounds.Height));
 
         var column = window.GetVisualDescendants().OfType<ChatColumnView>().Single();
-        var toolbar = column.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("paneHeader"));
+        var toolbar = window.GetVisualDescendants().OfType<ChatHeaderView>().Single()
+            .GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("paneHeader"));
         var tabs = column.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("tabStrip"));
-        Assert.True(toolbar.Bounds.Bottom <= tabs.Bounds.Y);
+        Assert.True(toolbar.TranslatePoint(new Point(0, toolbar.Bounds.Height), window)!.Value.Y
+            <= tabs.TranslatePoint(default, window)!.Value.Y);
         // The app's controls are on the toolbar now, not among the tabs.
         Assert.Contains(toolbar.GetVisualDescendants().OfType<Button>(), b => ToolTip.GetTip(b) as string == "Settings");
         Assert.DoesNotContain(tabs.GetVisualDescendants().OfType<Button>(), b => ToolTip.GetTip(b) as string == "Settings");
         window.Close();
     });
+    [Fact]
+    public void SplitChatsShareOneToolbar() => Ui(() =>
+    {
+        var window = Open(new AppSettings(), out var vm);
+        vm.OpenChannel("velvetcartridge", OpenMode.Background);
+        vm.MoveTabToNewColumn(vm.Tabs.Single(t => t.Login == "velvetcartridge"), 1);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, window.GetVisualDescendants().OfType<ChatColumnView>().Count());
+        var chat = window.FindControl<Control>("ChatPane")!;
+        Assert.Single(chat.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("paneHeader"));
+        window.Close();
+    });
+
     [Fact]
     public void StarringMovesAChannelToTheTopAndIsRemembered() => Ui(() =>
     {

@@ -57,11 +57,6 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.Equal(["velvetcartridge"], Logins(vm.Columns[1]));
         Assert.Same(velvet, vm.Columns[1].Selected);
         Assert.Same(front, vm.FrontTab); // still on video
-        Assert.True(vm.Columns[0].HasFront);
-        Assert.False(vm.Columns[1].HasFront);
-        // The PIP switch stays in the rightmost column, wherever the video is.
-        Assert.False(vm.Columns[0].IsLast);
-        Assert.True(vm.Columns[1].IsLast);
         // The new column is the active one: the chat box acts on it.
         Assert.Same(velvet.Chat, vm.Chat);
         Assert.Equal(2, settings.ChatColumns.Count);
@@ -84,8 +79,6 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
 
         velvet.SelectCommand.Execute(null);
         Assert.Same(velvet, vm.FrontTab);
-        Assert.True(vm.Columns[1].HasFront);
-        Assert.False(vm.Columns[0].HasFront);
     });
 
     [Fact]
@@ -223,15 +216,12 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.Equal([["bigtimebramble"], ["pixelperegrine"], ["velvetcartridge"]], vm.Columns.Select(Logins));
         Assert.Equal([false, true, true], vm.Columns.Select(c => c.StacksBelow));
         Assert.Equal([false, true, true], settings.ChatColumns.Select(c => c.Below));
-        // The PIP switch stays in the top chat.
-        Assert.True(vm.Columns[0].IsLast);
 
         // The top chat leaving its column: the one under it heads it now.
         vm.MoveTabToNewColumn(bramble, 3);
         Assert.Equal([["pixelperegrine"], ["velvetcartridge"], ["bigtimebramble"]], vm.Columns.Select(Logins));
         Assert.Equal([false, true, false], vm.Columns.Select(c => c.StacksBelow));
         Assert.Equal(2, vm.VisibleColumnCount);
-        Assert.True(vm.Columns[2].IsLast);
 
         // A chat alone in its spot can't stack onto itself or where it already is.
         Assert.False(vm.CanStack(velvet, vm.Columns[1], below: true));
@@ -332,6 +322,26 @@ public class ColumnsTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.Equal("velvetcartridge", Assert.Single(vm.Columns[1].Tabs).Login);
         Assert.Equal("bigtimebramble", vm.FrontTab?.Login); // dragging doesn't change the video
         Assert.False(window.FindControl<Border>("DropIndicator")!.IsVisible);
+        window.Close();
+    });
+
+    [Fact]
+    public void TheDropMarkerIsDrawnWhereItsMeasured() => Ui(() =>
+    {
+        // Drops are measured from the chat pane's corner, so the layer the
+        // marker is drawn in must start there, not under the toolbar.
+        var vm = Demo(out _);
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var pane = window.FindControl<Border>("ChatPane")!;
+        var layer = window.FindControl<Canvas>("DropLayer")!;
+        Assert.Equal(new Point(0, 0), layer.TranslatePoint(default, pane));
+
+        var strip = window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("tabStrip"));
+        var drop = window.DropTargetAt(Tab(vm, "velvetcartridge"),
+            strip.TranslatePoint(new Point(2, strip.Bounds.Height / 2), pane)!.Value)!;
+        Assert.Equal(strip.TranslatePoint(default, pane)!.Value.Y, drop.Indicator.Y);
         window.Close();
     });
 

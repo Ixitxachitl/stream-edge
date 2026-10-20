@@ -17,6 +17,18 @@ public sealed record ChatUserState(
         if (irc.Command is not ("USERSTATE" or "GLOBALUSERSTATE")) return null;
         var channel = irc.Command == "USERSTATE" && irc.Params.Count > 0 ? irc.Params[0].TrimStart('#') : null;
         return new ChatUserState(channel, irc.Tag("user-id"), irc.Tag("display-name"), irc.Tag("color"),
-            irc.Tag("badges")?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            irc.Tag("badges")?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? [])
+        {
+            IsMod = irc.Tag("mod") == "1",
+        };
     }
+
+    /// <summary>The <c>mod</c> tag: a moderator here, whichever badge they
+    /// show (a lead moderator's is <c>lead_moderator</c>).</summary>
+    public bool IsMod { get; init; }
+
+    /// <summary>May use the mod tools here: the broadcaster or a moderator.</summary>
+    public bool CanModerate => IsMod || ChatRoles.IsModerator(Badges) || ChatRoles.Has(Badges, "broadcaster");
+
+    public bool IsBroadcaster => ChatRoles.Has(Badges, "broadcaster");
 }

@@ -50,20 +50,10 @@ public sealed partial class ChatColumnViewModel : ObservableObject
     [ObservableProperty]
     private bool _isActive;
 
-    /// <summary>Holds the tab on video: the player controls show in this
-    /// column's header.</summary>
-    [ObservableProperty]
-    private bool _hasFront;
-
     /// <summary>Sits under the chat before it, in the same column, rather
     /// than beside it.</summary>
     [ObservableProperty]
     private bool _stacksBelow;
-
-    /// <summary>The top chat of the rightmost column: the PIP switch stays
-    /// at the top right of the chat pane, in its tab strip.</summary>
-    [ObservableProperty]
-    private bool _isLast;
 
     public ChatViewModel Chat => Selected?.Chat ?? _idleChat;
 

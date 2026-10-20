@@ -27,10 +27,11 @@ public class ChatHistoryTests
         """;
 
     [Fact]
-    public void TwitchHistoryIsOldestFirstWithoutDeletedLines()
+    public void TwitchHistoryIsOldestFirstWithDeletedLinesMarked()
     {
         var messages = ChatHistory.ParseTwitch(TwitchReply, "xqc")!;
-        Assert.Equal(["m1", "m2"], messages.Select(m => m.Id));
+        Assert.Equal(["m1", "m2", "m3"], messages.Select(m => m.Id));
+        Assert.Equal([false, false, true], messages.Select(m => m.WasDeleted));
         Assert.Equal("xqc", messages[0].Channel);
         Assert.Null(messages[0].Color);
     }
@@ -64,7 +65,8 @@ public class ChatHistoryTests
               "@historical=1;id=c;emotes=25:0-4 :amy!amy@amy.tmi.twitch.tv PRIVMSG #xqc :Kappa"
             ],"error":null}
             """);
-        Assert.Equal(["a", "c"], messages.Select(m => m.Id));
-        Assert.Single(messages[1].TwitchEmotes);
+        Assert.Equal(["a", "b", "c"], messages.Select(m => m.Id));
+        Assert.Equal([false, true, false], messages.Select(m => m.WasDeleted));
+        Assert.Single(messages[2].TwitchEmotes);
     }
 }

@@ -57,6 +57,9 @@ public sealed record ChatMessage(
     /// names in <see cref="ChatModeration.TargetMessageId"/>.</summary>
     public string? Id { get; init; }
 
+    /// <summary>History only: a moderator had already deleted it.</summary>
+    public bool WasDeleted { get; init; }
+
     /// <summary>Sender's numeric user id (tag <c>user-id</c>). Third-party
     /// badges (FFZ) and CLEARCHAT are keyed on it, not on the login.</summary>
     public string? UserId { get; init; }

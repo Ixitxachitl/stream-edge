@@ -202,6 +202,11 @@ public sealed class AppSettings
     /// them and in busy channels they drown the conversation.</summary>
     public bool ShowJoinPart { get; set; }
 
+    /// <summary>A deleted message stays, crossed out, instead of becoming
+    /// "&lt;message deleted&gt;" (as Chatterino can). Off by default, as on
+    /// twitch.tv.</summary>
+    public bool ShowDeletedMessages { get; set; }
+
     /// <summary>Show recent chat when a channel opens: Twitch's own (needs
     /// the auth-token), else the third-party service below.</summary>
     public bool LoadChatHistory { get; set; } = true;

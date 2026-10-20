@@ -139,6 +139,13 @@
           </Grid>
           <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
             <StackPanel>
+              <TextBlock Classes="settingName" Text="Deleted messages" />
+              <TextBlock Classes="settingHint" Text="Crossed out instead of hidden" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ShowDeletedMessages}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
               <TextBlock Classes="settingName" Text="GIFs" />
               <TextBlock Classes="settingHint" Text="Drawn in chat; off, they show as their title" />
             </StackPanel>

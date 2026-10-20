@@ -55,6 +55,22 @@ public sealed partial class ChatEntry : ObservableObject
     [ObservableProperty]
     private bool _canModerate;
 
+    /// <summary>The user is this channel's broadcaster, who (unlike a
+    /// moderator) can act on moderators too.</summary>
+    [ObservableProperty]
+    private bool _asBroadcaster;
+
+    /// <summary>Deleted, the text stays, crossed out, rather than giving
+    /// way to "&lt;message deleted&gt;" (a setting).</summary>
+    [ObservableProperty]
+    private bool _showsDeletedText;
+
+    /// <summary>Why Twitch would refuse <paramref name="power"/> over this
+    /// line's sender (the broadcaster; a moderator, unless the user is the
+    /// broadcaster; staff), or null if it wouldn't.</summary>
+    public string? WhyCantModerate(ModPower power) =>
+        ChatRoles.WhyNot(power, AsBroadcaster, ChatRoles.RoleOf(Message.Login, Message.Channel, Message.Badges));
+
     /// <summary>Someone @-mentioned the signed-in user.</summary>
     public bool IsSelfMention => Tokens.Any(t => t.IsSelfMention);
 
@@ -113,6 +129,15 @@ public sealed partial class ChatViewModel : ObservableObject
     partial void OnIsModeratorChanged(bool value)
     {
         foreach (var entry in Lines) entry.CanModerate = value;
+    }
+
+    /// <summary>The user is the broadcaster here (from USERSTATE).</summary>
+    [ObservableProperty]
+    private bool _isBroadcaster;
+
+    partial void OnIsBroadcasterChanged(bool value)
+    {
+        foreach (var entry in Lines) entry.AsBroadcaster = value;
     }
 
     /// <summary>This channel's points name, icon, rewards and the user's
@@ -200,9 +225,17 @@ public sealed partial class ChatViewModel : ObservableObject
         // Official Twitch chat doesn't show joins and parts; they're opt-in.
         if (message.Kind == ChatMessageKind.Membership && !_settings.ShowJoinPart) return;
 
+        Lines.Add(NewEntry(message, own));
+        while (Lines.Count > Math.Max(50, _settings.ChatScrollback))
+            Lines.RemoveAt(0);
+    }
+
+    private ChatEntry NewEntry(ChatMessage message, bool own)
+    {
         var entry = new ChatEntry(message, TimeOf(message.Timestamp))
         {
-            IsOwn = own, CanModerate = IsModerator,
+            IsOwn = own, CanModerate = IsModerator, AsBroadcaster = IsBroadcaster,
+            ShowsDeletedText = _settings.ShowDeletedMessages,
             PointsIcon = Points?.Icon, Reward = Points?.Reward(message.CustomRewardId),
         };
         if (_services is not null)
@@ -210,9 +243,7 @@ public sealed partial class ChatViewModel : ObservableObject
             entry.Render(_services, RoomId);
             LoadPronoun(entry);
         }
-        Lines.Add(entry);
-        while (Lines.Count > Math.Max(50, _settings.ChatScrollback))
-            Lines.RemoveAt(0);
+        return entry;
     }
 
     /// <summary>Puts recent history above what's arrived live so far (the
@@ -226,16 +257,9 @@ public sealed partial class ChatViewModel : ObservableObject
         foreach (var message in history)
         {
             if (message.Id is { } id && live.Contains(id)) continue;
-            var entry = new ChatEntry(message, TimeOf(message.Timestamp))
-            {
-                CanModerate = IsModerator,
-                PointsIcon = Points?.Icon, Reward = Points?.Reward(message.CustomRewardId),
-            };
-            if (_services is not null)
-            {
-                entry.Render(_services, RoomId);
-                LoadPronoun(entry);
-            }
+            if (message.WasDeleted && !_settings.ShowDeletedMessages) continue;
+            var entry = NewEntry(message, own: false);
+            entry.IsDeleted = message.WasDeleted;
             Lines.Insert(at + inserted++, entry);
         }
         if (inserted > 0)
@@ -333,12 +357,13 @@ public sealed partial class ChatViewModel : ObservableObject
     }
 
     /// <summary>Re-tokenizes every line: emote sets or badges finished
-    /// loading, or a provider was switched on or off.</summary>
+    /// loading, or a provider or display setting was switched.</summary>
     public void RenderAll()
     {
         if (_services is null) return;
         foreach (var entry in Lines)
         {
+            entry.ShowsDeletedText = _settings.ShowDeletedMessages;
             entry.Render(_services, RoomId);
             if (!_settings.ShowPronouns) entry.Pronoun = null;
             else if (entry.Pronoun is null) LoadPronoun(entry);

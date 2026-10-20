@@ -125,9 +125,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         // The first chat can't stack under anything.
         if (Columns.Count > 0) Columns[0].StacksBelow = false;
-        // The PIP switch goes in the top right chat's tab strip.
-        var lastHead = Columns.LastOrDefault(c => !c.StacksBelow);
-        foreach (var c in Columns) c.IsLast = c == lastHead;
         SplitLayoutChanged?.Invoke();
     }
 
@@ -588,7 +585,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // dropped tab is shown.
         target.Selected = FrontTab is { } front && front != tab && target.Tabs.Contains(front) ? front : tab;
         Activate(target);
-        UpdateColumnFlags();
         SaveTabs();
     }
 
@@ -627,7 +623,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             column.Selected = tab;
             Activate(column);
         }
-        UpdateColumnFlags();
         SaveTabs();
     }
 
@@ -684,7 +679,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             anchor.StacksBelow = true;
         }
         Activate(split);
-        UpdateColumnFlags();
         SaveTabs();
     }
 
@@ -708,18 +702,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (ActiveColumn == column) Activate(Columns[Math.Min(index, Columns.Count - 1)]);
     }
 
-    private void UpdateColumnFlags()
-    {
-        foreach (var c in Columns) c.HasFront = FrontTab is not null && c.Tabs.Contains(FrontTab);
-    }
-
     private void SetFront(ChannelTabViewModel? tab)
     {
         FrontTab = tab;
         // The CC choice is one setting; each tab's button shows it when in front.
         if (tab is not null) tab.Player.Captions = _settings.Captions;
         foreach (var t in Tabs) t.IsFront = t == tab;
-        UpdateColumnFlags();
         ApplyTiers();
         if (tab is not null) ShowChannelInfo(tab);
         else WindowTitle = "StreamEdge";
@@ -749,7 +737,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 SetFront(column is { Selected: { } next } && Columns.Contains(column) ? next
                     : ActiveTab ?? Columns.Select(c => c.Selected).FirstOrDefault(t => t is not null));
         }
-        UpdateColumnFlags();
         SaveTabs();
         UpdateWatched();
         OnPropertyChanged(nameof(HasTabs));
@@ -832,10 +819,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (state.Channel is { } channel)
         {
             _userStates[channel] = state;
-            // Moderator or broadcaster here: mod icons on lines, the mod menu.
+            // Moderator (lead or not) or broadcaster here: mod icons on
+            // lines, the mod menu.
             if (TabFor(channel) is { } tab)
-                tab.Chat.IsModerator = state.Badges.Any(b => b.StartsWith("moderator/", StringComparison.Ordinal)
-                                                            || b.StartsWith("broadcaster/", StringComparison.Ordinal));
+            {
+                tab.Chat.IsModerator = state.CanModerate;
+                tab.Chat.IsBroadcaster = state.IsBroadcaster;
+            }
         }
         else
         {
@@ -1138,6 +1128,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = Services.Emotes.LoadGlobalsAsync(_stop.Token);
         foreach (var room in Tabs.Select(t => t.RoomId).OfType<string>().Distinct())
             _ = Services.Emotes.LoadChannelAsync(room, _stop.Token);
+    }
+
+    /// <summary>Deleted messages crossed out rather than replaced.</summary>
+    public bool ShowDeletedMessages
+    {
+        get => _settings.ShowDeletedMessages;
+        set
+        {
+            if (SetProperty(_settings.ShowDeletedMessages, value, _settings, (s, v) => s.ShowDeletedMessages = v)) RenderChats(null);
+        }
     }
 
     /// <summary>JOIN/PART lines; official Twitch chat doesn't show them.

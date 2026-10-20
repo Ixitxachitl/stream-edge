@@ -29,6 +29,9 @@
          dark ground, with the gaps between them as the drag lines. -->
     <Border x:Name="ChatPane" Classes="pane">
     <Panel>
+    <DockPanel>
+      <!-- One toolbar over all the chats, however they're split. -->
+      <v:ChatHeaderView DockPanel.Dock="Top" />
       <ItemsControl x:Name="ChatColumns" ItemsSource="{Binding Columns}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
@@ -42,9 +45,11 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
-      <Canvas x:Name="DropLayer" IsHitTestVisible="False">
-        <Border x:Name="DropIndicator" Classes="dropIndicator" IsVisible="False" />
-      </Canvas>
+    </DockPanel>
+    <!-- Over the whole pane, header too: drops are measured from its corner. -->
+    <Canvas x:Name="DropLayer" IsHitTestVisible="False">
+      <Border x:Name="DropIndicator" Classes="dropIndicator" IsVisible="False" />
+    </Canvas>
     </Panel>
     </Border>
 

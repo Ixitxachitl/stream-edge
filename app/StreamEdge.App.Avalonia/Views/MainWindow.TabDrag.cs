@@ -210,7 +210,8 @@ public partial class MainWindow
         if (_vm is null || !_vm.CanStack(tab, anchor, below)) return false;
         var stack = _vm.StackOf(anchor);
         var adds = _vm.ColumnOf(tab) is { } source && source.Tabs.Count == 1 && stack.Contains(source) ? 0 : 1;
-        return ChatPane.Bounds.Height / (stack.Count + adds) >= MinStackHeight;
+        // The chats' height: the toolbar over them isn't shared out.
+        return ChatColumns.Bounds.Height / (stack.Count + adds) >= MinStackHeight;
     }
 
     private bool CanSplitInto(ChannelTabViewModel tab, int at)

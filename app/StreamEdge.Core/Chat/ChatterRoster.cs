@@ -89,16 +89,7 @@ public sealed class ChatterRoster(string channel)
         Version++;
     }
 
-    private ChatterRole RoleOf(string login, IReadOnlyList<string> badges)
-    {
-        if (string.Equals(login, channel, StringComparison.OrdinalIgnoreCase)) return ChatterRole.Broadcaster;
-        bool Has(string set) => badges.Any(b => b.StartsWith(set + "/", StringComparison.Ordinal));
-        return Has("broadcaster") ? ChatterRole.Broadcaster
-            : Has("moderator") ? ChatterRole.Moderator
-            : Has("vip") ? ChatterRole.Vip
-            : Has("staff") || Has("admin") ? ChatterRole.Staff
-            : ChatterRole.User;
-    }
+    private ChatterRole RoleOf(string login, IReadOnlyList<string> badges) => ChatRoles.RoleOf(login, channel, badges);
 
     private static List<Chatter> Sort(IEnumerable<Chatter> chatters) =>
         [.. chatters.OrderBy(c => c.Role).ThenBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)];

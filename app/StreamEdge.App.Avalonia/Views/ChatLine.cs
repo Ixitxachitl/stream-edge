@@ -297,9 +297,13 @@ public sealed class ChatLine : Border
             && m.Kind is ChatMessageKind.Message or ChatMessageKind.Action)
         {
             // A line shared from another channel can only be deleted there.
-            if (m.Id is not null && !entry.IsFromOtherRoom) inlines.Add(ModButton("🗑", "Delete message", ModAction.Delete, entry));
-            inlines.Add(ModButton("⏱", "Timeout 10 minutes", ModAction.Timeout, entry));
-            inlines.Add(ModButton("⛔", "Ban", ModAction.Ban, entry));
+            // Ones Twitch would refuse (the broadcaster's, another mod's)
+            // are greyed out, saying why.
+            if (m.Id is not null && !entry.IsFromOtherRoom)
+                inlines.Add(ModButton("🗑", "Delete message", ModAction.Delete, entry, entry.WhyCantModerate(ModPower.Delete)));
+            var cantRemove = entry.WhyCantModerate(ModPower.Remove);
+            inlines.Add(ModButton("⏱", "Timeout 10 minutes", ModAction.Timeout, entry, cantRemove));
+            inlines.Add(ModButton("⛔", "Ban", ModAction.Ban, entry, cantRemove));
         }
 
         // Shared chat: the icon of the channel the line was sent in, first,
@@ -322,11 +326,12 @@ public sealed class ChatLine : Border
                 : isAction ? " " : isNotice ? " · " : ": ")
             { Foreground = m.Kind == ChatMessageKind.Whisper ? LinkBrush : TextBrush });
 
-        if (entry.IsDeleted)
+        if (entry.IsDeleted && !entry.ShowsDeletedText)
         {
             inlines.Add(new Run("<message deleted>") { Foreground = DimBrush, FontStyle = FontStyle.Italic });
             return inlines;
         }
+        var bodyStart = inlines.Count;
 
         var textBrush = isAction ? nameBrush : isNotice ? SystemBrush : TextBrush;
         // Twitch's "gigantify an emote" power-up enlarges the last Twitch
@@ -359,7 +364,27 @@ public sealed class ChatLine : Border
                     break;
             }
         }
+        if (entry.IsDeleted) CrossOut(inlines, bodyStart);
         return inlines;
+    }
+
+    /// <summary>A deleted message kept on show: its text struck through and
+    /// dimmed, its emotes and links faded.</summary>
+    private static void CrossOut(InlineCollection inlines, int from)
+    {
+        for (var i = from; i < inlines.Count; i++)
+        {
+            switch (inlines[i])
+            {
+                case Run run:
+                    run.TextDecorations = TextDecorations.Strikethrough;
+                    run.Foreground = DimBrush;
+                    break;
+                case InlineUIContainer { Child: { } child }:
+                    child.Opacity = 0.4;
+                    break;
+            }
+        }
     }
 
     // ----- Interaction ----------------------------------------------------
@@ -412,18 +437,20 @@ public sealed class ChatLine : Border
         return new InlineUIContainer(block) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
-    private Inline ModButton(string glyph, string tip, ModAction action, ChatEntry entry)
+    /// <param name="blocked">Why Twitch would refuse it: drawn faint, with
+    /// that as its tip, and does nothing.</param>
+    private Inline ModButton(string glyph, string tip, ModAction action, ChatEntry entry, string? blocked = null)
     {
         var block = new TextBlock
         {
             Text = glyph,
             FontSize = 12,
             Margin = new Thickness(0, 0, 4, 0),
-            Cursor = new Cursor(StandardCursorType.Hand),
-            Opacity = 0.75,
+            Cursor = new Cursor(blocked is null ? StandardCursorType.Hand : StandardCursorType.Arrow),
+            Opacity = blocked is null ? 0.75 : 0.25,
         };
-        ToolTip.SetTip(block, tip);
-        block.PointerPressed += (_, e) =>
+        ToolTip.SetTip(block, blocked ?? tip);
+        if (blocked is null) block.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(block).Properties.IsLeftButtonPressed) return;
             RaiseEvent(new ModActionEventArgs(ModActionEvent, action, entry));
