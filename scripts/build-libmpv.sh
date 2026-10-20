@@ -70,7 +70,7 @@ fetch() { # url ref dir [submodules...]
 fetch https://github.com/FFmpeg/FFmpeg "$FFMPEG_TAG" ffmpeg
 fetch https://github.com/mpv-player/mpv "$MPV_COMMIT" mpv
 fetch https://github.com/haasn/libplacebo "$LIBPLACEBO_TAG" libplacebo \
-  3rdparty/jinja 3rdparty/markupsafe 3rdparty/fast_float
+  3rdparty/jinja 3rdparty/markupsafe 3rdparty/fast_float 3rdparty/Vulkan-Headers
 fetch https://github.com/libass/libass "$LIBASS_TAG" libass
 fetch https://github.com/harfbuzz/harfbuzz "$HARFBUZZ_TAG" harfbuzz
 fetch https://gitlab.freedesktop.org/freetype/freetype.git "$FREETYPE_TAG" freetype
