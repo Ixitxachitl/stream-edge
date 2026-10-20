@@ -1,7 +1,7 @@
 # Builds StreamEdge for every supported platform and attaches the artifacts to
-# a GitHub release, published as Latest once every build is in; the
-# website (stream-tools) picks it up within the hour. Each platform
-# publishes on its own runner.
+# a GitHub release, published as Latest with whichever builds succeeded (see
+# publish); the website (stream-tools) picks it up within the hour once all
+# four are in. Each platform builds on its own runner.
 name: release
 
 on:
@@ -70,9 +70,11 @@ jobs:
 
   publish:
     needs: build
-    # Every platform or none: a published release is Latest straight away,
-    # and the website links all four downloads.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Whichever platforms built: GitHub's macOS runners can go unavailable
+    # for hours. Re-running a missing platform's build ("Re-run failed jobs")
+    # runs this again and adds its download to the release. The website
+    # waits until all four are there, so it never links a missing file.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
