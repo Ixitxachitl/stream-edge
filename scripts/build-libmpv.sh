@@ -44,10 +44,11 @@ fi
 export USERPROFILE=${USERPROFILE:-$(cygpath -w "$HOME")}
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-work=${1:-$repo/third_party/libmpv/.build}
+# Unix form: a Windows path's "D:" would split PKG_CONFIG_PATH at the colon.
+work=$(cygpath -u "${1:-$repo/third_party/libmpv/.build}")
 src=$work/src
 prefix=$work/prefix
-out=${LIBMPV_OUT:-$repo/third_party/libmpv/win-x64}
+out=$(cygpath -u "${LIBMPV_OUT:-$repo/third_party/libmpv/win-x64}")
 mkdir -p "$src" "$prefix/lib/pkgconfig" "$out"
 
 # Only what's missing: "pacman -S --needed" also upgrades what's installed,
