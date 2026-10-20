@@ -44,6 +44,11 @@ public sealed class VideoStage : Panel
         AffectsArrange<VideoStage>(ShowPipProperty, AspectProperty, SuspendedProperty);
     }
 
+    /// <summary>The main video's clipped corners (logical pixels): 0 when
+    /// the overlay window rounds them smoothly instead (a clip would leave
+    /// the pane's black showing through its steps).</summary>
+    public double FrontCornerRadius { get; set; } = VideoCorners.FrontRadius;
+
     public bool ShowPip
     {
         get => GetValue(ShowPipProperty);
@@ -60,6 +65,13 @@ public sealed class VideoStage : Panel
     /// cell it now has (the dragged one's new cell, a swapped one's, and the
     /// rest pinned where they are).</summary>
     public event Action<IReadOnlyList<(ChannelTabViewModel Tab, PipCell Cell)>>? PipsMoved;
+
+    /// <summary>The videos on show after the last arrange (stage coordinates),
+    /// the main one first: for what's drawn over their corners.</summary>
+    public IReadOnlyList<(Rect Rect, bool IsFront)> Shown { get; private set; } = [];
+
+    /// <summary>The videos were placed again (<see cref="Shown"/> may differ).</summary>
+    public event Action? Placed;
 
     private const double PipMargin = 8;
 
@@ -201,6 +213,8 @@ public sealed class VideoStage : Panel
                 child.IsVisible = false;
                 child.Arrange(default);
             }
+            Shown = [];
+            Placed?.Invoke();
             return finalSize;
         }
         var surfaces = Children.OfType<PlayerSurface>().ToList();
@@ -234,6 +248,9 @@ public sealed class VideoStage : Panel
             // Hidden, not just given no room: Avalonia leaves a native window
             // that gets a zero size where it was, still drawing.
             surfaces[i].IsVisible = rects[i].Width > 0 && rects[i].Height > 0;
+            // Rounded as the panes are (the main video), or as the smaller
+            // controls are (thumbnails).
+            surfaces[i].CornerRadius = fronts[i] ? FrontCornerRadius : VideoCorners.PipRadius;
             surfaces[i].Arrange(rects[i]);
             surfaces[i].CanDrag = _cells.ContainsKey(surfaces[i]);
         }
@@ -243,6 +260,9 @@ public sealed class VideoStage : Panel
         for (var i = 0; i < surfaces.Count; i++)
             if (!fronts[i] && rects[i].Width > 0 && surfaces[i] != _dragging) surfaces[i].BringToFront();
         _dragging?.BringToFront();
+        Shown = [.. Enumerable.Range(0, surfaces.Count).Where(i => rects[i].Width > 0 && rects[i].Height > 0)
+            .OrderByDescending(i => fronts[i]).Select(i => (rects[i], fronts[i]))];
+        Placed?.Invoke();
         return finalSize;
     }
 }

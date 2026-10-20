@@ -371,28 +371,6 @@
     <Setter Property="BorderBrush" Value="{StaticResource SeAccent}" />
   </Style>
 
-  <!-- Where a dragged pane can dock, over the (stepped-aside) video. -->
-  <Style Selector="Border.dockTarget">
-    <Setter Property="Margin" Value="4" />
-    <Setter Property="CornerRadius" Value="6" />
-    <Setter Property="BorderThickness" Value="2" />
-    <Setter Property="BorderBrush" Value="#409147FF" />
-    <Setter Property="Background" Value="#14FFFFFF" />
-  </Style>
-  <Style Selector="Border.dockTarget > TextBlock">
-    <Setter Property="HorizontalAlignment" Value="Center" />
-    <Setter Property="VerticalAlignment" Value="Center" />
-    <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Border.dockTarget.active">
-    <Setter Property="BorderBrush" Value="{StaticResource SeAccent}" />
-    <Setter Property="Background" Value="#559147FF" />
-  </Style>
-  <Style Selector="Border.dockTarget.active > TextBlock">
-    <Setter Property="Foreground" Value="White" />
-  </Style>
-
   <!-- Pane headers are drag handles (to dock the pane elsewhere); the ⠿ says so. -->
   <Style Selector="TextBlock.dragGrip">
     <Setter Property="Foreground" Value="{StaticResource SeTextFaint}" />

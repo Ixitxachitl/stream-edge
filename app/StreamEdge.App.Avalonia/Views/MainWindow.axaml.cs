@@ -37,6 +37,7 @@ public partial class MainWindow : Window
             Emotes.EmoteImageCache.Scale = RenderScaling;
             if (!_restored) PlaceOnScreen();
             _tracking = true;
+            CreateOverlay();
         };
         PositionChanged += (_, _) => Remember();
         Closing += (_, _) =>

@@ -49,7 +49,7 @@ public class PaneDragTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         var settings = new AppSettings();
         var window = Open(settings, out var vm);
-        var targets = window.FindControl<Control>("DockTargets")!;
+        var preview = window.FindControl<Control>("DockPreview")!;
         var videos = window.FindControl<VideoStage>("Videos")!;
         Assert.Equal(DockSide.Left, vm.ListDock);
 
@@ -57,20 +57,22 @@ public class PaneDragTests(HeadlessAvalonia ui) : UiTest(ui)
         window.MouseDown(from, MouseButton.Left);
         window.MouseMove(from + new Point(20, 0));
         Dispatcher.UIThread.RunJobs();
-        // Dragging: the targets show, the videos step aside.
-        Assert.True(targets.IsVisible);
+        // Dragging: the videos step aside (no overlay window here).
         Assert.True(videos.Suspended);
 
+        // Over the video's right: the preview hugs its right side.
         var right = InPlayer(window, 0.9, 0.5);
         window.MouseMove(right);
         Dispatcher.UIThread.RunJobs();
-        Assert.Contains("active", window.FindControl<Border>("DockRight")!.Classes);
+        Assert.True(preview.IsVisible);
+        var player = InOverlay(window, window.FindControl<Control>("PlayerPane")!);
+        Assert.Equal(player.Right, InOverlay(window, preview).Right, 0.5);
         window.MouseUp(right, MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
 
         Assert.Equal(DockSide.Right, vm.ListDock);
         Assert.Equal(DockSide.Right, settings.ListDock);
-        Assert.False(targets.IsVisible);
+        Assert.False(preview.IsVisible);
         Assert.False(videos.Suspended);
         var streams = window.FindControl<Control>("StreamsPane")!;
         Assert.True(streams.Bounds.X > window.FindControl<Control>("PlayerPane")!.Bounds.X);
@@ -88,18 +90,18 @@ public class PaneDragTests(HeadlessAvalonia ui) : UiTest(ui)
         window.MouseMove(from + new Point(2, 1));
         window.MouseUp(from + new Point(2, 1), MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
-        Assert.False(window.FindControl<Control>("DockTargets")!.IsVisible);
+        Assert.False(window.FindControl<VideoStage>("Videos")!.Suspended);
         Assert.Equal(DockSide.Left, vm.ListDock);
 
         // A real drag, then Esc: nothing moves.
         window.MouseDown(from, MouseButton.Left);
         window.MouseMove(InPlayer(window, 0.5, 0.1));
         Dispatcher.UIThread.RunJobs();
-        Assert.True(window.FindControl<Control>("DockTargets")!.IsVisible);
+        Assert.True(window.FindControl<Control>("DockPreview")!.IsVisible);
         window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
         window.MouseUp(InPlayer(window, 0.5, 0.1), MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
-        Assert.False(window.FindControl<Control>("DockTargets")!.IsVisible);
+        Assert.False(window.FindControl<Control>("DockPreview")!.IsVisible);
         Assert.Equal(DockSide.Left, vm.ListDock);
         Assert.False(window.FindControl<VideoStage>("Videos")!.Suspended);
         window.Close();

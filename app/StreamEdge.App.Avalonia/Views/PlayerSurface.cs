@@ -40,9 +40,44 @@ public sealed partial class PlayerSurface : NativeControlHost
     {
         var handle = base.CreateNativeControlCore(parent);
         _handle = handle.Handle;
-        if (OperatingSystem.IsWindows()) Hook();
+        if (OperatingSystem.IsWindows())
+        {
+            Hook();
+            ApplyCorners();
+        }
         HandleCreated?.Invoke(handle.Handle.ToInt64());
         return handle;
+    }
+
+    // ----- Rounded corners (Windows) ---------------------------------------
+
+    private double _cornerRadius;
+
+    /// <summary>Corners rounded like the panes around the video (logical
+    /// pixels). The window is clipped to a rounded rectangle; mpv's own
+    /// window inside it is clipped with it.</summary>
+    public double CornerRadius
+    {
+        get => _cornerRadius;
+        set
+        {
+            if (_cornerRadius == value) return;
+            _cornerRadius = value;
+            ApplyCorners();
+        }
+    }
+
+    /// <summary>Clips the window to its rounded rectangle at its current
+    /// size; again on every resize (WM_SIZE).</summary>
+    private void ApplyCorners()
+    {
+        if (!OperatingSystem.IsWindows() || _handle == IntPtr.Zero || !GetClientRect(_handle, out var r)) return;
+        var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+        var d = (int)Math.Round(2 * _cornerRadius * scale);
+        // The region's right and bottom edges are exclusive, hence the +1.
+        var region = d > 0 ? CreateRoundRectRgn(0, 0, r.Right + 1, r.Bottom + 1, d, d) : IntPtr.Zero;
+        // The window owns the region from here on.
+        SetWindowRgn(_handle, region, true);
     }
 
     protected override void DestroyNativeControlCore(IPlatformHandle control)
@@ -114,6 +149,7 @@ public sealed partial class PlayerSurface : NativeControlHost
                 _dragging = true;
             if (_dragging) DragMoved?.Invoke(delta);
         }
+        if (msg == WmSize) ApplyCorners();
         switch (msg)
         {
             case WmLButtonDown when CanDrag:
@@ -175,6 +211,7 @@ public sealed partial class PlayerSurface : NativeControlHost
     private delegate IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     private const int GwlpWndProc = -4;
+    private const uint WmSize = 0x0005;
     private const uint WmKeyDown = 0x0100;
     private const uint WmMouseMove = 0x0200;
     private const uint WmMouseLeave = 0x02A3;
@@ -206,6 +243,22 @@ public sealed partial class PlayerSurface : NativeControlHost
 
     [LibraryImport("user32.dll")]
     private static partial uint GetDoubleClickTime();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect32
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetClientRect(IntPtr hWnd, out Rect32 rect);
+
+    [LibraryImport("gdi32.dll")]
+    private static partial IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
+
+    [LibraryImport("user32.dll")]
+    private static partial int SetWindowRgn(IntPtr hWnd, IntPtr region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct TrackMouseEventArgs

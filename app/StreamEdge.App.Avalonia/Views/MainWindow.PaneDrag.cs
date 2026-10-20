@@ -16,8 +16,10 @@ namespace StreamEdge.AvaloniaApp.Views;
 /// <item>on another pane's top or bottom half: stacked above or below it.</item>
 /// </list>
 /// While dragging, a preview shows exactly where it would land (the layout
-/// worked out as if dropped), and the videos step aside so it can be drawn
-/// over them (native windows can't be). Esc cancels; under the drag distance
+/// worked out as if dropped). The videos are native windows, which nothing
+/// in this window can be drawn over, so on Windows the preview is drawn from
+/// the overlay window just above this one and the videos keep playing under
+/// it; elsewhere the videos step aside. Esc cancels; under the drag distance
 /// it's an ordinary click.</summary>
 public partial class MainWindow
 {
@@ -89,8 +91,7 @@ public partial class MainWindow
             // The press already holds the mouse (Avalonia captures it for the
             // pressed control), so moves and the release keep arriving here.
             _paneDragging = true;
-            Videos.Suspended = true;
-            DockTargets.IsVisible = true;
+            ShowDockOverlay();
             Cursor = new Cursor(StandardCursorType.DragMove);
         }
         ShowDrop(pane, this.TranslatePoint(at, Layout));
@@ -173,12 +174,7 @@ public partial class MainWindow
     private void ShowDrop(PaneId pane, Point? at)
     {
         _dropPlaces = null;
-        DockSide? side = null;
-        if (at is { } p) (_dropPlaces, side) = DropAt(Layout.CurrentPlan, Layout.Places, pane, p);
-        DockLeft.Classes.Set("active", side == DockSide.Left);
-        DockRight.Classes.Set("active", side == DockSide.Right);
-        DockTop.Classes.Set("active", side == DockSide.Top);
-        DockBottom.Classes.Set("active", side == DockSide.Bottom);
+        if (at is { } p) (_dropPlaces, _) = DropAt(Layout.CurrentPlan, Layout.Places, pane, p);
 
         // The preview, in the layout as it is now (everything shifts once
         // dropped, so where it finally lands would mislead).
@@ -189,12 +185,20 @@ public partial class MainWindow
         }
         var rect = PreviewRect(Layout.CurrentPlan,
             UltrawideLayout.Arrange(Layout.Bounds.Size, Layout.Inputs(_dropPlaces)), pane, point);
-        var origin = Layout.TranslatePoint(default, DockOverlay) ?? default;
+        // The overlay window lies exactly over the layout.
+        var origin = _overlayWindow is null ? Layout.TranslatePoint(default, DockOverlay) ?? default : default;
         Canvas.SetLeft(DockPreview, origin.X + rect.X);
         Canvas.SetTop(DockPreview, origin.Y + rect.Y);
         DockPreview.Width = rect.Width;
         DockPreview.Height = rect.Height;
         DockPreview.IsVisible = rect.Width > 0 && rect.Height > 0;
+    }
+
+    /// <summary>Over the videos: drawn in the overlay window on Windows;
+    /// elsewhere the videos step aside for it.</summary>
+    private void ShowDockOverlay()
+    {
+        if (_overlayWindow is null) Videos.Suspended = true;
     }
 
     private void EndPaneDrag(bool drop)
@@ -206,9 +210,7 @@ public partial class MainWindow
         _panePressed = null;
         _dropPlaces = null;
         Cursor = null;
-        DockTargets.IsVisible = false;
         DockPreview.IsVisible = false;
-        foreach (var target in new[] { DockLeft, DockRight, DockTop, DockBottom }) target.Classes.Set("active", false);
         Videos.Suspended = false;
         if (drop && pane is { } moved && places is not null) _vm?.SetPanePlaces(places, moved);
     }

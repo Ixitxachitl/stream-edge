@@ -86,14 +86,6 @@
            fills the pane at 16:9 and covers the text above while playing;
            the others are PIP thumbnails or hidden. -->
       <v:VideoStage x:Name="Videos" ShowPip="{Binding ShowPip}" />
-      <!-- While a pane is dragged by its header: where it can dock. The
-           videos step aside (they can't be drawn over) and come back on drop. -->
-      <Grid x:Name="DockTargets" IsVisible="False" ColumnDefinitions="3*,4*,3*" RowDefinitions="*,*" Margin="8">
-        <Border x:Name="DockLeft" Classes="dockTarget" Grid.RowSpan="2"><TextBlock Text="◀ Left" /></Border>
-        <Border x:Name="DockTop" Classes="dockTarget" Grid.Column="1"><TextBlock Text="▲ Above" /></Border>
-        <Border x:Name="DockBottom" Classes="dockTarget" Grid.Column="1" Grid.Row="1"><TextBlock Text="▼ Below" /></Border>
-        <Border x:Name="DockRight" Classes="dockTarget" Grid.Column="2" Grid.RowSpan="2"><TextBlock Text="Right ▶" /></Border>
-      </Grid>
     </Panel>
     </Border>
 
