@@ -214,11 +214,6 @@ public sealed class AppSettings
     /// <summary>recent-messages.robotty.de, for history without an auth-token.</summary>
     public bool UseRecentMessages { get; set; } = true;
 
-    private static readonly JsonSerializerOptions Json = new()
-    {
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
 
     public static AppSettings Load()
     {
@@ -226,7 +221,7 @@ public sealed class AppSettings
         try
         {
             if (File.Exists(path))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json) ?? new();
+                return JsonSerializer.Deserialize(File.ReadAllText(path), AppSettingsJson.Default.AppSettings) ?? new();
         }
         catch (JsonException)
         {
@@ -258,13 +253,19 @@ public sealed class AppSettings
         if (ReadOnly) return;
         var path = AppData.PathFor(FileName);
         var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this, Json));
+        File.WriteAllText(temp, JsonSerializer.Serialize(this, AppSettingsJson.Default.AppSettings));
         File.Move(temp, path, overwrite: true);
     }
 }
 
 /// <summary>An emote the user picked from the menu, stored with enough to
 /// draw and send it again.</summary>
+/// <summary>settings.json's shape, generated at build time rather than
+/// found by reflection, which trimming the published app would break.</summary>
+[JsonSourceGenerationOptions(WriteIndented = true, UseStringEnumConverter = true)]
+[JsonSerializable(typeof(AppSettings))]
+internal sealed partial class AppSettingsJson : JsonSerializerContext;
+
 public sealed record RecentEmote(string Code, Uri ImageUrl, StreamEdge.Chat.Emotes.EmoteProvider Provider);
 
 /// <summary>A side of the video a pane docks to.</summary>

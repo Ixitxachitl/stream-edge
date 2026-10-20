@@ -5,7 +5,14 @@
     <RootNamespace>StreamEdge.AvaloniaApp</RootNamespace>
     <AssemblyName>StreamEdge</AssemblyName>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <!-- Published builds drop the parts of .NET and the libraries the app
+         never calls (about a third of the download). What it reads as JSON
+         goes through generated code (JsonSerializerContext), which trimming
+         can't break; reflection-based JSON would be flagged here. .NET's
+         built-in COM is off: nothing uses it (Avalonia has its own), and it
+         can't be trimmed safely. -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Windows PE icon for the executable; the same art is an

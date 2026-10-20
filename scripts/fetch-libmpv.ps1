@@ -9,8 +9,13 @@
     next to the app when it is present; the app runs without it, with the
     player pane explaining what's missing.
 
-    The build is pinned, so every machine and CI run plays through the same
-    mpv. Bump -Tag and -Build together to update.
+    x64 gets the slim build made by scripts/build-libmpv.sh (only what
+    StreamEdge plays, ~31 MB), from this repo's libmpv-* pre-release and
+    checked against its SHA-256. x86 gets shinchiro's general-purpose build.
+
+    Both are pinned, so every machine and CI run plays through the same mpv.
+    To update: run the libmpv workflow, then bump -SlimTag and -SlimSha256
+    (x64), or -Tag and -Build together (x86).
 
 .EXAMPLE
     pwsh scripts/fetch-libmpv.ps1
@@ -23,6 +28,8 @@ param(
     [string]$Arch  = 'x64',
     [string]$Tag   = '20261015',
     [string]$Build = '20261015-git-492bae0768',
+    [string]$SlimTag    = 'libmpv-20261020',
+    [string]$SlimSha256 = '6C26CDBED458E977B459ECDC66E6E495578286317DB1F86378090705C04F813B',
     [switch]$Force
 )
 
@@ -34,6 +41,24 @@ $dll      = Join-Path $dest 'libmpv-2.dll'
 
 if ((Test-Path $dll) -and -not $Force) {
     Write-Host "libmpv already present: $dll (use -Force to re-download)"
+    return
+}
+
+if ($Arch -eq 'x64') {
+    $url = "https://github.com/Ixitxachitl/stream-edge/releases/download/$SlimTag/libmpv-2.dll"
+    $download = Join-Path $env:TEMP "libmpv-2-$SlimTag.dll"
+    Write-Host "Downloading $url"
+    curl.exe -fL --retry 5 -o $download $url
+    if ($LASTEXITCODE -ne 0) { throw "Download failed (curl exit $LASTEXITCODE)." }
+    $hash = (Get-FileHash $download -Algorithm SHA256).Hash
+    if ($hash -ne $SlimSha256) {
+        Remove-Item $download -Force
+        throw "libmpv-2.dll from $SlimTag has SHA-256 $hash, expected $SlimSha256."
+    }
+    New-Item -ItemType Directory -Force $dest | Out-Null
+    Move-Item $download $dll -Force
+    Set-Content -Path (Join-Path $dest 'VERSION') -Value "$SlimTag slim (scripts/build-libmpv.sh)" -Encoding utf8
+    Write-Host "Installed $dll"
     return
 }
 

@@ -2,11 +2,12 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace StreamEdge.Streams;
 
 /// <summary>The slice of the Helix API the stream list needs.</summary>
-public sealed class HelixClient(HttpClient http, string clientId, string accessToken)
+public sealed partial class HelixClient(HttpClient http, string clientId, string accessToken)
 {
     internal sealed record StreamsPage(
         [property: JsonPropertyName("data")] List<HelixStream> Data,
@@ -45,7 +46,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         foreach (var batch in userIds.Distinct().Chunk(UsersPerRequest))
         {
             var url = "https://api.twitch.tv/helix/users?" + string.Join("&", batch.Select(id => "id=" + Uri.EscapeDataString(id)));
-            var page = await GetAsync<UsersPage>(url, ct).ConfigureAwait(false);
+            var page = await GetAsync(HelixJson.Default.UsersPage, url, ct).ConfigureAwait(false);
             foreach (var u in page?.Data ?? [])
                 if (u.Login is { Length: > 0 } login)
                     users[u.Id] = new ChannelInfo(login, string.IsNullOrEmpty(u.DisplayName) ? login : u.DisplayName,
@@ -67,7 +68,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         foreach (var batch in userIds.Distinct().Chunk(UsersPerRequest))
         {
             var url = "https://api.twitch.tv/helix/users?" + string.Join("&", batch.Select(id => "id=" + Uri.EscapeDataString(id)));
-            var page = await GetAsync<UsersPage>(url, ct).ConfigureAwait(false);
+            var page = await GetAsync(HelixJson.Default.UsersPage, url, ct).ConfigureAwait(false);
             foreach (var user in page?.Data ?? [])
                 if (ParseProfileImage(user.ProfileImageUrl) is { } image) images[user.Id] = image;
         }
@@ -77,15 +78,26 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
     internal static Uri? ParseProfileImage(string? url) =>
         Uri.TryCreate(url?.Replace("-300x300.", "-70x70."), UriKind.Absolute, out var uri) ? uri : null;
 
-    private async Task<T?> GetAsync<T>(string url, CancellationToken ct)
+    private async Task<T?> GetAsync<T>(JsonTypeInfo<T> type, string url, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("Client-Id", clientId);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(ct).ConfigureAwait(false);
+        return await response.Content.ReadFromJsonAsync(type, ct).ConfigureAwait(false);
     }
+
+    /// <summary>Helix's pages, read by generated code rather than reflection
+    /// (which trimming the published app would break).</summary>
+    [JsonSerializable(typeof(ChannelInformationPage))]
+    [JsonSerializable(typeof(ChannelsPage))]
+    [JsonSerializable(typeof(FollowedChannelsPage))]
+    [JsonSerializable(typeof(FollowedPage))]
+    [JsonSerializable(typeof(SharedChatPage))]
+    [JsonSerializable(typeof(StreamsPage))]
+    [JsonSerializable(typeof(UsersPage))]
+    private sealed partial class HelixJson : JsonSerializerContext;
 
     internal sealed record ChannelsPage([property: JsonPropertyName("data")] List<HelixChannel> Data);
 
@@ -101,7 +113,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
     public async Task<IReadOnlyList<ChannelSuggestion>> SearchChannelsAsync(string query, int first, CancellationToken ct)
     {
         var url = $"https://api.twitch.tv/helix/search/channels?query={Uri.EscapeDataString(query)}&first={first}";
-        var page = await GetAsync<ChannelsPage>(url, ct).ConfigureAwait(false);
+        var page = await GetAsync(HelixJson.Default.ChannelsPage, url, ct).ConfigureAwait(false);
         return [.. (page?.Data ?? []).Select(c => new ChannelSuggestion(c.Login,
             string.IsNullOrEmpty(c.DisplayName) ? c.Login : c.DisplayName, c.IsLive, c.GameName ?? "",
             ParseProfileImage(c.ThumbnailUrl)))];
@@ -116,7 +128,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         {
             var url = "https://api.twitch.tv/helix/streams?first=100&"
                       + string.Join("&", batch.Select(l => "user_login=" + Uri.EscapeDataString(l)));
-            var page = await GetAsync<StreamsPage>(url, ct).ConfigureAwait(false);
+            var page = await GetAsync(HelixJson.Default.StreamsPage, url, ct).ConfigureAwait(false);
             streams.AddRange((page?.Data ?? []).Select(s => s.ToLiveStream()));
         }
         return streams;
@@ -127,7 +139,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
     {
         var url = $"https://api.twitch.tv/helix/channels/followed?user_id={Uri.EscapeDataString(userId)}"
                   + $"&broadcaster_id={Uri.EscapeDataString(broadcasterId)}";
-        var page = await GetAsync<FollowedPage>(url, ct).ConfigureAwait(false);
+        var page = await GetAsync(HelixJson.Default.FollowedPage, url, ct).ConfigureAwait(false);
         return page?.Data.Count > 0;
     }
 
@@ -144,7 +156,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
     /// in a session.</summary>
     public async Task<IReadOnlyList<string>> GetSharedChatAsync(string broadcasterId, CancellationToken ct)
     {
-        var page = await GetAsync<SharedChatPage>(
+        var page = await GetAsync(HelixJson.Default.SharedChatPage, 
             "https://api.twitch.tv/helix/shared_chat/session?broadcaster_id=" + Uri.EscapeDataString(broadcasterId), ct).ConfigureAwait(false);
         if (page?.Data.FirstOrDefault() is not { Participants: { Count: > 0 } participants } session) return [];
         var ids = participants.Select(p => p.BroadcasterId).ToList();
@@ -174,7 +186,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         {
             var url = $"https://api.twitch.tv/helix/channels/followed?user_id={Uri.EscapeDataString(userId)}&first=100"
                       + (cursor is null ? "" : "&after=" + Uri.EscapeDataString(cursor));
-            var page = await GetAsync<FollowedChannelsPage>(url, ct).ConfigureAwait(false);
+            var page = await GetAsync(HelixJson.Default.FollowedChannelsPage, url, ct).ConfigureAwait(false);
             if (page is null) break;
             channels.AddRange(page.Data.Select(c => new ChannelRef(c.Id, c.Login,
                 string.IsNullOrEmpty(c.Name) ? c.Login : c.Name)));
@@ -200,7 +212,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         foreach (var batch in broadcasterIds.Distinct().Chunk(UsersPerRequest))
         {
             var url = "https://api.twitch.tv/helix/channels?" + string.Join("&", batch.Select(id => "broadcaster_id=" + Uri.EscapeDataString(id)));
-            var page = await GetAsync<ChannelInformationPage>(url, ct).ConfigureAwait(false);
+            var page = await GetAsync(HelixJson.Default.ChannelInformationPage, url, ct).ConfigureAwait(false);
             foreach (var c in page?.Data ?? [])
             {
                 var list = (c.Labels ?? []).ToList();
@@ -221,7 +233,7 @@ public sealed class HelixClient(HttpClient http, string clientId, string accessT
         {
             var url = $"https://api.twitch.tv/helix/streams/followed?user_id={Uri.EscapeDataString(userId)}&first=100"
                       + (cursor is null ? "" : "&after=" + Uri.EscapeDataString(cursor));
-            var page = await GetAsync<StreamsPage>(url, ct).ConfigureAwait(false);
+            var page = await GetAsync(HelixJson.Default.StreamsPage, url, ct).ConfigureAwait(false);
             if (page is null) break;
             streams.AddRange(page.Data.Select(s => s.ToLiveStream()));
             cursor = page.Pagination?.Cursor;

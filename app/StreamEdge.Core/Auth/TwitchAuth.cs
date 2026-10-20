@@ -11,7 +11,7 @@ namespace StreamEdge.Auth;
 /// desktop client on all three platforms.</summary>
 /// <remarks>Needs a Twitch application registered as a <b>Public</b> client
 /// (<see cref="TwitchApp"/>), so tokens refresh without a secret.</remarks>
-public sealed class TwitchAuth(HttpClient http, string clientId)
+public sealed partial class TwitchAuth(HttpClient http, string clientId)
 {
     /// <summary>Followed live streams, reading and sending chat, the user's
     /// own emotes (emote menu, own messages), moderator actions and the full
@@ -58,12 +58,20 @@ public sealed class TwitchAuth(HttpClient http, string clientId)
 
     private sealed record ErrorBody([property: JsonPropertyName("message")] string? Message);
 
+    /// <summary>Twitch's replies, read by generated code rather than
+    /// reflection (which trimming the published app would break).</summary>
+    [JsonSerializable(typeof(DeviceCode))]
+    [JsonSerializable(typeof(Tokens))]
+    [JsonSerializable(typeof(Identity))]
+    [JsonSerializable(typeof(ErrorBody))]
+    private sealed partial class AuthJson : JsonSerializerContext;
+
     public async Task<DeviceCode> StartAsync(CancellationToken ct)
     {
         using var response = await http.PostAsync("https://id.twitch.tv/oauth2/device",
             Form(("client_id", clientId), ("scopes", Scopes)), ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<DeviceCode>(ct).ConfigureAwait(false))!;
+        return (await response.Content.ReadFromJsonAsync(AuthJson.Default.DeviceCode, ct).ConfigureAwait(false))!;
     }
 
     /// <summary>Polls until the user approves the code, it expires, or they
@@ -81,9 +89,9 @@ public sealed class TwitchAuth(HttpClient http, string clientId)
                 ("device_code", code.Code),
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code")), ct).ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
-                return await response.Content.ReadFromJsonAsync<Tokens>(ct).ConfigureAwait(false);
+                return await response.Content.ReadFromJsonAsync(AuthJson.Default.Tokens, ct).ConfigureAwait(false);
 
-            var error = await response.Content.ReadFromJsonAsync<ErrorBody>(ct).ConfigureAwait(false);
+            var error = await response.Content.ReadFromJsonAsync(AuthJson.Default.ErrorBody, ct).ConfigureAwait(false);
             switch (error?.Message)
             {
                 case "authorization_pending":
@@ -105,7 +113,7 @@ public sealed class TwitchAuth(HttpClient http, string clientId)
             ("grant_type", "refresh_token"),
             ("refresh_token", refreshToken)), ct).ConfigureAwait(false);
         return response.IsSuccessStatusCode
-            ? await response.Content.ReadFromJsonAsync<Tokens>(ct).ConfigureAwait(false)
+            ? await response.Content.ReadFromJsonAsync(AuthJson.Default.Tokens, ct).ConfigureAwait(false)
             : null;
     }
 
@@ -117,7 +125,7 @@ public sealed class TwitchAuth(HttpClient http, string clientId)
         request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", accessToken);
         using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
         return response.IsSuccessStatusCode
-            ? await response.Content.ReadFromJsonAsync<Identity>(ct).ConfigureAwait(false)
+            ? await response.Content.ReadFromJsonAsync(AuthJson.Default.Identity, ct).ConfigureAwait(false)
             : null;
     }
 
