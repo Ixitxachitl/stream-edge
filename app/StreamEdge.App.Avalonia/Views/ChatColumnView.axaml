@@ -148,7 +148,7 @@
                                   HorizontalAlignment="Center">
                             <TextBlock Text="{Binding Cost}" FontSize="11" FontWeight="SemiBold" Foreground="White" />
                           </Border>
-                          <TextBlock DockPanel.Dock="Bottom" Text="{Binding Title}" FontSize="11" Foreground="White"
+                          <TextBlock DockPanel.Dock="Bottom" Text="{Binding Title}" FontSize="11" Foreground="{Binding Foreground}"
                                      TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
                                      TextAlignment="Center" Margin="0,2" />
                           <em:RemoteImage Source="{Binding Image}" Width="28" Height="28" Stretch="Uniform"

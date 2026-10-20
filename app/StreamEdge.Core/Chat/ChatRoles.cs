@@ -37,14 +37,19 @@ public static class ChatRoles
         : ChatterRole.User;
 
     /// <summary>Whether Twitch allows <paramref name="power"/> over someone
-    /// of <paramref name="target"/>'s role. Nobody acts on the broadcaster;
-    /// only the broadcaster acts on moderators; staff can't be timed out or
-    /// banned.</summary>
-    public static bool Allows(ModPower power, bool asBroadcaster, ChatterRole target) => target switch
+    /// of <paramref name="target"/>'s role (<paramref name="own"/>: over the
+    /// user's own message). As Helix has it, a message can't be deleted if
+    /// it's the broadcaster's (even by the broadcaster) or another
+    /// moderator's, but a moderator can delete their own. Only the
+    /// broadcaster times out or bans moderators; staff can't be.</summary>
+    public static bool Allows(ModPower power, bool asBroadcaster, ChatterRole target, bool own = false) => (power, target) switch
     {
-        ChatterRole.Broadcaster => false,
-        ChatterRole.Moderator => asBroadcaster,
-        ChatterRole.Staff => power == ModPower.Delete,
+        (_, ChatterRole.Broadcaster) => false,
+        (ModPower.Delete, _) when own => true,
+        (ModPower.Remove, _) when own => false,
+        (ModPower.Delete, ChatterRole.Moderator) => false,
+        (ModPower.Remove, ChatterRole.Moderator) => asBroadcaster,
+        (ModPower.Remove, ChatterRole.Staff) => false,
         _ => true,
     };
 }

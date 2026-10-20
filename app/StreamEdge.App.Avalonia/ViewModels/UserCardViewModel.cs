@@ -41,7 +41,7 @@ public sealed partial class UserCardViewModel : ObservableObject
         // What Twitch would refuse: anything over the broadcaster, and over
         // a moderator unless the user is the broadcaster.
         var role = ChatRoles.RoleOf(login, tab.Chat.Channel, latest?.Message.Badges ?? []);
-        CanRemove = CanModerate && ChatRoles.Allows(ModPower.Remove, tab.Chat.IsBroadcaster, role);
+        CanRemove = CanModerate && ChatRoles.Allows(ModPower.Remove, tab.Chat.IsBroadcaster, role, latest?.IsFromSelf == true);
         CanDeleteClicked = CanModerate && clicked is { IsDeleted: false, CanDelete: true };
     }
 

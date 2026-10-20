@@ -825,6 +825,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 tab.Chat.IsModerator = state.CanModerate;
                 tab.Chat.IsBroadcaster = state.IsBroadcaster;
+                if (state.MessageId is { } sent) tab.Chat.ClaimOwnId(sent);
             }
         }
         else

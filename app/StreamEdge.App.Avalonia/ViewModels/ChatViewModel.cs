@@ -19,7 +19,15 @@ public sealed partial class ChatEntry : ObservableObject
         Time = time;
     }
 
-    public ChatMessage Message { get; }
+    public ChatMessage Message { get; private set; }
+
+    /// <summary>Our own line learns its id from Twitch's USERSTATE, after
+    /// it's drawn; with it, it can be deleted or replied to.</summary>
+    internal void SetId(string id)
+    {
+        Message = Message with { Id = id };
+        OnPropertyChanged(nameof(Message));
+    }
     public string Time { get; }
 
     /// <summary>The user's own line, drawn locally (Twitch doesn't echo it).</summary>
@@ -75,7 +83,7 @@ public sealed partial class ChatEntry : ObservableObject
     public bool CanRemove => Allows(ModPower.Remove);
 
     private bool Allows(ModPower power) =>
-        ChatRoles.Allows(power, AsBroadcaster, ChatRoles.RoleOf(Message.Login, Message.Channel, Message.Badges));
+        ChatRoles.Allows(power, AsBroadcaster, ChatRoles.RoleOf(Message.Login, Message.Channel, Message.Badges), IsFromSelf);
 
     /// <summary>Someone @-mentioned the signed-in user.</summary>
     public bool IsSelfMention => Tokens.Any(t => t.IsSelfMention);
@@ -213,10 +221,31 @@ public sealed partial class ChatViewModel : ObservableObject
 
     /// <summary>A line the user just sent, drawn from what Twitch said about
     /// them (badges, colour) since the message itself never comes back.</summary>
-    public void AddOwn(ChatMessage message) =>
+    public void AddOwn(ChatMessage message)
+    {
         // Twitch doesn't echo it, so it lacks the shared chat tag the
         // others get: it was sent here.
         Add(IsShared && RoomId is { } room ? message with { SourceRoomId = room } : message, own: true);
+        if (_pendingOwnId is { } id)
+        {
+            _pendingOwnId = null;
+            ClaimOwnId(id);
+        }
+    }
+
+    /// <summary>An id Twitch gave a message of ours before its line was drawn.</summary>
+    private string? _pendingOwnId;
+
+    /// <summary>Twitch's USERSTATE for a message we sent names its id: give
+    /// it to our latest line still without one (or keep it for the line
+    /// about to be drawn).</summary>
+    public void ClaimOwnId(string id)
+    {
+        var line = Lines.LastOrDefault(l => l.IsOwn && l.Message.Id is null
+                                            && l.Message.Kind is ChatMessageKind.Message or ChatMessageKind.Action);
+        if (line is null) _pendingOwnId = id;
+        else line.SetId(id);
+    }
 
     public void Add(ChatMessage message) => Add(message, own: false);
 
@@ -436,6 +465,19 @@ public sealed record RewardTile(ChannelReward Reward, int? Balance)
     public Uri? Image => Reward.Image;
     public string Cost => Reward.Cost.ToString("N0");
     public string Background => Reward.Color is { Length: > 0 } c && Avalonia.Media.Color.TryParse(c, out _) ? c : "#9147FF";
+
+    /// <summary>The title's colour: black or white, whichever stands out
+    /// more on the reward's own colour (white vanished on a white tile).</summary>
+    public string Foreground => ReadsDark(Avalonia.Media.Color.Parse(Background)) ? "#0E0E10" : "#FFFFFF";
+
+    /// <summary>Black text contrasts more than white (WCAG luminance).</summary>
+    internal static bool ReadsDark(Avalonia.Media.Color c)
+    {
+        static double Linear(byte v) => v / 255.0 is var s && s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+        var l = 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
+        // Contrast with black (l + 0.05) / 0.05 against white's 1.05 / (l + 0.05).
+        return (l + 0.05) * (l + 0.05) > 0.05 * 1.05;
+    }
 
     /// <summary>Paused, sold out, or more than the user has: drawn dimmed.</summary>
     public double Opacity => Reward.IsAvailable && (Balance is not { } b || b >= Reward.Cost) ? 1 : 0.45;

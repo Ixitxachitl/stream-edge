@@ -57,8 +57,8 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
 
         chat.IsModerator = true;
         Assert.Equal(["Delete message", "Timeout 10 minutes", "Ban", "bob"], Clickables(bob));
-        Assert.DoesNotContain("Ban", Clickables(mine));
-        Assert.Contains("me", Clickables(mine));
+        // Your own line: delete, but no timing yourself out.
+        Assert.Equal(["Delete message", "me"], Clickables(mine));
     });
 
     [Fact]
@@ -82,15 +82,35 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
         // Twitch deletes only young messages; old history can still be acted on.
         Assert.Equal(["Timeout 10 minutes", "Ban"], ModIcons(old));
 
-        // The broadcaster can act on moderators.
+        // The broadcaster can time out and ban moderators, not delete their lines.
         chat.IsBroadcaster = true;
-        Assert.Equal(["Delete message", "Timeout 10 minutes", "Ban"], ModIcons(mod));
+        Assert.Equal(["Timeout 10 minutes", "Ban"], ModIcons(mod));
         Assert.True(vm.OpenUserCard("leadmod", mod.Entry)!.CanRemove);
         chat.IsBroadcaster = false;
         var card = vm.OpenUserCard("leadmod", mod.Entry)!;
         Assert.False(card.CanRemove);
         Assert.False(card.CanDeleteClicked);
         Assert.False(card.ShowsModeration);
+    });
+
+    [Fact]
+    public void OwnLinesGetTheirIdFromTwitchAndCanBeDeleted() => Ui(() =>
+    {
+        var vm = Demo();
+        var chat = vm.FrontTab!.Chat;
+        chat.IsModerator = true;
+        chat.AddOwn(Line("me", "oops", null!));
+        var line = new ChatLine { Entry = chat.Lines[^1] };
+        Assert.DoesNotContain("Delete message", ModIcons(line));   // no id yet
+
+        chat.ClaimOwnId("sent-1");
+        Assert.Equal("sent-1", chat.Lines[^1].Message.Id);
+        Assert.Equal(["Delete message"], ModIcons(line));
+
+        // The id can arrive before the line is drawn.
+        chat.ClaimOwnId("sent-2");
+        chat.AddOwn(Line("me", "again", null!));
+        Assert.Equal("sent-2", chat.Lines[^1].Message.Id);
     });
 
     [Fact]

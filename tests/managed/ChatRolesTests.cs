@@ -20,12 +20,30 @@ public class ChatRolesTests
         Assert.Equal(ChatterRole.Broadcaster, ChatRoles.RoleOf("XQC", "xqc", []));
 
     [Fact]
-    public void OnlyTheBroadcasterActsOnModerators()
+    public void OnlyTheBroadcasterRemovesModeratorsAndNobodyDeletesTheirMessages()
     {
         Assert.False(ChatRoles.Allows(ModPower.Remove, asBroadcaster: false, ChatterRole.Moderator));
-        Assert.False(ChatRoles.Allows(ModPower.Delete, asBroadcaster: false, ChatterRole.Moderator));
         Assert.True(ChatRoles.Allows(ModPower.Remove, asBroadcaster: true, ChatterRole.Moderator));
-        Assert.True(ChatRoles.Allows(ModPower.Delete, asBroadcaster: true, ChatterRole.Moderator));
+        // Helix: "The message must not belong to another moderator."
+        Assert.False(ChatRoles.Allows(ModPower.Delete, asBroadcaster: false, ChatterRole.Moderator));
+        Assert.False(ChatRoles.Allows(ModPower.Delete, asBroadcaster: true, ChatterRole.Moderator));
+    }
+
+    [Fact]
+    public void AModeratorDeletesTheirOwnMessagesButTheBroadcasterCant()
+    {
+        Assert.True(ChatRoles.Allows(ModPower.Delete, asBroadcaster: false, ChatterRole.Moderator, own: true));
+        Assert.False(ChatRoles.Allows(ModPower.Remove, asBroadcaster: false, ChatterRole.Moderator, own: true));
+        // Helix: "The message must not belong to the broadcaster."
+        Assert.False(ChatRoles.Allows(ModPower.Delete, asBroadcaster: true, ChatterRole.Broadcaster, own: true));
+    }
+
+    [Fact]
+    public void TheUserstateAfterSendingNamesTheMessage()
+    {
+        var sent = ChatUserState.FromIrc(IrcMessage.Parse("@badges=moderator/1;id=abc-123;mod=1 :tmi.twitch.tv USERSTATE #xqc"))!;
+        Assert.Equal("abc-123", sent.MessageId);
+        Assert.Null(ChatUserState.FromIrc(IrcMessage.Parse("@badges=;mod=0 :tmi.twitch.tv USERSTATE #xqc"))!.MessageId);
     }
 
     [Fact]

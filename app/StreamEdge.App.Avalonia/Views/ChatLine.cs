@@ -294,11 +294,12 @@ public sealed class ChatLine : Border
         }
 
         // Mod tools first, as Chatterino puts them: one click, no menu.
-        if (entry.CanModerate && !entry.IsFromSelf && !entry.IsDeleted && m.Login is not null
+        if (entry.CanModerate && !entry.IsDeleted && m.Login is not null
             && m.Kind is ChatMessageKind.Message or ChatMessageKind.Action)
         {
-            // Only what Twitch would do: not on the broadcaster, nor on
-            // another mod unless the user is the broadcaster.
+            // Only what Twitch would do: nothing on the broadcaster's lines,
+            // no deleting another mod's, timeouts and bans of mods for the
+            // broadcaster only; on the user's own lines, just delete.
             if (entry.CanDelete) inlines.Add(ModButton(TrashIcon, "Delete message", ModAction.Delete, entry));
             if (entry.CanRemove)
             {

@@ -145,4 +145,13 @@ public class ChatViewModelTests
         Assert.Equal(0.45, tile.Opacity); // 1,000 short
         Assert.Contains("1,000 more needed", tile.Tip.Replace('.', ','));
     }
+
+    [Theory]
+    [InlineData("#FFFFFF", "#0E0E10")]   // white tile: dark text, not white on white
+    [InlineData("#C2FF5C", "#0E0E10")]   // light green
+    [InlineData("#9147FF", "#FFFFFF")]   // Twitch purple
+    [InlineData("#1F69FF", "#FFFFFF")]
+    [InlineData(null, "#FFFFFF")]        // no colour: purple
+    public void RewardTitlesStandOutOnTheirTile(string? color, string text) =>
+        Assert.Equal(text, new RewardTile(new Streams.ChannelReward("r", "Hydrate", 100, color, null, null, false, true), null).Foreground);
 }

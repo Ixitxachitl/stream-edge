@@ -20,12 +20,17 @@ public sealed record ChatUserState(
             irc.Tag("badges")?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? [])
         {
             IsMod = irc.Tag("mod") == "1",
+            MessageId = irc.Command == "USERSTATE" ? irc.Tag("id") : null,
         };
     }
 
     /// <summary>The <c>mod</c> tag: a moderator here, whichever badge they
     /// show (a lead moderator's is <c>lead_moderator</c>).</summary>
     public bool IsMod { get; init; }
+
+    /// <summary>The USERSTATE that answers a message we sent carries that
+    /// message's id: our own line, drawn locally, has none until then.</summary>
+    public string? MessageId { get; init; }
 
     /// <summary>May use the mod tools here: the broadcaster or a moderator.</summary>
     public bool CanModerate => IsMod || ChatRoles.IsModerator(Badges) || ChatRoles.Has(Badges, "broadcaster");
