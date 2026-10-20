@@ -17,6 +17,9 @@ public enum ModPower
 /// they have a moderator's powers, so they count as one here.</summary>
 public static class ChatRoles
 {
+    /// <summary>Twitch deletes only messages younger than this.</summary>
+    public static readonly TimeSpan DeleteWindow = TimeSpan.FromHours(6);
+
     public static bool Has(IReadOnlyList<string> badges, string set) =>
         badges.Any(b => b.StartsWith(set + "/", StringComparison.Ordinal));
 
@@ -33,16 +36,15 @@ public static class ChatRoles
         : Has(badges, "staff") || Has(badges, "admin") || Has(badges, "global_mod") ? ChatterRole.Staff
         : ChatterRole.User;
 
-    /// <summary>Why Twitch would refuse <paramref name="power"/> over
-    /// someone of <paramref name="target"/>'s role, or null if it wouldn't.
-    /// Nobody acts on the broadcaster; only the broadcaster acts on
-    /// moderators; staff can't be timed out or banned.</summary>
-    public static string? WhyNot(ModPower power, bool asBroadcaster, ChatterRole target) => (power, target) switch
+    /// <summary>Whether Twitch allows <paramref name="power"/> over someone
+    /// of <paramref name="target"/>'s role. Nobody acts on the broadcaster;
+    /// only the broadcaster acts on moderators; staff can't be timed out or
+    /// banned.</summary>
+    public static bool Allows(ModPower power, bool asBroadcaster, ChatterRole target) => target switch
     {
-        (_, ChatterRole.Broadcaster) => "The broadcaster can't be moderated",
-        (ModPower.Delete, ChatterRole.Moderator) when !asBroadcaster => "Only the broadcaster can delete a moderator's messages",
-        (ModPower.Remove, ChatterRole.Moderator) when !asBroadcaster => "Only the broadcaster can time out or ban a moderator",
-        (ModPower.Remove, ChatterRole.Staff) => "Twitch staff can't be timed out or banned",
-        _ => null,
+        ChatterRole.Broadcaster => false,
+        ChatterRole.Moderator => asBroadcaster,
+        ChatterRole.Staff => power == ModPower.Delete,
+        _ => true,
     };
 }

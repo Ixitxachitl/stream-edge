@@ -60,13 +60,11 @@
       </StackPanel>
 
       <!-- Moderation: only where the user is a mod or the broadcaster. -->
-      <Border IsVisible="{Binding CanModerate}" Background="{StaticResource SeHeaderBg}" CornerRadius="4" Padding="8">
+      <Border IsVisible="{Binding ShowsModeration}" Background="{StaticResource SeHeaderBg}" CornerRadius="4" Padding="8">
         <StackPanel Spacing="6">
           <TextBlock Text="Moderation" FontWeight="SemiBold" />
-          <TextBox Text="{Binding Reason}" PlaceholderText="Reason (optional; needed to warn)" />
-          <TextBlock Text="{Binding CantRemove}" TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}"
-                     FontSize="{StaticResource SeSmallFontSize}" IsVisible="{Binding !CanRemove}" />
-          <WrapPanel IsEnabled="{Binding CanRemove}">
+          <TextBox Text="{Binding Reason}" PlaceholderText="Reason (optional; needed to warn)" IsVisible="{Binding CanRemove}" />
+          <WrapPanel IsVisible="{Binding CanRemove}">
             <Button Classes="mod" Content="1m" Command="{Binding TimeoutCommand}" CommandParameter="60" ToolTip.Tip="Timeout 1 minute" />
             <Button Classes="mod" Content="10m" Command="{Binding TimeoutCommand}" CommandParameter="600" ToolTip.Tip="Timeout 10 minutes" />
             <Button Classes="mod" Content="1h" Command="{Binding TimeoutCommand}" CommandParameter="3600" ToolTip.Tip="Timeout 1 hour" />
@@ -74,9 +72,9 @@
             <Button Classes="mod" Content="1w" Command="{Binding TimeoutCommand}" CommandParameter="604800" ToolTip.Tip="Timeout 1 week" />
           </WrapPanel>
           <WrapPanel>
-            <Button Classes="mod danger" Content="Ban" Command="{Binding BanCommand}" IsEnabled="{Binding CanRemove}" />
-            <Button Classes="mod" Content="Unban" Command="{Binding UnbanCommand}" />
-            <Button Classes="mod" Content="Warn" Command="{Binding WarnCommand}" IsEnabled="{Binding CanRemove}" />
+            <Button Classes="mod danger" Content="Ban" Command="{Binding BanCommand}" IsVisible="{Binding CanRemove}" />
+            <Button Classes="mod" Content="Unban" Command="{Binding UnbanCommand}" IsVisible="{Binding CanRemove}" />
+            <Button Classes="mod" Content="Warn" Command="{Binding WarnCommand}" IsVisible="{Binding CanRemove}" />
             <Button Classes="mod" Content="Delete message" Command="{Binding DeleteClickedCommand}"
                     IsVisible="{Binding CanDeleteClicked}" />
           </WrapPanel>

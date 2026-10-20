@@ -22,19 +22,19 @@ public class ChatRolesTests
     [Fact]
     public void OnlyTheBroadcasterActsOnModerators()
     {
-        Assert.NotNull(ChatRoles.WhyNot(ModPower.Remove, asBroadcaster: false, ChatterRole.Moderator));
-        Assert.NotNull(ChatRoles.WhyNot(ModPower.Delete, asBroadcaster: false, ChatterRole.Moderator));
-        Assert.Null(ChatRoles.WhyNot(ModPower.Remove, asBroadcaster: true, ChatterRole.Moderator));
-        Assert.Null(ChatRoles.WhyNot(ModPower.Delete, asBroadcaster: true, ChatterRole.Moderator));
+        Assert.False(ChatRoles.Allows(ModPower.Remove, asBroadcaster: false, ChatterRole.Moderator));
+        Assert.False(ChatRoles.Allows(ModPower.Delete, asBroadcaster: false, ChatterRole.Moderator));
+        Assert.True(ChatRoles.Allows(ModPower.Remove, asBroadcaster: true, ChatterRole.Moderator));
+        Assert.True(ChatRoles.Allows(ModPower.Delete, asBroadcaster: true, ChatterRole.Moderator));
     }
 
     [Fact]
     public void NobodyActsOnTheBroadcasterAndStaffCantBeRemoved()
     {
-        Assert.NotNull(ChatRoles.WhyNot(ModPower.Delete, asBroadcaster: false, ChatterRole.Broadcaster));
-        Assert.NotNull(ChatRoles.WhyNot(ModPower.Remove, asBroadcaster: true, ChatterRole.Staff));
-        Assert.Null(ChatRoles.WhyNot(ModPower.Delete, asBroadcaster: false, ChatterRole.Staff));
-        Assert.Null(ChatRoles.WhyNot(ModPower.Remove, asBroadcaster: false, ChatterRole.Vip));
+        Assert.False(ChatRoles.Allows(ModPower.Delete, asBroadcaster: false, ChatterRole.Broadcaster));
+        Assert.False(ChatRoles.Allows(ModPower.Remove, asBroadcaster: true, ChatterRole.Staff));
+        Assert.True(ChatRoles.Allows(ModPower.Delete, asBroadcaster: false, ChatterRole.Staff));
+        Assert.True(ChatRoles.Allows(ModPower.Remove, asBroadcaster: false, ChatterRole.Vip));
     }
 
     [Theory]

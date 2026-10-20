@@ -41,9 +41,8 @@ public sealed partial class UserCardViewModel : ObservableObject
         // What Twitch would refuse: anything over the broadcaster, and over
         // a moderator unless the user is the broadcaster.
         var role = ChatRoles.RoleOf(login, tab.Chat.Channel, latest?.Message.Badges ?? []);
-        CantRemove = ChatRoles.WhyNot(ModPower.Remove, tab.Chat.IsBroadcaster, role);
-        CanDeleteClicked = CanModerate && clicked?.Message.Id is not null && !clicked.IsDeleted
-                           && ChatRoles.WhyNot(ModPower.Delete, tab.Chat.IsBroadcaster, role) is null;
+        CanRemove = CanModerate && ChatRoles.Allows(ModPower.Remove, tab.Chat.IsBroadcaster, role);
+        CanDeleteClicked = CanModerate && clicked is { IsDeleted: false, CanDelete: true };
     }
 
     public string Login { get; }
@@ -55,10 +54,12 @@ public sealed partial class UserCardViewModel : ObservableObject
     public bool CanModerate { get; }
     public bool CanDeleteClicked { get; }
 
-    /// <summary>Why timeouts, bans and warnings are off for this user (the
-    /// broadcaster, a fellow moderator, staff), or null when they're on.</summary>
-    public string? CantRemove { get; }
-    public bool CanRemove => CantRemove is null;
+    /// <summary>Timeouts, bans and warnings: not for the broadcaster, a
+    /// fellow moderator (unless the user is the broadcaster) or staff.</summary>
+    public bool CanRemove { get; }
+
+    /// <summary>Something in the moderation box applies to this user.</summary>
+    public bool ShowsModeration => CanRemove || CanDeleteClicked;
 
     [ObservableProperty]
     private string _displayName;

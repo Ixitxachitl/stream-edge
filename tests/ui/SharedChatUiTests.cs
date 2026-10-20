@@ -44,15 +44,17 @@ public class SharedChatUiTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.False(local.IsFromOtherRoom);
 
         chat.IsModerator = true;
-        Assert.DoesNotContain("🗑", Glyphs(new ChatLine { Entry = fromComet }));
-        Assert.Contains("⛔", Glyphs(new ChatLine { Entry = fromComet }));
+        Assert.DoesNotContain("Delete message", ModTips(new ChatLine { Entry = fromComet }));
+        Assert.Contains("Ban", ModTips(new ChatLine { Entry = fromComet }));
     });
 
-    private static List<string> Glyphs(ChatLine line)
+    /// <summary>A line's mod icons, by their tips.</summary>
+    private static List<string> ModTips(ChatLine line)
     {
         var text = (SelectableTextBlock)((StackPanel)line.Child!).Children[^1];
         return [.. text.Inlines!.OfType<Avalonia.Controls.Documents.InlineUIContainer>()
-            .Select(c => c.Child is InlineMiddle m ? m.Child : c.Child).OfType<TextBlock>().Select(t => t.Text ?? "")];
+            .Select(c => c.Child is InlineMiddle m ? m.Child : c.Child).OfType<Border>()
+            .Where(b => b.Child is Avalonia.Controls.Shapes.Path).Select(b => ToolTip.GetTip(b) as string ?? "")];
     }
 
     [Fact]

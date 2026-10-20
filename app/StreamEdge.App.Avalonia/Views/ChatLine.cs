@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Path = Avalonia.Controls.Shapes.Path;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -296,14 +297,14 @@ public sealed class ChatLine : Border
         if (entry.CanModerate && !entry.IsFromSelf && !entry.IsDeleted && m.Login is not null
             && m.Kind is ChatMessageKind.Message or ChatMessageKind.Action)
         {
-            // A line shared from another channel can only be deleted there.
-            // Ones Twitch would refuse (the broadcaster's, another mod's)
-            // are greyed out, saying why.
-            if (m.Id is not null && !entry.IsFromOtherRoom)
-                inlines.Add(ModButton("🗑", "Delete message", ModAction.Delete, entry, entry.WhyCantModerate(ModPower.Delete)));
-            var cantRemove = entry.WhyCantModerate(ModPower.Remove);
-            inlines.Add(ModButton("⏱", "Timeout 10 minutes", ModAction.Timeout, entry, cantRemove));
-            inlines.Add(ModButton("⛔", "Ban", ModAction.Ban, entry, cantRemove));
+            // Only what Twitch would do: not on the broadcaster, nor on
+            // another mod unless the user is the broadcaster.
+            if (entry.CanDelete) inlines.Add(ModButton(TrashIcon, "Delete message", ModAction.Delete, entry));
+            if (entry.CanRemove)
+            {
+                inlines.Add(ModButton(TimeoutIcon, "Timeout 10 minutes", ModAction.Timeout, entry));
+                inlines.Add(ModButton(BanIcon, "Ban", ModAction.Ban, entry));
+            }
         }
 
         // Shared chat: the icon of the channel the line was sent in, first,
@@ -437,26 +438,47 @@ public sealed class ChatLine : Border
         return new InlineUIContainer(block) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
-    /// <param name="blocked">Why Twitch would refuse it: drawn faint, with
-    /// that as its tip, and does nothing.</param>
-    private Inline ModButton(string glyph, string tip, ModAction action, ChatEntry entry, string? blocked = null)
+    // The mod icons, in the shapes twitch.tv uses (a bin, a clock, a
+    // no-entry sign), drawn as outlines on a 24-unit grid.
+    private static readonly Geometry TrashIcon =
+        Geometry.Parse("M4,7 L20,7 M9.5,7 L9.5,4 L14.5,4 L14.5,7 M6,7 L7,20 L17,20 L18,7 M10,11 L10,16 M14,11 L14,16");
+    private static readonly Geometry TimeoutIcon =
+        Geometry.Parse("M12,3 A9,9 0 1 1 11.99,3 Z M12,7 L12,12 L15.5,14");
+    private static readonly Geometry BanIcon =
+        Geometry.Parse("M12,3 A9,9 0 1 1 11.99,3 Z M5.64,5.64 L18.36,18.36");
+
+    private Inline ModButton(Geometry icon, string tip, ModAction action, ChatEntry entry)
     {
-        var block = new TextBlock
+        var button = new Border
         {
-            Text = glyph,
-            FontSize = 12,
-            Margin = new Thickness(0, 0, 4, 0),
-            Cursor = new Cursor(blocked is null ? StandardCursorType.Hand : StandardCursorType.Arrow),
-            Opacity = blocked is null ? 0.75 : 0.25,
+            // Clicks land anywhere in the box, not just on the strokes.
+            Background = Brushes.Transparent,
+            Padding = new Thickness(1),
+            Margin = new Thickness(0, 0, 3, 0),
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Opacity = 0.7,
+            Child = new Path
+            {
+                Data = icon,
+                Width = 13,
+                Height = 13,
+                Stretch = Stretch.Uniform,
+                Stroke = TextBrush,
+                StrokeThickness = 1.8,
+                StrokeLineCap = PenLineCap.Round,
+                StrokeJoin = PenLineJoin.Round,
+            },
         };
-        ToolTip.SetTip(block, blocked ?? tip);
-        if (blocked is null) block.PointerPressed += (_, e) =>
+        ToolTip.SetTip(button, tip);
+        button.PointerEntered += (_, _) => button.Opacity = 1;
+        button.PointerExited += (_, _) => button.Opacity = 0.7;
+        button.PointerPressed += (_, e) =>
         {
-            if (!e.GetCurrentPoint(block).Properties.IsLeftButtonPressed) return;
+            if (!e.GetCurrentPoint(button).Properties.IsLeftButtonPressed) return;
             RaiseEvent(new ModActionEventArgs(ModActionEvent, action, entry));
             e.Handled = true;
         };
-        return new InlineUIContainer(new InlineMiddle(block)) { BaselineAlignment = BaselineAlignment.Baseline };
+        return new InlineUIContainer(new InlineMiddle(button)) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
     private static Inline Emote(Emote emote, IReadOnlyList<Emote> overlays, double height) =>

@@ -26,11 +26,11 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
         return (SelectableTextBlock)stack.Children[^1];
     }
 
-    /// <summary>The mod icons in a line, with their tips.</summary>
-    private static List<(string Glyph, string Tip)> ModIcons(ChatLine line) =>
+    /// <summary>The mod icons in a line, by their tips.</summary>
+    private static List<string> ModIcons(ChatLine line) =>
         [.. Text(line).Inlines!.OfType<InlineUIContainer>().Select(c => c.Child).OfType<InlineMiddle>()
-            .Select(m => m.Child).OfType<TextBlock>().Where(t => t.Text is "🗑" or "⏱" or "⛔")
-            .Select(t => (t.Text!, ToolTip.GetTip(t) as string ?? ""))];
+            .Select(m => m.Child).OfType<Border>().Where(b => b.Child is Avalonia.Controls.Shapes.Path)
+            .Select(b => ToolTip.GetTip(b) as string ?? "")];
 
     /// <summary>The glyphs of clickable bits (mod icons, names) in a line.</summary>
     private static List<string> Clickables(ChatLine line)
@@ -38,9 +38,10 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
         // Lines that can be replied to wrap the stack with their ↩.
         var stack = line.Child as StackPanel ?? ((Panel)line.Child!).Children.OfType<StackPanel>().First();
         var text = (SelectableTextBlock)stack.Children[^1];
-        // Icons come wrapped to centre them on the text; names don't.
+        // Icons come wrapped to centre them on the text, and go by their
+        // tips; names don't, and go by their text.
         return [.. text.Inlines!.OfType<InlineUIContainer>().Select(c => c.Child is InlineMiddle m ? m.Child : c.Child)
-            .OfType<TextBlock>().Select(t => t.Text ?? "")];
+            .Select(c => c is TextBlock t ? t.Text ?? "" : ToolTip.GetTip(c!) as string ?? "")];
     }
 
     [Fact]
@@ -52,16 +53,16 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
         chat.AddOwn(Line("me", "mine", "m2"));
         var bob = new ChatLine { Entry = chat.Lines[^2] };
         var mine = new ChatLine { Entry = chat.Lines[^1] };
-        Assert.DoesNotContain("⛔", Clickables(bob));
+        Assert.DoesNotContain("Ban", Clickables(bob));
 
         chat.IsModerator = true;
-        Assert.Equal(["🗑", "⏱", "⛔", "bob"], Clickables(bob));
-        Assert.DoesNotContain("⛔", Clickables(mine));
+        Assert.Equal(["Delete message", "Timeout 10 minutes", "Ban", "bob"], Clickables(bob));
+        Assert.DoesNotContain("Ban", Clickables(mine));
         Assert.Contains("me", Clickables(mine));
     });
 
     [Fact]
-    public void ModIconsAreGreyedWhereTwitchWouldRefuse() => Ui(() =>
+    public void ModIconsShowOnlyWhereTwitchWouldAllowThem() => Ui(() =>
     {
         var vm = Demo();
         var chat = vm.FrontTab!.Chat;
@@ -69,22 +70,27 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
         chat.Add(Line("leadmod", "hi", "m1", "lead_moderator/1"));
         chat.Add(Line("pixelperegrine", "hey", "m2"));
         chat.Add(Line("bob", "yo", "m3", "vip/1"));
-        var mod = new ChatLine { Entry = chat.Lines[^3] };
-        var owner = new ChatLine { Entry = chat.Lines[^2] };
-        var vip = new ChatLine { Entry = chat.Lines[^1] };
+        chat.InsertHistory([Line("amy", "old", "h1") with { Timestamp = DateTimeOffset.Now.AddHours(-7) }], "test");
+        var mod = new ChatLine { Entry = chat.Lines.Single(l => l.Message.Id == "m1") };
+        var owner = new ChatLine { Entry = chat.Lines.Single(l => l.Message.Id == "m2") };
+        var vip = new ChatLine { Entry = chat.Lines.Single(l => l.Message.Id == "m3") };
+        var old = new ChatLine { Entry = chat.Lines.Single(l => l.Message.Id == "h1") };
 
-        Assert.All(ModIcons(mod), i => Assert.StartsWith("Only the broadcaster", i.Tip));
-        Assert.All(ModIcons(owner), i => Assert.Equal("The broadcaster can't be moderated", i.Tip));
-        Assert.Equal(["Delete message", "Timeout 10 minutes", "Ban"], ModIcons(vip).Select(i => i.Tip));
+        Assert.Empty(ModIcons(mod));
+        Assert.Empty(ModIcons(owner));
+        Assert.Equal(["Delete message", "Timeout 10 minutes", "Ban"], ModIcons(vip));
+        // Twitch deletes only young messages; old history can still be acted on.
+        Assert.Equal(["Timeout 10 minutes", "Ban"], ModIcons(old));
 
         // The broadcaster can act on moderators.
         chat.IsBroadcaster = true;
-        Assert.Equal(["Delete message", "Timeout 10 minutes", "Ban"], ModIcons(mod).Select(i => i.Tip));
-        Assert.True(vm.OpenUserCard("leadmod", chat.Lines[^3])!.CanRemove);
+        Assert.Equal(["Delete message", "Timeout 10 minutes", "Ban"], ModIcons(mod));
+        Assert.True(vm.OpenUserCard("leadmod", mod.Entry)!.CanRemove);
         chat.IsBroadcaster = false;
-        var card = vm.OpenUserCard("leadmod", chat.Lines[^3])!;
+        var card = vm.OpenUserCard("leadmod", mod.Entry)!;
         Assert.False(card.CanRemove);
         Assert.False(card.CanDeleteClicked);
+        Assert.False(card.ShowsModeration);
     });
 
     [Fact]

@@ -65,11 +65,17 @@ public sealed partial class ChatEntry : ObservableObject
     [ObservableProperty]
     private bool _showsDeletedText;
 
-    /// <summary>Why Twitch would refuse <paramref name="power"/> over this
-    /// line's sender (the broadcaster; a moderator, unless the user is the
-    /// broadcaster; staff), or null if it wouldn't.</summary>
-    public string? WhyCantModerate(ModPower power) =>
-        ChatRoles.WhyNot(power, AsBroadcaster, ChatRoles.RoleOf(Message.Login, Message.Channel, Message.Badges));
+    /// <summary>Twitch would delete this line: it has an id, was sent here
+    /// (a shared line is deleted in its own channel), is young enough, and
+    /// its sender's role allows it.</summary>
+    public bool CanDelete => Message.Id is not null && !IsFromOtherRoom
+        && DateTimeOffset.Now - Message.Timestamp < ChatRoles.DeleteWindow && Allows(ModPower.Delete);
+
+    /// <summary>Twitch would time out or ban this line's sender.</summary>
+    public bool CanRemove => Allows(ModPower.Remove);
+
+    private bool Allows(ModPower power) =>
+        ChatRoles.Allows(power, AsBroadcaster, ChatRoles.RoleOf(Message.Login, Message.Channel, Message.Badges));
 
     /// <summary>Someone @-mentioned the signed-in user.</summary>
     public bool IsSelfMention => Tokens.Any(t => t.IsSelfMention);
