@@ -1,0 +1,44 @@
+# Builds the slim libmpv-2.dll (scripts/build-libmpv.sh) and attaches it to
+# a pre-release in this repo, where scripts/fetch-libmpv.ps1 downloads it for
+# Windows builds. Run by hand when the pinned sources change; the release is
+# never Latest, so the website keeps pointing at StreamEdge itself.
+name: libmpv
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish to (e.g. libmpv-20261020)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: git
+
+      - name: Build libmpv
+        shell: msys2 {0}
+        run: bash scripts/build-libmpv.sh "$RUNNER_TEMP/libmpv"
+
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = 'third_party/libmpv/win-x64'
+          $hash = (Get-FileHash "$dir/libmpv-2.dll" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "libmpv-2.dll SHA-256: $hash"
+          $notes = "Slim libmpv for StreamEdge on Windows x64, built by scripts/build-libmpv.sh at $env:GITHUB_SHA.`n`n$(Get-Content "$dir/VERSION")`n`nSHA-256 of libmpv-2.dll: $hash"
+          gh release create '${{ inputs.tag }}' "$dir/libmpv-2.dll" --prerelease --latest=false `
+            --title '${{ inputs.tag }}' --notes $notes --target $env:GITHUB_SHA
