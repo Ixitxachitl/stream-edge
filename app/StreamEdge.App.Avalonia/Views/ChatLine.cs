@@ -301,6 +301,8 @@ public sealed class ChatLine : Border
             // no deleting another mod's, timeouts and bans of mods for the
             // broadcaster only; on the user's own lines, just delete.
             if (entry.CanDelete) inlines.Add(ModButton(TrashIcon, "Delete message", ModAction.Delete, entry));
+            // Our own line, its id still to come: its place, kept empty.
+            else if (entry.WillBeDeletable) inlines.Add(ModButton(TrashIcon, null, ModAction.Delete, entry));
             if (entry.CanRemove)
             {
                 inlines.Add(ModButton(TimeoutIcon, "Timeout 10 minutes", ModAction.Timeout, entry));
@@ -448,7 +450,9 @@ public sealed class ChatLine : Border
     private static readonly Geometry BanIcon =
         Geometry.Parse("M12,3 A9,9 0 1 1 11.99,3 Z M5.64,5.64 L18.36,18.36");
 
-    private Inline ModButton(Geometry icon, string tip, ModAction action, ChatEntry entry)
+    /// <param name="tip">Null for a placeholder: the icon's room, invisible
+    /// and inert.</param>
+    private Inline ModButton(Geometry icon, string? tip, ModAction action, ChatEntry entry)
     {
         var button = new Border
         {
@@ -470,6 +474,12 @@ public sealed class ChatLine : Border
                 StrokeJoin = PenLineJoin.Round,
             },
         };
+        if (tip is null)
+        {
+            button.Opacity = 0;
+            button.Cursor = null;
+            return new InlineUIContainer(new InlineMiddle(button)) { BaselineAlignment = BaselineAlignment.Baseline };
+        }
         ToolTip.SetTip(button, tip);
         button.PointerEntered += (_, _) => button.Opacity = 1;
         button.PointerExited += (_, _) => button.Opacity = 0.7;

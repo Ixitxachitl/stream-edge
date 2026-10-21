@@ -79,6 +79,11 @@ public sealed partial class ChatEntry : ObservableObject
     public bool CanDelete => Message.Id is not null && !IsFromOtherRoom
         && DateTimeOffset.Now - Message.Timestamp < ChatRoles.DeleteWindow && Allows(ModPower.Delete);
 
+    /// <summary>The user's own line, drawn before Twitch has named its id:
+    /// deletable once it does (<see cref="SetId"/>), so its delete icon's
+    /// place is kept meanwhile and nothing shifts when it arrives.</summary>
+    public bool WillBeDeletable => IsOwn && Message.Id is null && Allows(ModPower.Delete);
+
     /// <summary>Twitch would time out or ban this line's sender.</summary>
     public bool CanRemove => Allows(ModPower.Remove);
 

@@ -101,7 +101,9 @@ public class ModerationUiTests(HeadlessAvalonia ui) : UiTest(ui)
         chat.IsModerator = true;
         chat.AddOwn(Line("me", "oops", null!));
         var line = new ChatLine { Entry = chat.Lines[^1] };
-        Assert.DoesNotContain("Delete message", ModIcons(line));   // no id yet
+        // No id yet: the icon's place is there, empty, so the text doesn't
+        // move when it arrives.
+        Assert.Equal([""], ModIcons(line));
 
         chat.ClaimOwnId("sent-1");
         Assert.Equal("sent-1", chat.Lines[^1].Message.Id);
