@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using StreamEdge.AvaloniaApp.ViewModels;
 
 namespace StreamEdge.AvaloniaApp.Views;
@@ -63,21 +64,44 @@ public sealed partial class PlayerSurface : NativeControlHost
         {
             if (_cornerRadius == value) return;
             _cornerRadius = value;
-            ApplyCorners();
+            ApplyCornersSoon();
         }
     }
 
-    /// <summary>Clips the window to its rounded rectangle at its current
-    /// size; again on every resize (WM_SIZE).</summary>
+    /// <summary>Once layout has moved the native window (Avalonia does that
+    /// after the arrange this comes from).</summary>
+    private void ApplyCornersSoon() => Dispatcher.UIThread.Post(ApplyCorners, DispatcherPriority.Background);
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == BoundsProperty) ApplyCornersSoon();
+    }
+
+    /// <summary>Clips the window to its rounded rectangle at the size it's
+    /// laid out at: again whenever that changes (and on WM_SIZE). From the
+    /// layout, not the window: a video turning from main into a thumbnail
+    /// had its clip worked out at the old, large size, and the native
+    /// resize that followed didn't always come back as a WM_SIZE here.</summary>
     private void ApplyCorners()
     {
-        if (!OperatingSystem.IsWindows() || _handle == IntPtr.Zero || !GetClientRect(_handle, out var r)) return;
+        if (!OperatingSystem.IsWindows() || _handle == IntPtr.Zero) return;
         var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+        var w = (int)Math.Round(Bounds.Width * scale);
+        var h = (int)Math.Round(Bounds.Height * scale);
+        if (w <= 0 || h <= 0) return;
         var d = (int)Math.Round(2 * _cornerRadius * scale);
         // The region's right and bottom edges are exclusive, hence the +1.
-        var region = d > 0 ? CreateRoundRectRgn(0, 0, r.Right + 1, r.Bottom + 1, d, d) : IntPtr.Zero;
-        // The window owns the region from here on.
-        SetWindowRgn(_handle, region, true);
+        // Square corners still get a (plain) region rather than none: a
+        // main video with none, later made a thumbnail, kept presenting
+        // past its new rounded region (Windows seems to switch an
+        // unclipped video to a direct path that ignores regions set later).
+        IntPtr Region() => d > 0 ? CreateRoundRectRgn(0, 0, w + 1, h + 1, d, d) : CreateRectRgn(0, 0, w, h);
+        // The holder Avalonia wraps the video in too: it paints black, and
+        // once its video had been the main one its square corners showed
+        // round a thumbnail clipped inside it. Each window owns its region.
+        SetWindowRgn(_handle, Region(), true);
+        if (GetParent(_handle) is var holder && holder != IntPtr.Zero) SetWindowRgn(holder, Region(), true);
     }
 
     protected override void DestroyNativeControlCore(IPlatformHandle control)
@@ -244,15 +268,8 @@ public sealed partial class PlayerSurface : NativeControlHost
     [LibraryImport("user32.dll")]
     private static partial uint GetDoubleClickTime();
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Rect32
-    {
-        public int Left, Top, Right, Bottom;
-    }
-
-    [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetClientRect(IntPtr hWnd, out Rect32 rect);
+    [LibraryImport("gdi32.dll")]
+    private static partial IntPtr CreateRectRgn(int left, int top, int right, int bottom);
 
     [LibraryImport("gdi32.dll")]
     private static partial IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);

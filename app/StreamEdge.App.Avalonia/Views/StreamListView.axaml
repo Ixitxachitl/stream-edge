@@ -65,9 +65,11 @@
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:StreamItemViewModel">
               <!-- As in twitch.tv's followed channels: avatar, name over
-                   game, live dot and viewers; the title is on hover. -->
+                   game, live dot and viewers; the title is on hover, after
+                   a pause (and not straight from row to row) so it doesn't
+                   pop up under the wheel while the list scrolls past. -->
               <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" Background="Transparent"
-                    Classes.offline="{Binding !IsLive}">
+                    Classes.offline="{Binding !IsLive}" ToolTip.ShowDelay="1000" ToolTip.BetweenShowDelay="0">
                 <ToolTip.Tip>
                   <StackPanel MaxWidth="360" Spacing="2">
                     <TextBlock Text="{Binding SharedText}" Foreground="{StaticResource SeAccent}" FontWeight="SemiBold"
