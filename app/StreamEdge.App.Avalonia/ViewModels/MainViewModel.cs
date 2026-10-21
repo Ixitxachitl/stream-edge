@@ -997,6 +997,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     internal async Task LoadPointsAsync(ChannelTabViewModel tab)
     {
         tab.PointsLoadedAt = DateTimeOffset.Now;
+        _ = LoadResubAsync(tab);
         try
         {
             var points = await ChannelPoints.FetchAsync(_http, tab.Login,
@@ -1010,6 +1011,55 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
             // Points are extra; chat works without them. Retried next refresh.
+        }
+    }
+
+    /// <summary>A resub waiting to be shared in the tab's channel, checked
+    /// alongside the points (only with the auth-token: the app's own login
+    /// can't see it).</summary>
+    private async Task LoadResubAsync(ChannelTabViewModel tab)
+    {
+        if (SecretStore.Get(SecretStore.PlaybackAuthToken) is not { } authToken) return;
+        try
+        {
+            var resub = await ResubShare.FetchAsync(_http, tab.Login, authToken, _stop.Token);
+            _ui.Post(() =>
+            {
+                if (Tabs.Contains(tab)) tab.Chat.Resub = resub;
+            });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            // Checked again next refresh.
+        }
+    }
+
+    /// <summary>The bar's Send: announces the resub in the tab's chat, with
+    /// the message and streak as set. Twitch's notice then arrives in chat
+    /// like anyone's.</summary>
+    [RelayCommand]
+    private async Task ShareResubAsync(ChannelTabViewModel? tab)
+    {
+        if (tab?.Chat is not { Resub: { } resub } chat) return;
+        if (SecretStore.Get(SecretStore.PlaybackAuthToken) is not { } authToken)
+        {
+            chat.ResubStatus = "Add your twitch.tv auth-token in Settings to share.";
+            return;
+        }
+        chat.ResubStatus = "Sharing…";
+        try
+        {
+            var error = await ResubShare.ShareAsync(_http, tab.Login, resub, chat.ResubMessage.Trim(),
+                chat.HasStreak && chat.ResubIncludeStreak, authToken, _stop.Token);
+            _ui.Post(() =>
+            {
+                if (error is null) chat.Resub = null;
+                else chat.ResubStatus = "Twitch refused: " + error;
+            });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            _ui.Post(() => chat.ResubStatus = "Couldn't reach Twitch: " + ex.Message);
         }
     }
 

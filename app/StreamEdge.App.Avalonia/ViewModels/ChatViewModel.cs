@@ -210,6 +210,62 @@ public sealed partial class ChatViewModel : ObservableObject
     [RelayCommand]
     private void CancelReply() => ReplyTo = null;
 
+    // ----- Sharing a resub ------------------------------------------------
+
+    /// <summary>A resub the user can announce here (twitch.tv's "Share your
+    /// resub"), from Twitch with the auth-token; null when there's none.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsResub), nameof(ResubTitle), nameof(HasStreak))]
+    private ResubToken? _resub;
+
+    /// <summary>The user closed the bar for this resub; a later one shows again.</summary>
+    private string? _dismissedResub;
+
+    public bool ShowsResub => Resub is { } r && r.Id != _dismissedResub;
+
+    public string ResubTitle => Resub is not { } r ? ""
+        : r.IsGift && r.Gifter is { Length: > 0 } gifter
+            ? $"Share your {Months(r.CumulativeMonths)} sub (gifted by {gifter})"
+            : $"Share your {Months(r.CumulativeMonths)} resub";
+
+    private static string Months(int n) => n == 1 ? "1-month" : $"{n}-month";
+
+    /// <summary>A streak worth mentioning: the switch for it shows.</summary>
+    public bool HasStreak => Resub?.StreakMonths > 1;
+
+    /// <summary>The message box and switches are open (Share… pressed).</summary>
+    [ObservableProperty]
+    private bool _resubExpanded;
+
+    [ObservableProperty]
+    private string _resubMessage = "";
+
+    [ObservableProperty]
+    private bool _resubIncludeStreak = true;
+
+    /// <summary>Why the last share failed, or "Sharing…" while it goes.</summary>
+    [ObservableProperty]
+    private string? _resubStatus;
+
+    partial void OnResubChanged(ResubToken? oldValue, ResubToken? newValue)
+    {
+        if (oldValue?.Id == newValue?.Id) return;
+        ResubExpanded = false;
+        ResubMessage = "";
+        ResubStatus = null;
+    }
+
+    [RelayCommand]
+    private void ExpandResub() => ResubExpanded = true;
+
+    [RelayCommand]
+    private void DismissResub()
+    {
+        _dismissedResub = Resub?.Id;
+        ResubExpanded = false;
+        OnPropertyChanged(nameof(ShowsResub));
+    }
+
     /// <summary>Sending needs a signed-in account; anonymous chat is read-only.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Placeholder))]

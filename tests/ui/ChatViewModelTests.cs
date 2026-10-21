@@ -154,4 +154,36 @@ public class ChatViewModelTests
     [InlineData(null, "#FFFFFF")]        // no colour: purple
     public void RewardTitlesStandOutOnTheirTile(string? color, string text) =>
         Assert.Equal(text, new RewardTile(new Streams.ChannelReward("r", "Hydrate", 100, color, null, null, false, true), null).Foreground);
+
+    [Fact]
+    public void AResubToShareShowsUntilDismissedAndANewOneShowsAgain()
+    {
+        var chat = new ChatViewModel(new AppSettings());
+        Assert.False(chat.ShowsResub);
+
+        chat.Resub = new Streams.ResubToken("a", 14, 6, false, null);
+        Assert.True(chat.ShowsResub);
+        Assert.Equal("Share your 14-month resub", chat.ResubTitle);
+        Assert.True(chat.HasStreak);
+        chat.ExpandResubCommand.Execute(null);
+        chat.ResubMessage = "hi";
+        Assert.True(chat.ResubExpanded);
+
+        // The same one again (the next refresh): still where it was.
+        chat.Resub = new Streams.ResubToken("a", 14, 6, false, null);
+        Assert.Equal("hi", chat.ResubMessage);
+
+        chat.DismissResubCommand.Execute(null);
+        Assert.False(chat.ShowsResub);
+        chat.Resub = new Streams.ResubToken("a", 14, 6, false, null);
+        Assert.False(chat.ShowsResub);
+
+        // Next month's: shown, from the start.
+        chat.Resub = new Streams.ResubToken("b", 15, 1, true, "Amy");
+        Assert.True(chat.ShowsResub);
+        Assert.Equal("Share your 15-month sub (gifted by Amy)", chat.ResubTitle);
+        Assert.False(chat.HasStreak);
+        Assert.False(chat.ResubExpanded);
+        Assert.Equal("", chat.ResubMessage);
+    }
 }

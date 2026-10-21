@@ -211,6 +211,34 @@
                    TextTrimming="CharacterEllipsis" FontSize="{StaticResource SeSmallFontSize}" />
       </DockPanel>
     </Border>
+    <!-- A resub to announce, as twitch.tv offers it above its chat box:
+         one line until Share… opens the message box. -->
+    <Border DockPanel.Dock="Bottom" x:Name="ResubBar" IsVisible="{Binding Chat.ShowsResub}" Margin="4,4,4,0"
+            Padding="8,4" CornerRadius="4" Background="#26262C" BorderBrush="#9147FF" BorderThickness="1">
+      <StackPanel Spacing="6">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="✕" Command="{Binding Chat.DismissResubCommand}" Padding="6,0"
+                  Background="Transparent" ToolTip.Tip="Not now" />
+          <Button DockPanel.Dock="Right" Classes="twitch" Content="Share…" Padding="10,2" Margin="6,0,2,0"
+                  Command="{Binding Chat.ExpandResubCommand}" IsVisible="{Binding !Chat.ResubExpanded}" />
+          <TextBlock Text="{Binding Chat.ResubTitle}" FontWeight="SemiBold" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+        <StackPanel Spacing="6" IsVisible="{Binding Chat.ResubExpanded}">
+          <TextBox Text="{Binding Chat.ResubMessage}" PlaceholderText="Add a message (optional)" MaxLength="500"
+                   TextWrapping="Wrap" />
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Classes="twitch" Content="Send" Padding="12,2"
+                    Command="{Binding Main.ShareResubCommand}" CommandParameter="{Binding Selected}" />
+            <CheckBox Content="Show my streak" IsChecked="{Binding Chat.ResubIncludeStreak}"
+                      IsVisible="{Binding Chat.HasStreak}" />
+          </DockPanel>
+        </StackPanel>
+        <TextBlock Text="{Binding Chat.ResubStatus}" TextWrapping="Wrap" Foreground="{StaticResource SeTextDim}"
+                   FontSize="{StaticResource SeSmallFontSize}"
+                   IsVisible="{Binding Chat.ResubStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+    </Border>
     <!-- Shared chat: which channels' chats are mixed in, as twitch.tv says
          above its chat. Each line carries its channel's icon. -->
     <Border Classes="sharedStrip" IsVisible="{Binding Chat.IsShared}" ToolTip.Tip="{Binding Chat.SharedSummary}">
