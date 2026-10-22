@@ -80,6 +80,32 @@ public class PaneDragTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void WithTheVideoOffAPaneDocksToAnEmptySideByItsEdge() => Ui(() =>
+    {
+        var settings = new AppSettings { ShowVideo = false };
+        var window = Open(settings, out var vm);
+        Assert.False(window.FindControl<Control>("PlayerPane")!.IsVisible);
+        var layout = window.FindControl<UltrawideLayout>("Layout")!;
+
+        // Near the top of the window, over chat: nothing is above, so there.
+        var from = ListHeader(window);
+        var top = layout.TranslatePoint(new Point(layout.Bounds.Width * 0.75, 10), window)!.Value;
+        window.MouseDown(from, MouseButton.Left);
+        window.MouseMove(from + new Point(20, 0));
+        window.MouseMove(top);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.FindControl<Control>("DockPreview")!.IsVisible);
+        window.MouseUp(top, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(DockSide.Top, vm.ListDock);
+        // Chat on the right, the list over the middle: it fills its height.
+        var streams = window.FindControl<Control>("StreamsPane")!;
+        Assert.Equal(layout.Bounds.Height, streams.Bounds.Height, 0.5);
+        window.Close();
+    });
+
+    [Fact]
     public void AShortPressIsAClickAndEscapeCancelsADrag() => Ui(() =>
     {
         var window = Open(new AppSettings(), out var vm);
@@ -239,6 +265,20 @@ public class PaneDragTests(HeadlessAvalonia ui) : UiTest(ui)
         Dispatcher.UIThread.RunJobs();
         Assert.True(frontSurface.IsVisible);
         Assert.True(backSurface.IsVisible);
+
+        // The video turned off: hidden at once, with no layout pass (the pane
+        // around it is hidden too), and the corners drawn over them cleared.
+        var placed = 0;
+        stage.Placed += () => placed++;
+        stage.Off = true;
+        Assert.False(frontSurface.IsVisible);
+        Assert.False(backSurface.IsVisible);
+        Assert.Empty(stage.Shown);
+        Assert.Equal(1, placed);
+        stage.Off = false;
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(frontSurface.IsVisible);
+        Assert.Equal(2, stage.Shown.Count);
         window.Close();
     });
 

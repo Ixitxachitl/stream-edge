@@ -105,8 +105,10 @@ public sealed partial class PlayerViewModel : ObservableObject
         MuteHandler?.Invoke(Muted);
     }
 
-    /// <summary>Copies a session snapshot into bindable properties.</summary>
-    public void Apply(PlaybackStatus status, IReadOnlyList<HlsVariant> variants, HlsVariant? current)
+    /// <summary>Copies a session snapshot into bindable properties. The
+    /// status bar shows what's playing; the menu marks <paramref name="picked"/>,
+    /// the most it will play, which the window or connection may hold it below.</summary>
+    public void Apply(PlaybackStatus status, IReadOnlyList<HlsVariant> variants, HlsVariant? picked)
     {
         Quality = status.Quality;
         AdFree = status.AdFree;
@@ -124,14 +126,14 @@ public sealed partial class PlayerViewModel : ObservableObject
         if (status.State == PlaybackState.Offline) IsVideoVisible = false;
         else if (status.State == PlaybackState.Playing) IsVideoVisible = true;
 
-        if (Qualities.Count != variants.Count || Qualities.Any(q => q.IsCurrent != (q.Index < variants.Count && variants[q.Index] == current)))
+        if (Qualities.Count != variants.Count || Qualities.Any(q => q.IsCurrent != (q.Index < variants.Count && variants[q.Index] == picked)))
         {
             Qualities.Clear();
             for (var i = 0; i < variants.Count; i++)
                 // Marked as twitch.tv does: a 720p60 broadcast also gets a
                 // 720p60 transcode, and the two would otherwise look the same.
                 Qualities.Add(new QualityOption(variants[i].IsSource ? variants[i].Name + " (source)" : variants[i].Name,
-                    i, variants[i] == current, SelectQualityCommand));
+                    i, variants[i] == picked, SelectQualityCommand));
         }
     }
 }

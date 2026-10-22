@@ -223,14 +223,24 @@ public sealed class UltrawideLayout : Panel
         var topH = top ? Math.Max(MinRowHeight, Math.Round(h * p.TopRowShare)) : 0;
         var bottomH = bottom ? Math.Max(MinRowHeight, Math.Round(h * p.BottomRowShare)) : 0;
         var gaps = (top ? g : 0) + (bottom ? g : 0);
-        if (topH + bottomH > 0 && h - gaps - topH - bottomH < MinVideoHeight)
+        if (!p.ShowPlayer)
+        {
+            // No video: the rows have the middle to themselves, one gap
+            // between them; the one above keeps its share, the one below
+            // takes the rest.
+            gaps = top && bottom ? g : 0;
+            if (top && bottom) topH = Math.Clamp(topH, 0, Math.Max(0, h - g - MinRowHeight));
+            else if (top) topH = h;
+            bottomH = bottom ? Math.Max(0, h - gaps - topH) : 0;
+        }
+        else if (topH + bottomH > 0 && h - gaps - topH - bottomH < MinVideoHeight)
         {
             // Not enough height for the rows and the video: the rows give way.
             var scale = Math.Max(0, h - gaps - MinVideoHeight) / (topH + bottomH);
             topH = Math.Floor(topH * scale);
             bottomH = Math.Floor(bottomH * scale);
         }
-        var videoH = Math.Max(0, h - gaps - topH - bottomH);
+        var videoH = p.ShowPlayer ? Math.Max(0, h - gaps - topH - bottomH) : 0;
         var videoY = topH + (top ? g : 0);
 
         // ----- Widths: panes left, the video's column, panes right. Each
@@ -240,10 +250,18 @@ public sealed class UltrawideLayout : Panel
         var rightMin = SideMin(columns[DockSide.Right].Count, p.MinSide, g);
         var left = leftMin > 0;
         var right = rightMin > 0;
-        var gripCount = (left ? 1 : 0) + (right ? 1 : 0);
+        // The middle column holds the video, or without it the rows above
+        // and below; with neither, the sides meet at a single grip.
+        var middle = p.ShowPlayer || top || bottom;
+        var sideCount = (left ? 1 : 0) + (right ? 1 : 0);
+        var gripCount = middle ? sideCount : left && right ? 1 : 0;
         var avail = Math.Max(0, w - gripCount * g);
-        var column = gripCount == 0 ? avail
-            : p.ShowPlayer ? Math.Floor(Math.Max(0, Math.Min(videoH * p.Aspect, avail - leftMin - rightMin))) : 0;
+        var column = !middle ? 0
+            : sideCount == 0 ? avail
+            : Math.Floor(Math.Max(0, Math.Min(
+                // Without the video, the rows get a share like a side's.
+                p.ShowPlayer ? videoH * p.Aspect : avail / (1 + sideCount),
+                avail - leftMin - rightMin)));
         var sides = avail - column;
         double leftW = 0, rightW = 0;
         if (left && right)
@@ -254,7 +272,9 @@ public sealed class UltrawideLayout : Panel
         }
         else if (left) leftW = sides;
         else if (right) rightW = sides;
-        var x = leftW + (left ? g : 0);
+        var leftGrip = left && (middle || right);
+        var rightGrip = right && middle;
+        var x = leftW + (leftGrip ? g : 0);
 
         // ----- Each pane's rect: a side's columns share its width by their
         // weights, with a gap between; panes stacked in a column share its
@@ -290,19 +310,21 @@ public sealed class UltrawideLayout : Panel
             }
         }
         Place(DockSide.Left, new Rect(0, 0, leftW, h));
-        Place(DockSide.Right, new Rect(x + column + (right ? g : 0), 0, rightW, h));
+        Place(DockSide.Right, new Rect(x + column + (rightGrip ? g : 0), 0, rightW, h));
         Place(DockSide.Top, new Rect(x, 0, column, topH));
         Place(DockSide.Bottom, new Rect(x, h - bottomH, column, bottomH));
-        if (top) splitters.Add(new Splitter(new Rect(x, topH, column, g), SplitKind.TopRow, DockSide.Top));
-        if (bottom) splitters.Add(new Splitter(new Rect(x, h - bottomH - g, column, g), SplitKind.BottomRow, DockSide.Bottom));
+        // Without the video, only the gap between the two rows (if both are
+        // there) moves, and it's the row above that's sized.
+        if (top && (p.ShowPlayer || bottom)) splitters.Add(new Splitter(new Rect(x, topH, column, g), SplitKind.TopRow, DockSide.Top));
+        if (bottom && p.ShowPlayer) splitters.Add(new Splitter(new Rect(x, h - bottomH - g, column, g), SplitKind.BottomRow, DockSide.Bottom));
 
         return new Plan(
             rects.GetValueOrDefault(PaneId.Chat),
             p.ShowPlayer ? new Rect(x, videoY, column, videoH) : default,
             rects.GetValueOrDefault(PaneId.List),
             rects.GetValueOrDefault(PaneId.Panel),
-            left ? new Rect(leftW, 0, g, h) : default,
-            right ? new Rect(x + column, 0, g, h) : default,
+            leftGrip ? new Rect(leftW, 0, g, h) : default,
+            rightGrip ? new Rect(x + column, 0, g, h) : default,
             splitters);
     }
 
@@ -476,7 +498,9 @@ public sealed class UltrawideLayout : Panel
         if (!CanSlide) return;
         var start = _dragging ? _dragStart : Arrange(Bounds.Size, Current());
         var leftW = start.LeftGrip.X;
-        var sides = leftW + (Bounds.Width - start.RightGrip.Right);
+        // With nothing between the sides there's just the one grip.
+        var rightEdge = start.RightGrip.Width > 0 ? start.RightGrip.Right : start.LeftGrip.Right;
+        var sides = leftW + (Bounds.Width - rightEdge);
         if (sides <= 0) return;
         var left = leftW + dx;
         var (leftColumns, rightColumns) = SideColumns();
@@ -538,7 +562,9 @@ public sealed class UltrawideLayout : Panel
             case SplitKind.TopRow:
             {
                 var row = _splitPlan.Splitters.First(x => x.Kind == SplitKind.TopRow).Rect.Y + (at.Y - _splitStart.Y);
-                SetCurrentValue(TopRowShareProperty, Math.Clamp(row, MinRowHeight, h - MinVideoHeight) / h);
+                // Without the video, the row below is what it mustn't squeeze.
+                var under = ShowPlayer ? MinVideoHeight : MinRowHeight + GripWidth;
+                SetCurrentValue(TopRowShareProperty, Math.Clamp(row, MinRowHeight, h - under) / h);
                 return;
             }
             case SplitKind.BottomRow:

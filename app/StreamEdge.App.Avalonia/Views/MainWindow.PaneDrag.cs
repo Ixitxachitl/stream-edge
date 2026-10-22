@@ -126,6 +126,7 @@ public partial class MainWindow
     public static (IReadOnlyDictionary<PaneId, PanePlace>? Places, DockSide? VideoSide) DropAt(
         UltrawideLayout.Plan plan, IReadOnlyDictionary<PaneId, PanePlace> places, PaneId pane, Point at)
     {
+        if (EmptySideAt(plan, places, at) is { } empty) return (PaneArrangement.MoveToSide(places, pane, empty), empty);
         foreach (var (other, rect) in new[] { (PaneId.Chat, plan.Chat), (PaneId.List, plan.List), (PaneId.Panel, plan.Panel) })
         {
             if (rect.Width <= 0 || rect.Height <= 0 || !rect.Contains(at)) continue;
@@ -136,9 +137,37 @@ public partial class MainWindow
             if (fx > 1 - BesideEdge) return (PaneArrangement.MoveBeside(places, pane, other, after: true), null);
             return (PaneArrangement.MoveStacked(places, pane, other, below: fy >= 0.5), null);
         }
-        // Over the video (or a grip): that side of it.
+        // Over the video (or a grip): that side of it. With the video off,
+        // a gap between panes is no place.
+        if (!HasVideo(plan)) return (null, null);
         var side = DockSideAt(at - plan.Player.Position, plan.Player.Size);
         return (PaneArrangement.MoveToSide(places, pane, side), side);
+    }
+
+    /// <summary>With the video off there's nothing to drop a pane beside to
+    /// reach a side no pane is on: this close to that edge of the window
+    /// counts instead.</summary>
+    public const double EdgeZone = 40;
+
+    private static bool HasVideo(UltrawideLayout.Plan plan) => plan.Player.Width > 0 && plan.Player.Height > 0;
+
+    /// <summary>Everything the panes cover: the whole layout, give or take a gap.</summary>
+    private static Rect PaneArea(UltrawideLayout.Plan plan) =>
+        new[] { plan.Chat, plan.List, plan.Panel }.Where(r => r.Width > 0 && r.Height > 0)
+            .Aggregate(default(Rect), (all, r) => all.Width > 0 ? all.Union(r) : r);
+
+    /// <summary>The empty side whose window edge <paramref name="at"/> is
+    /// near, with the video off; else null.</summary>
+    private static DockSide? EmptySideAt(UltrawideLayout.Plan plan, IReadOnlyDictionary<PaneId, PanePlace> places, Point at)
+    {
+        if (HasVideo(plan)) return null;
+        var area = PaneArea(plan);
+        bool Empty(DockSide side) => !places.Any(kv => kv.Value.Side == side && plan[kv.Key] is { Width: > 0, Height: > 0 });
+        if (at.X - area.X < EdgeZone && Empty(DockSide.Left)) return DockSide.Left;
+        if (area.Right - at.X < EdgeZone && Empty(DockSide.Right)) return DockSide.Right;
+        if (at.Y - area.Y < EdgeZone && Empty(DockSide.Top)) return DockSide.Top;
+        if (area.Bottom - at.Y < EdgeZone && Empty(DockSide.Bottom)) return DockSide.Bottom;
+        return null;
     }
 
     /// <summary>Where the preview goes, in the layout as it is now
@@ -147,8 +176,24 @@ public partial class MainWindow
     /// it, the pane's width (or height), at most part of the video. Over a
     /// pane: the half of it the drop takes (beside it, or stacked above or
     /// below), as chat's tab drags show it.</summary>
-    public static Rect PreviewRect(UltrawideLayout.Plan now, UltrawideLayout.Plan after, PaneId pane, Point at)
+    public static Rect PreviewRect(UltrawideLayout.Plan now, UltrawideLayout.Plan after, PaneId pane, Point at,
+        IReadOnlyDictionary<PaneId, PanePlace>? places = null)
     {
+        var landed = pane switch { PaneId.Chat => after.Chat, PaneId.List => after.List, _ => after.Panel };
+        if (places is not null && EmptySideAt(now, places, at) is { } empty)
+        {
+            // A strip along that edge of the window.
+            var area = PaneArea(now);
+            var ew = Math.Min(landed.Width > 0 ? landed.Width : area.Width / 3, area.Width * 0.45);
+            var eh = Math.Min(landed.Height > 0 ? landed.Height : area.Height / 3, area.Height * 0.45);
+            return empty switch
+            {
+                DockSide.Left => new Rect(area.X, area.Y, ew, area.Height),
+                DockSide.Right => new Rect(area.Right - ew, area.Y, ew, area.Height),
+                DockSide.Top => new Rect(area.X, area.Y, area.Width, eh),
+                _ => new Rect(area.X, area.Bottom - eh, area.Width, eh),
+            };
+        }
         foreach (var (other, r) in new[] { (PaneId.Chat, now.Chat), (PaneId.List, now.List), (PaneId.Panel, now.Panel) })
         {
             if (other == pane || r.Width <= 0 || r.Height <= 0 || !r.Contains(at)) continue;
@@ -159,8 +204,7 @@ public partial class MainWindow
             return fy < 0.5 ? r.WithHeight(r.Height / 2) : new Rect(r.X, r.Y + r.Height / 2, r.Width, r.Height / 2);
         }
         var video = now.Player;
-        var landed = pane switch { PaneId.Chat => after.Chat, PaneId.List => after.List, _ => after.Panel };
-        var w = Math.Min(landed.Width > 0 ? landed.Width : video.Width / 3, video.Width * 0.45);
+        var w =Math.Min(landed.Width > 0 ? landed.Width : video.Width / 3, video.Width * 0.45);
         var h = Math.Min(landed.Height > 0 ? landed.Height : video.Height / 3, video.Height * 0.45);
         return DockSideAt(at - video.Position, video.Size) switch
         {
@@ -184,7 +228,7 @@ public partial class MainWindow
             return;
         }
         var rect = PreviewRect(Layout.CurrentPlan,
-            UltrawideLayout.Arrange(Layout.Bounds.Size, Layout.Inputs(_dropPlaces)), pane, point);
+            UltrawideLayout.Arrange(Layout.Bounds.Size, Layout.Inputs(_dropPlaces)), pane, point, Layout.Places);
         // The overlay window lies exactly over the layout.
         var origin = _overlayWindow is null ? Layout.TranslatePoint(default, DockOverlay) ?? default : default;
         Canvas.SetLeft(DockPreview, origin.X + rect.X);

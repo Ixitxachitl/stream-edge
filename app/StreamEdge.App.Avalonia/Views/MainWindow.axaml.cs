@@ -153,6 +153,7 @@ public partial class MainWindow : Window
         surface.DragMoved += delta => Videos.DragPip(surface, new Vector(delta.X, delta.Y) / RenderScaling);
         surface.DragEnded += () => Videos.DropPip(surface);
         surface.Hover += over => vm.OnVideoHover(tab, over);
+        surface.PixelSizeChanged += tab.SetSurfaceSize;
         tab.PropertyChanged += OnTabChanged;
         tab.Player.PropertyChanged += OnTabPlayerChanged;
         Videos.Children.Add(surface);

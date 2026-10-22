@@ -75,8 +75,16 @@ public sealed partial class PlayerSurface : NativeControlHost
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == BoundsProperty) ApplyCornersSoon();
+        if (change.Property == BoundsProperty)
+        {
+            ApplyCornersSoon();
+            var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+            PixelSizeChanged?.Invoke((int)Math.Round(Bounds.Width * scale), (int)Math.Round(Bounds.Height * scale));
+        }
     }
+
+    /// <summary>Laid out at a new size, in device pixels, on the UI thread.</summary>
+    public event Action<int, int>? PixelSizeChanged;
 
     /// <summary>Clips the window to its rounded rectangle at the size it's
     /// laid out at: again whenever that changes (and on WM_SIZE). From the

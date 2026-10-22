@@ -39,9 +39,39 @@ public sealed class VideoStage : Panel
         set => SetValue(SuspendedProperty, value);
     }
 
+    /// <summary>The video turned off: every video hidden at once, not at the
+    /// next arrange. The pane around the stage is hidden too, so there may be
+    /// no next arrange; and a native window doesn't notice a hidden parent,
+    /// so it (and the corners drawn over it) would stay on screen.</summary>
+    public static readonly StyledProperty<bool> OffProperty =
+        AvaloniaProperty.Register<VideoStage, bool>(nameof(Off));
+
+    public bool Off
+    {
+        get => GetValue(OffProperty);
+        set => SetValue(OffProperty, value);
+    }
+
     static VideoStage()
     {
-        AffectsArrange<VideoStage>(ShowPipProperty, AspectProperty, SuspendedProperty);
+        AffectsArrange<VideoStage>(ShowPipProperty, AspectProperty, SuspendedProperty, OffProperty);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == OffProperty && Off) HideAll();
+    }
+
+    private void HideAll()
+    {
+        foreach (var child in Children)
+        {
+            child.IsVisible = false;
+            child.Arrange(default);
+        }
+        Shown = [];
+        Placed?.Invoke();
     }
 
     /// <summary>The main video's clipped corners (logical pixels): 0 when
@@ -206,15 +236,9 @@ public sealed class VideoStage : Panel
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        if (Suspended)
+        if (Suspended || Off)
         {
-            foreach (var child in Children)
-            {
-                child.IsVisible = false;
-                child.Arrange(default);
-            }
-            Shown = [];
-            Placed?.Invoke();
+            HideAll();
             return finalSize;
         }
         var surfaces = Children.OfType<PlayerSurface>().ToList();

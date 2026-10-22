@@ -445,6 +445,61 @@ public sealed class LivePlaybackSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task TheNextStreamStartsWhereTheConnectionLastHeldUp()
+    {
+        var memory = new ConnectionMemory();
+        var player = new FakePlayer();
+        await using (var session = new LivePlaybackSession(new HttpClient(new FakeTwitch()), player) { Connection = memory })
+        {
+            await session.StartAsync("someone", authToken: null);
+            var t = DateTimeOffset.UtcNow;
+            foreach (var at in new[] { 11, 16, 21 })
+            {
+                player.Stats = new VideoPlayerStats(0, true, false);
+                session.Tick(t + TimeSpan.FromSeconds(at));
+                player.Stats = new VideoPlayerStats(0.5, false, false);
+                session.Tick(t + TimeSpan.FromSeconds(at + 1));
+            }
+            Assert.Equal("720p60", session.Current?.Name);
+            Assert.Equal(3_000_000, memory.Bandwidth);
+        }
+
+        await using var next = new LivePlaybackSession(new HttpClient(new FakeTwitch()), new FakePlayer()) { Connection = memory };
+        await next.StartAsync("someone else", authToken: null);
+        Assert.Equal("720p60", next.Current?.Name);
+    }
+
+    [Fact]
+    public async Task ASmallWindowGetsTheQualityThatFillsIt()
+    {
+        var player = new FakePlayer();
+        await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch()), player);
+        session.SetSurfaceSize(1280, 720);
+        await session.StartAsync("someone", authToken: null);
+        Assert.Equal("720p60", session.Current?.Name);
+
+        // Made bigger: once the resize settles, up to the source.
+        session.SetSurfaceSize(1920, 1080);
+        session.Tick(DateTimeOffset.UtcNow);
+        Assert.Equal("720p60", session.Current?.Name);
+        session.Tick(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2));
+        Assert.Equal("1080p60", session.Current?.Name);
+
+        // Wide but only 700 tall: a little upscaling beats 1080p shrunk.
+        session.SetSurfaceSize(2000, 700);
+        session.Tick(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2));
+        Assert.Equal("720p60", session.Current?.Name);
+
+        // A pick from the menu is only a maximum: the window still lowers it.
+        session.SelectQuality(0);
+        Assert.Equal("720p60", session.Current?.Name);
+        Assert.Equal("1080p60", session.Picked?.Name);
+        session.SetSurfaceSize(1920, 1080);
+        session.Tick(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2));
+        Assert.Equal("1080p60", session.Current?.Name);
+    }
+
+    [Fact]
     public async Task CaptionsAreOnlyForTheFrontTier()
     {
         var (player, session) = await Playing();

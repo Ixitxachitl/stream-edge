@@ -81,7 +81,28 @@ public class LayoutTests(HeadlessAvalonia ui) : UiTest(ui)
     {
         var p = Plan(1920, 480, share: 0.25, showPlayer: false);
         Assert.Equal(0, p.Player.Width);
-        Assert.Equal(1910, p.Chat.Width + p.List.Width);
+        // One grip between them, not one either side of nothing.
+        Assert.Equal(1915, p.Chat.Width + p.List.Width);
+        Assert.Equal(p.List.Right, p.LeftGrip.X);
+        Assert.Equal(p.LeftGrip.Right, p.Chat.X);
+        Assert.Equal(0, p.RightGrip.Width);
+    }
+
+    [Fact]
+    public void WithoutTheVideoRowsShareTheMiddle()
+    {
+        var p = Plan(1920, 480, showPlayer: false, showPanel: true, chat: DockSide.Top, panel: DockSide.Bottom);
+        // The list on the left; the middle a share like a side's.
+        Assert.True(p.Chat.Width > 0);
+        Assert.Equal(p.Chat.X, p.Panel.X);
+        Assert.Equal(p.Chat.Width, p.Panel.Width);
+        // Chat above takes its share, the panels below the rest.
+        Assert.Equal(168, p.Chat.Height);
+        Assert.Equal(480, p.Chat.Height + Grip + p.Panel.Height);
+
+        // Alone in the middle, a row fills its height.
+        var alone = Plan(1920, 480, showPlayer: false, chat: DockSide.Top);
+        Assert.Equal(480, alone.Chat.Height);
     }
 
     [Fact]

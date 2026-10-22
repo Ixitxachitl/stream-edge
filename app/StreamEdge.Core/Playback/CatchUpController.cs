@@ -211,6 +211,10 @@ public sealed class CatchUpController(CatchUpOptions options)
         return true;
     }
 
+    /// <summary>Sets the steps down without counting as a step: for starting
+    /// below the preference, or when what the steps count from moves.</summary>
+    public void Rebase(int offset) => QualityOffset = Math.Clamp(offset, 0, MaxDowngrade);
+
     private void NoteUpgrade(DateTimeOffset now)
     {
         _lastUpgrade = now;

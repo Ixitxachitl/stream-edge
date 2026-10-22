@@ -109,8 +109,10 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             if (index == _preferredIndex) return;
             _preferredIndex = index;
             _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
-            _controller.MaxDowngrade = MaxDowngradeFrom(index);
+            _controller.MaxDowngrade = MaxDowngradeFrom(TopIndex);
+            StartFromMemory();
             if (Status.State == PlaybackState.Playing) ChangeVariant(DateTimeOffset.UtcNow);
+            StatusChanged?.Invoke();
         }
     }
 
@@ -119,9 +121,27 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     /// <summary>The user picked this channel's quality from the menu.</summary>
     private bool _manualPick;
 
+    /// <summary>Where the connection's last limit is kept, shared with the
+    /// other tabs (see <see cref="ConnectionMemory"/>).</summary>
+    public ConnectionMemory Connection { get; init; } = new();
+
+    /// <summary>The best variant worth showing at the video's size on screen
+    /// (0 when it's big enough for any).</summary>
+    private int _sizeIndex;
+
+    /// <summary>Where catch-up steps count down from: the preference, or
+    /// lower where the window is too small to show it. A pick from the menu
+    /// is a maximum like any other preference; audio only, the last
+    /// variant, stays itself.</summary>
+    private int TopIndex => Math.Max(_preferredIndex, _sizeIndex);
+
     public IReadOnlyList<HlsVariant> Variants { get; private set; } = [];
 
     public HlsVariant? Current { get; private set; }
+
+    /// <summary>The quality picked (or preferred): the most it will play,
+    /// whatever the window or the connection holds it to.</summary>
+    public HlsVariant? Picked => _preferredIndex >= 0 && _preferredIndex < Variants.Count ? Variants[_preferredIndex] : null;
 
     public PlaybackStatus Status { get; private set; } = PlaybackStatus.Stopped;
 
@@ -185,8 +205,11 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         _preferredIndex = index;
         _manualPick = true;
         _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
-        _controller.MaxDowngrade = MaxDowngradeFrom(index);
+        _controller.MaxDowngrade = MaxDowngradeFrom(TopIndex);
         ChangeVariant(DateTimeOffset.UtcNow);
+        // The menu marks the pick, which may have moved while what's
+        // playing hasn't.
+        StatusChanged?.Invoke();
     }
 
     /// <summary>Retry an offline or failed channel now, rather than at the
@@ -243,7 +266,14 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             // otherwise use the preference.
             if (!_manualPick || _preferredIndex >= Variants.Count)
                 _preferredIndex = HlsPlaylist.Pick(Variants, PreferredQuality);
-            _controller.MaxDowngrade = MaxDowngradeFrom(_preferredIndex);
+            // A new start (not a token refresh mid-stream): fit the window
+            // straight away, and begin where the connection last held up.
+            // A thumbnail's size says nothing about the front: that waits
+            // for the resize when it comes to the front.
+            var fresh = Current is null;
+            if (fresh) _sizeIndex = _tier == PlaybackTier.Full ? SizeIndex() : 0;
+            _controller.MaxDowngrade = MaxDowngradeFrom(TopIndex);
+            if (fresh) StartFromMemory();
             _server.Start();
             _retryDelay = TimeSpan.FromSeconds(2);
             Reload(DateTimeOffset.UtcNow);
@@ -294,7 +324,10 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             // Quality steps only make sense for the tab being watched; other
             // tiers already sit at the bottom. Jumping to live still applies.
             _controller.Reset(DateTimeOffset.UtcNow, keepQuality: value == PlaybackTier.Full);
-            _controller.MaxDowngrade = MaxDowngradeFrom(_preferredIndex);
+            _controller.MaxDowngrade = MaxDowngradeFrom(TopIndex);
+            // The surface is about to change size with it: wait for that
+            // before fitting the quality to it.
+            if (value == PlaybackTier.Full) SurfaceChanging();
             _player.SetCaptions(_captions && value == PlaybackTier.Full);
             if (Variants.Count > 0 && Status.State == PlaybackState.Playing) ChangeVariant(DateTimeOffset.UtcNow);
         }
@@ -310,7 +343,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         return _tier switch
         {
             PlaybackTier.Thumbnail or PlaybackTier.Off => lastVideo,
-            _ => Math.Min(_preferredIndex + _controller.QualityOffset, Math.Max(0, Variants.Count - 1)),
+            _ => Math.Min(TopIndex + _controller.QualityOffset, Math.Max(0, Variants.Count - 1)),
         };
     }
 
@@ -412,10 +445,11 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             target = i;
             if (Variants[i].Bandwidth <= fits) break;
         }
-        if (target < 0 || !_controller.SetQualityOffset(target - _preferredIndex, now)) return false;
+        if (target < 0 || !_controller.SetQualityOffset(target - TopIndex, now)) return false;
 
         _player.ShowMessage($"Slow connection: switching to {Variants[target].Name}");
         ChangeVariant(now);
+        RememberConnection();
         ResetDelivery();
         return true;
     }
@@ -454,13 +488,14 @@ public sealed class LivePlaybackSession : IAsyncDisposable
                 return false;
             _player.ShowMessage($"Connection recovered: raising quality to {target.Name}");
             ChangeVariant(now);
+            RememberConnection();
             return true;
         }
         if (_probe is not null || _tier != PlaybackTier.Full || reader is null || reader.InAdBreak
             || Current is not { } playing || now - _lastProbe < ProbeInterval || !_controller.MayProbe(now))
             return false;
         var up = UpFrom(Variants.ToList().IndexOf(playing));
-        if (up < 0 || up < _preferredIndex) return false;
+        if (up < 0 || up < TopIndex) return false;
         _lastProbe = now;
         _probing = Variants[up];
         _probe = BandwidthProbe.MeasureAsync(_http, Variants[up].Uri, _cts.Token);
@@ -473,6 +508,104 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         var up = index - 1;
         while (up >= 0 && Variants[up].IsAudioOnly) up--;
         return up;
+    }
+
+    // ----- Remembering the connection -------------------------------------------
+
+    /// <summary>On a new stream in front: start at the best quality within
+    /// what the connection last held up at, rather than at the top and
+    /// stalling down to it. The probe steps up from there once it plays
+    /// steadily, if the connection has recovered.</summary>
+    private void StartFromMemory()
+    {
+        if (_tier != PlaybackTier.Full || _controller.QualityOffset > 0 || Connection.Bandwidth is not { } limit) return;
+        var top = TopIndex;
+        var target = -1;
+        for (var i = top; i < Variants.Count; i++)
+        {
+            if (Variants[i].IsAudioOnly) continue;
+            target = i;
+            if (Variants[i].Bandwidth <= limit) break;
+        }
+        if (target > top) _controller.Rebase(target - top);
+    }
+
+    /// <summary>After the connection moved the quality: below the top, it
+    /// holds up at this bitrate; back at the preference, it keeps up with
+    /// everything asked of it. At a top lowered for the window it held at
+    /// least this much, which says nothing about more.</summary>
+    private void RememberConnection()
+    {
+        if (_tier != PlaybackTier.Full || Current is not { IsAudioOnly: false } current) return;
+        if (_controller.QualityOffset > 0) Connection.Bandwidth = current.Bandwidth;
+        else if (TopIndex == _preferredIndex) Connection.Bandwidth = null;
+        else if (Connection.Bandwidth < current.Bandwidth) Connection.Bandwidth = current.Bandwidth;
+    }
+
+    // ----- Fitting the window ---------------------------------------------------
+
+    /// <summary>A resize must settle this long before the quality follows,
+    /// so dragging a window edge doesn't switch at every step.</summary>
+    internal static TimeSpan ResizeSettle { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>A little upscaling beats twice the pixels: a 760-pixel-tall
+    /// video gets 720p rather than 1080p shrunk to fit.</summary>
+    private const double UpscaleAllowance = 0.9;
+
+    private (int Width, int Height) _surfaceSize;
+    private DateTimeOffset _surfaceChangedAt;
+    private bool _sizeChecked;
+
+    /// <summary>The video's size on screen, in device pixels. On the front
+    /// tab, quality above what it can show is skipped: no point downloading
+    /// 1080p to shrink it into a small window.</summary>
+    public void SetSurfaceSize(int width, int height)
+    {
+        if ((width, height) == _surfaceSize) return;
+        _surfaceSize = (width, height);
+        SurfaceChanging();
+    }
+
+    private void SurfaceChanging()
+    {
+        _surfaceChangedAt = DateTimeOffset.UtcNow;
+        _sizeChecked = false;
+    }
+
+    /// <summary>The best variant at the smallest height that still fills
+    /// the surface, or 0 when the surface is bigger than any (or unknown).</summary>
+    private int SizeIndex()
+    {
+        var (width, height) = _surfaceSize;
+        if (width <= 0 || height <= 0) return 0;
+        // Twitch is 16:9: in a narrower area the picture is letterboxed,
+        // shorter than the area.
+        var shown = Math.Min(height, width * 9.0 / 16);
+        var fills = Variants.Where(v => !v.IsAudioOnly && v.Height >= shown * UpscaleAllowance).Select(v => v.Height).ToList();
+        if (fills.Count == 0) return 0;
+        var fill = fills.Min();
+        // The best at that height: 720p60 over 720p30.
+        var index = Variants.ToList().FindIndex(v => !v.IsAudioOnly && v.Height > 0 && v.Height <= fill);
+        return Math.Max(0, index);
+    }
+
+    /// <summary>The window settled at a size that calls for a different top
+    /// quality: move there. If the connection is holding it lower, it stays
+    /// where it is (within the new top). True if it changed quality.</summary>
+    private bool CheckSize(DateTimeOffset now)
+    {
+        if (_sizeChecked || _tier != PlaybackTier.Full || now - _surfaceChangedAt < ResizeSettle) return false;
+        _sizeChecked = true;
+        var index = SizeIndex();
+        if (index == _sizeIndex) return false;
+        var held = _controller.QualityOffset > 0;
+        var playing = TopIndex + _controller.QualityOffset;
+        _sizeIndex = index;
+        _controller.MaxDowngrade = MaxDowngradeFrom(TopIndex);
+        _controller.Rebase(held ? playing - TopIndex : 0);
+        var before = Current;
+        ChangeVariant(now);
+        return Current != before;
     }
 
     private void Reload(DateTimeOffset now)
@@ -596,6 +729,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
         }
 
         if (CheckSync(now, stats, reader)) return;
+        if (CheckSize(now)) return;
         if (CheckBandwidth(now, reader)) return;
         if (CheckProbe(now, reader)) return;
 
@@ -612,6 +746,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
             case CatchUpAction.QualityDown:
             case CatchUpAction.QualityUp:
                 ChangeVariant(now);
+                RememberConnection();
                 break;
             default:
                 if (Math.Abs(decision.Speed - Status.Speed) > 0.001) _player.SetSpeed(decision.Speed);

@@ -255,7 +255,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var docks = new List<DockSide> { ChatDock };
             if (ShowStreamList) docks.Add(ListDock);
             if (ShowChannelPanel) docks.Add(PanelDock);
-            return docks.Contains(DockSide.Left) && docks.Contains(DockSide.Right) ? 960 : 640;
+            return ShowVideo && docks.Contains(DockSide.Left) && docks.Contains(DockSide.Right) ? 960 : 640;
         }
     }
 
@@ -313,6 +313,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     [RelayCommand]
     private void TogglePip() => ShowPip = !ShowPip;
+
+    /// <summary>The video pane. Off, every tab stops playing, silent and
+    /// downloading nothing, and the panes take its room.</summary>
+    public bool ShowVideo
+    {
+        get => _settings.ShowVideo;
+        set
+        {
+            if (!SetProperty(_settings.ShowVideo, value, _settings, (s, v) => s.ShowVideo = v)) return;
+            if (!value) VideoOnly = false;
+            OnPropertyChanged(nameof(MinWindowWidth));
+            ApplyTiers();
+        }
+    }
 
     public int? ScreenIndex => _options.ScreenIndex ?? _settings.ScreenIndex;
 
@@ -762,15 +776,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Front: full quality. Others: a thumbnail with PIP on; with it
-    /// off they stop, silent and downloading nothing, until brought forward.</summary>
+    /// off they stop, silent and downloading nothing, until brought forward.
+    /// With the video off, everything stops.</summary>
     private void ApplyTiers()
     {
         foreach (var tab in Tabs)
         {
-            if (tab.Session is { } session)
-                session.Tier = tab.IsFront ? PlaybackTier.Full : ShowPip ? PlaybackTier.Thumbnail : PlaybackTier.Off;
+            if (tab.Session is { } session) session.Tier = TierFor(tab);
         }
     }
+
+    private PlaybackTier TierFor(ChannelTabViewModel tab) =>
+        !ShowVideo ? PlaybackTier.Off
+        : tab.IsFront ? PlaybackTier.Full
+        : ShowPip ? PlaybackTier.Thumbnail
+        : PlaybackTier.Off;
 
     [RelayCommand]
     private async Task SendAsync()
@@ -1215,8 +1235,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public void AttachPlayer(ChannelTabViewModel tab, IVideoPlayer? player)
     {
         if (!Tabs.Contains(tab)) return;
-        var tier = tab.IsFront ? PlaybackTier.Full : ShowPip ? PlaybackTier.Thumbnail : PlaybackTier.Off;
-        tab.Attach(player, _http, _settings, tier, SecretStore.Get(SecretStore.PlaybackAuthToken));
+        tab.Attach(player, _http, _settings, TierFor(tab), SecretStore.Get(SecretStore.PlaybackAuthToken));
     }
 
     /// <summary>Just the video, filling the screen: chat, list and tabs

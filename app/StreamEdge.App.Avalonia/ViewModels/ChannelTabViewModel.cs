@@ -120,6 +120,16 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
 
     internal LivePlaybackSession? Session { get; private set; }
 
+    private (int Width, int Height) _surfaceSize;
+
+    /// <summary>The video's size on screen in device pixels, which caps its
+    /// quality while in front; kept for the next session too.</summary>
+    internal void SetSurfaceSize(int width, int height)
+    {
+        _surfaceSize = (width, height);
+        Session?.SetSurfaceSize(width, height);
+    }
+
     /// <summary>Twitch's numeric id for the channel, from ROOMSTATE; what
     /// third-party emote and badge APIs are keyed by.</summary>
     public string? RoomId => Chat.RoomId;
@@ -145,8 +155,12 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
 
         player.SetVolume(Volume);
         player.SetMute(Player.Muted);
-        var session = new LivePlaybackSession(http, player) { PreferredQuality = settings.PreferredQuality, Tier = tier };
-        session.StatusChanged += () => Player.Apply(session.Status, session.Variants, session.Current);
+        var session = new LivePlaybackSession(http, player)
+        {
+            PreferredQuality = settings.PreferredQuality, Tier = tier, Connection = settings.Connection,
+        };
+        session.SetSurfaceSize(_surfaceSize.Width, _surfaceSize.Height);
+        session.StatusChanged += () => Player.Apply(session.Status, session.Variants, session.Picked);
         // Reader notices ("Ad break…") arrive on the pool; mpv's OSD is thread-safe.
         session.Notice += player.ShowMessage;
         session.Captions = settings.Captions;

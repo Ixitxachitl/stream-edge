@@ -17,6 +17,7 @@
   <!-- Chat, the live list and the channel panel each dock to a side of the
        video, wherever they were left (dragged there by their headers). -->
   <v:UltrawideLayout x:Name="Layout" ChatShare="{Binding ChatShare}" VideoOnly="{Binding VideoOnly}"
+                    ShowPlayer="{Binding ShowVideo}"
                     ShowList="{Binding ShowStreamList}" ShowPanel="{Binding ShowChannelPanel}"
                     ChatPlace="{Binding ChatPlace}" ListPlace="{Binding ListPlace}" PanelPlace="{Binding PanelPlace}"
                     TopRowShare="{Binding TopRowShare}" BottomRowShare="{Binding BottomRowShare}"
@@ -54,7 +55,7 @@
     </Border>
 
     <!-- ===== Player ===== -->
-    <Border x:Name="PlayerPane" Classes="pane" Background="Black">
+    <Border x:Name="PlayerPane" Classes="pane" Background="Black" IsVisible="{Binding ShowVideo}">
     <Panel>
       <!-- Offline: the channel's own offline banner, as on twitch.tv. -->
       <em:RemoteImage Source="{Binding Player.OfflineImage}" IsVisible="{Binding Player.ShowsBanner}" />
@@ -85,7 +86,7 @@
       <!-- One native video surface per tab (added in code): the front one
            fills the pane at 16:9 and covers the text above while playing;
            the others are PIP thumbnails or hidden. -->
-      <v:VideoStage x:Name="Videos" ShowPip="{Binding ShowPip}" />
+      <v:VideoStage x:Name="Videos" ShowPip="{Binding ShowPip}" Off="{Binding !ShowVideo}" />
     </Panel>
     </Border>
 

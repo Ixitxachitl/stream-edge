@@ -42,6 +42,10 @@ public sealed class AppSettings
     /// (off: background tabs pause until brought to the front).</summary>
     public bool ShowPip { get; set; } = true;
 
+    /// <summary>The video pane; off, nothing plays (or downloads) at all and
+    /// the panes have the window to themselves.</summary>
+    public bool ShowVideo { get; set; } = true;
+
     /// <summary>Where each channel's thumbnail was dragged to; channels not
     /// in here line up along the bottom.</summary>
     public Dictionary<string, PipCell> PipCells
@@ -67,6 +71,9 @@ public sealed class AppSettings
     /// quality no taller; catch-up may drop below it while the connection
     /// struggles, but never goes above it.</summary>
     public string PreferredQuality { get; set; } = "source";
+
+    /// <summary>What the connection last held up at, shared by every tab.</summary>
+    public Playback.ConnectionMemory Connection { get; set; } = new();
 
     public int Volume { get; set; } = 100;
     public bool Muted { get; set; }

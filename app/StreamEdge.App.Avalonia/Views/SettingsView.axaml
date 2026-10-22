@@ -74,6 +74,13 @@
                      Text="Drag chat, the live list or the About panels by their header to the left, right, top or bottom of the video; each stays where you leave it. ▦ beside PIP shows or hides the list and panels." />
           <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
             <StackPanel>
+              <TextBlock Classes="settingName" Text="Video" />
+              <TextBlock Classes="settingHint" Text="Off, nothing plays or downloads and chat and the other panes take its room" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding ShowVideo}" />
+          </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
               <TextBlock Classes="settingName" Text="Live list" />
               <TextBlock Classes="settingHint" Text="Your live follows beside the player; off, chat gets the room" />
             </StackPanel>

@@ -43,6 +43,13 @@ public partial class MainWindow
         Videos.FrontCornerRadius = 0;
         Videos.InvalidateArrange();
         Videos.Placed += SyncOverlay;
+        // The pane can move without the videos in it being placed again (a
+        // splitter dragged beside it, the video turned back on at the same
+        // size): their corners must move with it.
+        PlayerPane.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == BoundsProperty || e.Property == IsVisibleProperty) SyncOverlay();
+        };
         PositionChanged += (_, _) => PlaceOverlay();
         Resized += (_, _) => SyncOverlay();
         ScalingChanged += (_, _) => SyncOverlay();

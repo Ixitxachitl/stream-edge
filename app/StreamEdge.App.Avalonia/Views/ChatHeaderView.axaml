@@ -26,6 +26,7 @@
       <Button DockPanel.Dock="Right" Classes="pip" Content="▦" ToolTip.Tip="Layout">
         <Button.Flyout>
           <MenuFlyout Placement="BottomEdgeAlignedRight">
+            <MenuItem Header="Video" ToggleType="CheckBox" IsChecked="{Binding ShowVideo, Mode=TwoWay}" />
             <MenuItem Header="Live list" ToggleType="CheckBox" IsChecked="{Binding ShowStreamList, Mode=TwoWay}" />
             <MenuItem Header="About panels" ToggleType="CheckBox" IsChecked="{Binding ShowChannelPanel, Mode=TwoWay}" />
           </MenuFlyout>
