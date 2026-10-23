@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Collections.ObjectModel;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StreamEdge.Auth;
@@ -796,7 +797,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task SendAsync()
     {
         if (ActiveTab is not { } tab) return;
-        var text = tab.Chat.Draft.Trim();
+        // Runs of spaces sent as one.
+        var text = RepeatedSpaces().Replace(tab.Chat.Draft.Trim(), " ");
         if (text.Length == 0 || _chat is null || !tab.Chat.CanSend) return;
         tab.Chat.Draft = "";
 
@@ -831,7 +833,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
-    private readonly Dictionary<string, ChatUserState> _userStates = new(StringComparer.OrdinalIgnoreCase);
+    [GeneratedRegex(" {2,}")]
+    private static partial Regex RepeatedSpaces();
+
+    private readonly Dictionary<string, ChatUserState> _userStates =new(StringComparer.OrdinalIgnoreCase);
     private ChatUserState? _globalUserState;
 
     private void OnUserState(ChatUserState state)
