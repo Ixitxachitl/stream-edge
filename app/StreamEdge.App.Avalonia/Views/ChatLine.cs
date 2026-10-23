@@ -202,8 +202,17 @@ public sealed class ChatLine : Border
         }
         else if (m.Kind == ChatMessageKind.System && m.Login is not null)
         {
-            // USERNOTICE: subs, resubs, gifts, raids, announcements.
+            // USERNOTICE: subs, resubs, gifts, raids, announcements, shared
+            // watch streaks (Twitch's text says how many streams).
             Bar("#9147FF", "#1F1F23");
+            if (m.MsgId == "viewermilestone")
+                stack.Children.Add(new TextBlock
+                {
+                    Text = "Watch Streak",
+                    Foreground = Brush("#BF94FF"),
+                    FontSize = 11.5,
+                    FontWeight = FontWeight.SemiBold,
+                });
         }
         else if (m.IsFirstMessage)
         {

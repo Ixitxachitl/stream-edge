@@ -106,6 +106,18 @@ public class ChatMessageTagTests
     }
 
     [Fact]
+    public void WatchStreakIsANoticeWithTwitchsText()
+    {
+        // Twitch's documented example.
+        var m = Chat(@"@login=twitchdev;msg-id=viewermilestone;msg-param-category=watch-streak;msg-param-value=3;" +
+                     @"system-msg=TwitchDev\swatched\s3\sconsecutive\sstreams\sthis\smonth\sand\ssparked\sa\swatch\sstreak! " +
+                     ":tmi.twitch.tv USERNOTICE #twitchrivals :Great stream");
+        Assert.Equal(ChatMessageKind.System, m.Kind);
+        Assert.Equal("viewermilestone", m.MsgId);
+        Assert.Equal("TwitchDev watched 3 consecutive streams this month and sparked a watch streak! Great stream", m.Text);
+    }
+
+    [Fact]
     public void ClearMsgDeletesOneMessage()
     {
         var mod = ChatModeration.FromIrc(IrcMessage.Parse(
