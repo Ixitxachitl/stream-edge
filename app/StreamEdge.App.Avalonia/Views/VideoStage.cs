@@ -97,7 +97,8 @@ public sealed class VideoStage : Panel
     public event Action<IReadOnlyList<(ChannelTabViewModel Tab, PipCell Cell)>>? PipsMoved;
 
     /// <summary>The videos on show after the last arrange (stage coordinates),
-    /// the main one first: for what's drawn over their corners.</summary>
+    /// the main one first, less a thumbnail being dragged: for what's drawn
+    /// over their corners.</summary>
     public IReadOnlyList<(Rect Rect, bool IsFront)> Shown { get; private set; } = [];
 
     /// <summary>The videos were placed again (<see cref="Shown"/> may differ).</summary>
@@ -284,7 +285,11 @@ public sealed class VideoStage : Panel
         for (var i = 0; i < surfaces.Count; i++)
             if (!fronts[i] && rects[i].Width > 0 && surfaces[i] != _dragging) surfaces[i].BringToFront();
         _dragging?.BringToFront();
-        Shown = [.. Enumerable.Range(0, surfaces.Count).Where(i => rects[i].Width > 0 && rects[i].Height > 0)
+        // Not the one being dragged: the native window moves at once, while
+        // what's drawn over it (another window) follows a frame or more
+        // behind, so its edge would trail it. It gets it back on the drop.
+        Shown = [.. Enumerable.Range(0, surfaces.Count)
+            .Where(i => rects[i].Width > 0 && rects[i].Height > 0 && surfaces[i] != _dragging)
             .OrderByDescending(i => fronts[i]).Select(i => (rects[i], fronts[i]))];
         Placed?.Invoke();
         return finalSize;
