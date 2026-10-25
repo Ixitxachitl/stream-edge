@@ -20,6 +20,27 @@
           </Flyout>
         </Button.Flyout>
       </Button>
+      <!-- Whispers: kept here, out of the chats; the count is unread ones. -->
+      <Button DockPanel.Dock="Right" Classes="pip" x:Name="InboxButton" ToolTip.Tip="Whispers">
+        <Button.IsVisible>
+          <MultiBinding Converter="{x:Static BoolConverters.Or}">
+            <Binding Path="Whispers.HasThreads" />
+            <Binding Path="Account.CanUseUserActions" />
+          </MultiBinding>
+        </Button.IsVisible>
+        <Panel>
+          <PathIcon Classes="icon" Data="{StaticResource IconMail}" />
+          <Border Classes="unreadBadge" IsVisible="{Binding Whispers.HasUnread}"
+                  HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-9,0">
+            <TextBlock Text="{Binding Whispers.Unread}" />
+          </Border>
+        </Panel>
+        <Button.Flyout>
+          <Flyout Placement="BottomEdgeAlignedRight">
+            <v:WhisperInboxView x:Name="Inbox" DataContext="{Binding Whispers}" />
+          </Flyout>
+        </Button.Flyout>
+      </Button>
       <ToggleButton DockPanel.Dock="Right" Classes="pip" Content="⧉" IsChecked="{Binding ShowPip}"
                     ToolTip.Tip="Picture-in-picture: background tabs as small videos over the player (off: they pause until you switch to them)" />
       <!-- Which panes show (each moves by dragging its header). -->

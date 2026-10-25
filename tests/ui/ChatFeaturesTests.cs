@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
 using StreamEdge.AvaloniaApp.Views;
 using StreamEdge.Chat;
+using StreamEdge.Chat.Emotes;
 using StreamEdge.Streams;
 using StreamEdge.Ui;
 using Xunit;
@@ -21,6 +22,13 @@ public class ChatFeaturesTests(HeadlessAvalonia ui) : UiTest(ui)
 {
     private static MainViewModel Demo(AppSettings? settings = null) =>
         new(settings ?? new AppSettings(), new StartupOptions { Demo = true }, InlineDispatcher.Instance);
+
+    /// <summary>An inbox on its own, its channel search knowing only
+    /// <paramref name="channels"/> and never asking Twitch.</summary>
+    private static WhisperInboxViewModel Inbox(AppSettings settings, Func<string, string?, string, Task<string?>> send,
+        params ChannelSuggestion[] channels) =>
+        new(settings, null, send, q => channels.Where(c => ChannelSearch.Matches(c.Login, c.DisplayName, q)),
+            (_, _) => Task.FromResult<IReadOnlyList<ChannelSuggestion>>([]), InlineDispatcher.Instance);
 
     private static string LastLine(ChannelTabViewModel tab) => tab.Chat.Lines[^1].Message.Text;
 
@@ -46,23 +54,173 @@ public class ChatFeaturesTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
-    public void AWhisperShowsInTheOpenChatAndAlerts() => Ui(() =>
+    public void AWhisperGoesToTheInboxNotTheChat() => Ui(() =>
     {
         var vm = Demo();
         var alerts = new List<AppNotification>();
         vm.Notify += alerts.Add;
+        var before = vm.ActiveTab!.Chat.Lines.Count;
+        var opened = 0;
+        vm.Whispers.OpenRequested += () => opened++;
 
         vm.OnWhisper(new WhisperEvent("w1", "42", "glowingsun", "GlowingSun", "psst"));
 
-        var line = vm.ActiveTab!.Chat.Lines[^1].Message;
-        Assert.Equal(ChatMessageKind.Whisper, line.Kind);
-        Assert.Equal("GlowingSun", line.Sender);
-        Assert.Equal("psst", line.Text);
-        Assert.Equal("Whisper from GlowingSun", Assert.Single(alerts).Title);
+        Assert.Equal(before, vm.ActiveTab.Chat.Lines.Count);
+        var thread = Assert.Single(vm.Whispers.Threads);
+        Assert.Equal("GlowingSun", thread.Name);
+        Assert.Equal("psst", thread.Preview);
+        Assert.Equal(1, vm.Whispers.Unread);
 
-        // Its ↩ fills in a whisper back.
-        vm.StartReply(vm.ActiveTab.Chat.Lines[^1]);
-        Assert.Equal("/w glowingsun ", vm.ActiveTab.Chat.Draft);
+        // The alert opens the inbox at that conversation, which reads it.
+        var alert = Assert.Single(alerts);
+        Assert.Equal("Whisper from GlowingSun", alert.Title);
+        alert.Open!();
+        Assert.Equal(1, opened);
+        Assert.Same(thread, vm.Whispers.Selected);
+        vm.Whispers.IsOpen = true;
+        Assert.Equal(0, vm.Whispers.Unread);
+
+        // While it's open on that conversation, no alert and nothing unread.
+        vm.OnWhisper(new WhisperEvent("w2", "42", "glowingsun", "GlowingSun", "still there?"));
+        Assert.Single(alerts);
+        Assert.False(vm.Whispers.HasUnread);
+        Assert.Equal(2, thread.Lines.Count);
+
+        // Someone else's goes on top, unread, and the open one stays chosen.
+        vm.OnWhisper(new WhisperEvent("w3", "7", "other", "Other", "hi"));
+        Assert.Equal(["Other", "GlowingSun"], vm.Whispers.Threads.Select(t => t.Name));
+        Assert.Same(thread, vm.Whispers.Selected);
+        Assert.Equal(1, vm.Whispers.Unread);
+        Assert.Equal(2, alerts.Count);
+    });
+
+    [Fact]
+    public void WhispersAreKeptForTheSameAccountOnly() => Ui(() =>
+    {
+        var inbox = Inbox(new AppSettings(), (_, _, _) => Task.FromResult<string?>(null));
+        inbox.Load("me");
+        inbox.Received("glowingsun", "GlowingSun", "42", "psst", DateTimeOffset.Now);
+        inbox.Sent("glowingsun", "", "42", "hey", DateTimeOffset.Now);
+
+        inbox.Load("me");
+        var thread = Assert.Single(inbox.Threads);
+        Assert.Equal("GlowingSun", thread.Name);
+        Assert.Equal(["GlowingSun: psst", "You: hey"], thread.Lines.Select(l => $"{l.Message.Sender}: {l.Message.Text}"));
+        Assert.Equal(1, inbox.Unread);
+
+        inbox.Load("someone else");
+        Assert.False(inbox.HasThreads);
+        inbox.Load(null);
+        Assert.False(inbox.HasThreads);
+    });
+
+    [Fact]
+    public void WhispersDrawEmotesOnceTheyAreKnown() => Ui(() =>
+    {
+        var vm = Demo();
+        vm.OnWhisper(new WhisperEvent("w1", "42", "glowingsun", "GlowingSun", "hi Kappa"));
+        var line = vm.Whispers.Threads[0].Lines[^1];
+        Assert.DoesNotContain(line.Tokens, t => t.Kind == ChatTokenKind.Emote);
+
+        // Twitch sends whispers without emote positions: matched by code,
+        // and drawn again when the user's emotes arrive.
+        var kappa = new Uri("https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0");
+        vm.Services.SetMyEmotes([new UserEmote(new Emote("Kappa", kappa, EmoteProvider.Twitch), "0", "globals")], null, replace: true);
+        Assert.Contains(line.Tokens, t => t.Emote?.Code == "Kappa");
+    });
+
+    [Fact]
+    public void ANewWhisperStartsAConversation() => Ui(() =>
+    {
+        WhisperInboxViewModel? inbox = null;
+        var sent = new List<string>();
+        inbox = Inbox(new AppSettings { ReadOnly = true }, (login, userId, text) =>
+        {
+            sent.Add($"{login}/{userId}: {text}");
+            if (login == "nobody") return Task.FromResult<string?>("No Twitch user called nobody.");
+            inbox!.Sent(login, "GlowingSun", "42", text, DateTimeOffset.Now);
+            return Task.FromResult<string?>(null);
+        });
+        inbox.Load(null);
+
+        // Empty, it opens ready to write.
+        inbox.IsOpen = true;
+        Assert.True(inbox.Composing);
+        Assert.False(inbox.SendCommand.CanExecute(null));
+
+        inbox.Recipients.Query = "nobody";
+        inbox.Draft = "hello";
+        inbox.SendCommand.Execute(null);
+        Assert.Equal("No Twitch user called nobody.", inbox.Status);
+        Assert.Equal("hello", inbox.Draft);             // kept to try again
+        Assert.True(inbox.Composing);
+
+        inbox.Recipients.Query = "@GlowingSun";
+        inbox.SendCommand.Execute(null);
+        Assert.Equal(["nobody/: hello", "GlowingSun/: hello"], sent);
+        Assert.False(inbox.Composing);
+        Assert.Equal("GlowingSun", inbox.Selected?.Name);
+        Assert.Equal("", inbox.Draft);
+        Assert.Equal("", inbox.Recipients.Query);
+
+        // Answering a conversation sends to it, by its id.
+        inbox.Draft = "again";
+        inbox.SendCommand.Execute(null);
+        Assert.Equal("glowingsun/42: again", sent[^1]);
+
+        // The New button clears the choice and writes to someone else.
+        inbox.ComposeCommand.Execute(null);
+        Assert.True(inbox.Composing);
+        Assert.Null(inbox.Selected);
+    });
+
+    [Fact]
+    public void WhoToSuggestsAsTheLiveListSearchDoes() => Ui(() =>
+    {
+        var inbox = Inbox(new AppSettings { ReadOnly = true }, (_, _, _) => Task.FromResult<string?>(null),
+            new ChannelSuggestion("glowfish", "GlowFish", IsLive: true));
+        inbox.Recipients.Debounce = TimeSpan.Zero;
+        inbox.Load(null);
+        inbox.Received("glowingsun", "GlowingSun", "42", "psst", DateTimeOffset.Now);
+        var picked = 0;
+        inbox.RecipientPicked += () => picked++;
+        inbox.ComposeCommand.Execute(null);
+
+        // People already whispered, channels known, and the name as typed.
+        inbox.Recipients.Query = "glow";
+        Assert.Equal(["glowfish", "glowingsun", "glow"], inbox.Recipients.Suggestions.Select(s => s.Login));
+        Assert.Equal("Whisper this name", inbox.Recipients.Suggestions[^1].Detail);
+
+        // Picking one keeps it in the box, closes the list, and moves on.
+        inbox.Recipients.Accept(1);
+        Assert.Equal("glowingsun", inbox.Recipients.Query);
+        Assert.False(inbox.Recipients.IsOpen);
+        Assert.Equal(1, picked);
+        inbox.Draft = "hi";
+        Assert.True(inbox.SendCommand.CanExecute(null));
+    });
+
+    [Fact]
+    public void TheInboxOpensUnderItsButton() => Ui(() =>
+    {
+        var vm = Demo();
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "InboxButton");
+        Assert.False(button.IsVisible);                 // signed out, no whispers: nothing to show
+
+        vm.OnWhisper(new WhisperEvent("w1", "42", "glowingsun", "GlowingSun", "psst"));
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(button.IsVisible);
+
+        vm.Whispers.Open("glowingsun");
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(button.Flyout!.IsOpen);
+        Assert.True(vm.Whispers.IsOpen);
+        Assert.False(vm.Whispers.HasUnread);
+        button.Flyout.Hide();
+        Assert.False(vm.Whispers.IsOpen);
+        window.Close();
     });
 
     [Fact]

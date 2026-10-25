@@ -23,40 +23,8 @@
         </DockPanel>
       </Border>
       <!-- Join any channel: suggestions as you type, as on twitch.tv. -->
-      <Panel DockPanel.Dock="Top" Margin="8,6,8,4">
-        <TextBox x:Name="ChannelSearchBox" Classes="channelSearch" Text="{Binding Search.Query}"
-                 PlaceholderText="Search or join a channel" />
-        <Popup x:Name="ChannelSuggestionPopup" PlacementTarget="{Binding #ChannelSearchBox}" Placement="BottomEdgeAlignedLeft"
-               IsOpen="{Binding Search.IsOpen}" IsLightDismissEnabled="False">
-          <Border Classes="suggestions below" MinWidth="{Binding #ChannelSearchBox.Bounds.Width}">
-            <ListBox x:Name="ChannelSuggestionList" Classes="suggestions channels" Focusable="False"
-                     ItemsSource="{Binding Search.Suggestions}" SelectedIndex="{Binding Search.SelectedIndex, Mode=TwoWay}" MaxHeight="320">
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="streams:ChannelSuggestion">
-                  <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Panel Classes="avatar">
-                      <Border Classes="avatarPlaceholder">
-                        <TextBlock Text="{Binding Initial}" />
-                      </Border>
-                      <em:RemoteImage Source="{Binding ProfileImage}" Stretch="UniformToFill">
-                        <em:RemoteImage.Clip>
-                          <EllipseGeometry Rect="0,0,28,28" />
-                        </em:RemoteImage.Clip>
-                      </em:RemoteImage>
-                    </Panel>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0,6,0">
-                      <TextBlock Classes="streamName" Text="{Binding DisplayName}" />
-                      <TextBlock Classes="streamGame" Text="{Binding Detail}"
-                                 IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                    </StackPanel>
-                    <Ellipse Grid.Column="2" Classes="liveDot" IsVisible="{Binding ShowsLiveDot}" />
-                  </Grid>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-          </Border>
-        </Popup>
-      </Panel>
+      <v:ChannelPicker DockPanel.Dock="Top" Margin="8,6,8,4" x:Name="ChannelSearch"
+                       DataContext="{Binding Search}" Placeholder="Search or join a channel" />
       <Panel>
         <!-- Open channels the user doesn't follow head the list, live or not. -->
         <ListBox x:Name="StreamList" Classes="streams" ItemsSource="{Binding Streams.Items}" SelectedItem="{Binding Streams.Selected}"

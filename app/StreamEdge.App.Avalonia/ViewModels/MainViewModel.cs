@@ -60,6 +60,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (options.Demo) Services.LookUpChannels = false;
         EmoteMenu = new EmoteMenuViewModel(Services, () => ActiveTab, Account);
         ModMenu = new ModMenuViewModel(() => ActiveTab, Moderation);
+        Whispers = new WhisperInboxViewModel(settings, Services, SendWhisperAsync, LocalChannels, SearchChannelsAsync, ui);
+        Whispers.Load(Account.UserId);
         Columns.CollectionChanged += (_, _) => OnSplitsChanged();
         Activate(AddColumn(0));
         Account.AccountChanged += () => _ = OnAccountChangedAsync();
@@ -84,6 +86,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ChatServices Services { get; }
     public EmoteMenuViewModel EmoteMenu { get; }
     public ModMenuViewModel ModMenu { get; }
+    public WhisperInboxViewModel Whispers { get; }
     public AccountViewModel Account { get; }
 
     /// <summary>Every open channel, in the order opened. Each is in exactly
@@ -436,6 +439,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task OnAccountChangedAsync()
     {
+        Whispers.Load(Account.UserId);
         // Reconnect chat under the new identity, keeping every open channel.
         if (_chat is not null) await _chat.DisposeAsync();
         _chat = CreateChatClient();
@@ -1160,6 +1164,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var tab in Tabs.Where(t => roomId is null || t.RoomId == roomId || t.Chat.SharedRooms.Contains(roomId)
                                             || t.Chat.Lines.Any(l => l.Message.SourceRoomId == roomId)))
             tab.Chat.RenderAll();
+        // Whispers use only the global and the user's own emotes.
+        if (roomId is null) Whispers.Render();
     }
 
     /// <summary>GIFs drawn in chat, or left as their "[title]" text.</summary>

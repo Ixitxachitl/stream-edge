@@ -1,0 +1,44 @@
+<!-- A channel search box with suggestions under it as you type, as on
+     twitch.tv: the live list's (to join one) and the whisper inbox's (to
+     name who to write to). -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:em="using:StreamEdge.AvaloniaApp.Views.Emotes"
+             xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
+             xmlns:streams="using:StreamEdge.Streams"
+             x:Class="StreamEdge.AvaloniaApp.Views.ChannelPicker"
+             x:DataType="vm:ChannelSearchViewModel">
+  <Panel>
+    <TextBox x:Name="ChannelSearchBox" Classes="channelSearch" Text="{Binding Query}" />
+    <Popup x:Name="ChannelSuggestionPopup" PlacementTarget="{Binding #ChannelSearchBox}" Placement="BottomEdgeAlignedLeft"
+           IsOpen="{Binding IsOpen}" IsLightDismissEnabled="False">
+      <Border Classes="suggestions below" MinWidth="{Binding #ChannelSearchBox.Bounds.Width}">
+        <ListBox x:Name="ChannelSuggestionList" Classes="suggestions channels" Focusable="False"
+                 ItemsSource="{Binding Suggestions}" SelectedIndex="{Binding SelectedIndex, Mode=TwoWay}" MaxHeight="320">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="streams:ChannelSuggestion">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Panel Classes="avatar">
+                  <Border Classes="avatarPlaceholder">
+                    <TextBlock Text="{Binding Initial}" />
+                  </Border>
+                  <em:RemoteImage Source="{Binding ProfileImage}" Stretch="UniformToFill">
+                    <em:RemoteImage.Clip>
+                      <EllipseGeometry Rect="0,0,28,28" />
+                    </em:RemoteImage.Clip>
+                  </em:RemoteImage>
+                </Panel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0,6,0">
+                  <TextBlock Classes="streamName" Text="{Binding DisplayName}" />
+                  <TextBlock Classes="streamGame" Text="{Binding Detail}"
+                             IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+                <Ellipse Grid.Column="2" Classes="liveDot" IsVisible="{Binding ShowsLiveDot}" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Border>
+    </Popup>
+  </Panel>
+</UserControl>

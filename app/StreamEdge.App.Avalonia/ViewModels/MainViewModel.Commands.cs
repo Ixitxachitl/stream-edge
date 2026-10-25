@@ -218,56 +218,44 @@ public sealed partial class MainViewModel
             Say(tab, $"Say something: /w {login} <message>");
             return;
         }
-        var (api, why) = UserApi();
-        if (api is null)
-        {
-            Say(tab, why!);
-            return;
-        }
-        if (await FindUserAsync(tab, login) is not { } user) return;
-        var result = await api.WhisperAsync(user.Id, message, _stop.Token);
-        if (!result.Ok)
-        {
-            Say(tab, "Whisper not sent: " + result.Error);
-            return;
-        }
-        var state = _globalUserState;
-        tab.Chat.AddOwn(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Whisper, tab.Login, Account.Login,
-            state?.DisplayName ?? Account.Login, state?.Color, [], message)
-        {
-            UserId = Account.UserId,
-            WhisperTo = user.DisplayName,
-        });
+        // The whisper itself goes in the inbox, not this chat.
+        Say(tab, await SendWhisperAsync(login, null, message) ?? $"Whispered {login}.");
     }
 
-    /// <summary>A whisper arrived: shown in the chat being typed in (there's
-    /// no inbox to keep it in), with an alert, and /r answers it.</summary>
+    /// <summary>Sends a whisper and keeps it in the inbox. Returns why it
+    /// wasn't sent, or null.</summary>
+    /// <param name="userId">Theirs, when known: saves looking it up.</param>
+    private async Task<string?> SendWhisperAsync(string login, string? userId, string message)
+    {
+        var (api, why) = UserApi();
+        if (api is null) return why;
+        var user = userId is null ? await api.GetUserAsync(login, _stop.Token) : new TwitchUser(userId, login, "");
+        if (user is null) return $"No Twitch user called {login}.";
+        var result = await api.WhisperAsync(user.Id, message, _stop.Token);
+        if (!result.Ok) return "Whisper not sent: " + result.Error;
+        // No display name when it wasn't looked up: the conversation keeps its own.
+        Whispers.Sent(user.Login, user.DisplayName, user.Id, message, DateTimeOffset.Now);
+        return null;
+    }
+
+    /// <summary>A whisper arrived: into the ✉ inbox, never a chat, with an
+    /// alert that opens it (unless it's open there already); /r answers it.</summary>
     public void OnWhisper(WhisperEvent whisper)
     {
         _lastWhisperFrom = whisper.FromLogin;
         var name = whisper.FromName.Length > 0 ? whisper.FromName : whisper.FromLogin;
-        var chat = ActiveTab?.Chat ?? _idleChat;
-        chat.Add(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Whisper, chat.Channel, whisper.FromLogin, name,
-            null, [], whisper.Text)
-        {
-            Id = whisper.Id,
-            UserId = whisper.FromId,
-        });
-        Notify?.Invoke(new AppNotification($"Whisper from {name}", whisper.Text, null));
+        if (Whispers.Received(whisper.FromLogin, name, whisper.FromId, whisper.Text, DateTimeOffset.Now)) return;
+        var from = whisper.FromLogin;
+        Notify?.Invoke(new AppNotification($"Whisper from {name}", whisper.Text, () => Whispers.Open(from)));
     }
 
     // ----- Replies ----------------------------------------------------------
 
     /// <summary>Answer this line: the next message from its chat goes as a
-    /// reply to it. A whisper is answered with a whisper.</summary>
+    /// reply to it.</summary>
     public void StartReply(ChatEntry entry)
     {
         var m = entry.Message;
-        if (m.Kind == ChatMessageKind.Whisper)
-        {
-            if (m.WhisperTo is null && m.Login is { } from && ActiveTab is { } tab) tab.Chat.Draft = $"/w {from} ";
-            return;
-        }
         if (m.Id is null || m.Login is null || TabFor(m.Channel) is not { } owner) return;
         owner.Chat.ReplyTo = entry;
         // Sent from the chat being typed in: make it this one.

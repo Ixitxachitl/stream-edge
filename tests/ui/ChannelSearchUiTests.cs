@@ -12,6 +12,10 @@ namespace StreamEdge.UiTests;
 
 public class ChannelSearchUiTests(HeadlessAvalonia ui) : UiTest(ui)
 {
+    /// <summary>The live list's search box.</summary>
+    private static ChannelPicker Picker(Window window) =>
+        window.FindControl<StreamListView>("StreamsPane")!.FindControl<ChannelPicker>("ChannelSearch")!;
+
     private static MainViewModel Demo(AppSettings? settings = null)
     {
         var vm = new MainViewModel(settings ?? new AppSettings(), new StartupOptions { Demo = true }, InlineDispatcher.Instance);
@@ -121,12 +125,12 @@ public class ChannelSearchUiTests(HeadlessAvalonia ui) : UiTest(ui)
         var vm = Demo();
         var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
         window.Show();
-        var box = window.FindControl<StreamListView>("StreamsPane")!.FindControl<TextBox>("ChannelSearchBox")!;
+        var box = Picker(window).FindControl<TextBox>("ChannelSearchBox")!;
         box.Focus();
         vm.Search.Query = "Velvet";
         Dispatcher.UIThread.RunJobs();
 
-        var popup = window.FindControl<StreamListView>("StreamsPane")!.FindControl<Avalonia.Controls.Primitives.Popup>("ChannelSuggestionPopup")!;
+        var popup = Picker(window).FindControl<Avalonia.Controls.Primitives.Popup>("ChannelSuggestionPopup")!;
         Assert.True(popup.IsOpen);
         var frame = window.CaptureRenderedFrame();
         if (Environment.GetEnvironmentVariable("STREAMEDGE_SNAPSHOT") is { Length: > 0 } path)

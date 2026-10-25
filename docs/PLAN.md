@@ -101,7 +101,7 @@ playlist resolution (with optional auth-token), secrets store.
 - [x] Clickable links (open in the default browser)
 - [x] Replies: ↩ on a line (hover), sent with IRC's reply tag, a "Replying to" bar above the box
 - [x] Slash commands through Helix (IRC only runs /me since 2023): /ban, /timeout, /warn, chat modes, /announce, /shield, /color, /block, /w; /help lists them
-- [x] Whispers: sent with Helix (needs a verified phone), received over EventSub `user.whisper.message`; shown in the open chat, /r answers. No history: Twitch has no API for it
+- [x] Whispers: sent with Helix (needs a verified phone), received over EventSub `user.whisper.message`; kept in the ✉ inbox in the chat header (not the chats), one conversation per person, saved to whispers.json since Twitch has no history API; /r answers
 
 ### Phase 2: stream list
 - [x] Favourite toggle (context menu) → `Favorites`

@@ -110,14 +110,12 @@ public sealed class ChatLine : Border
     /// <summary>The ↩ on the line under the mouse.</summary>
     private Control? _replyButton;
 
-    /// <summary>Someone else's message (or a whisper to the user) that a
-    /// reply can answer.</summary>
+    /// <summary>Someone else's message that a reply can answer.</summary>
     private static bool CanReply(ChatEntry entry)
     {
         var m = entry.Message;
         if (entry.IsDeleted || entry.IsFromSelf || m.Login is null) return false;
-        return m.Kind == ChatMessageKind.Whisper ? m.WhisperTo is null
-            : m.Kind is ChatMessageKind.Message or ChatMessageKind.Action && m.Id is not null;
+        return m.Kind is ChatMessageKind.Message or ChatMessageKind.Action && m.Id is not null;
     }
 
     private Control ReplyButton(ChatEntry entry)
@@ -133,7 +131,7 @@ public sealed class ChatLine : Border
             Cursor = new Cursor(StandardCursorType.Hand),
             IsVisible = IsPointerOver,
         };
-        ToolTip.SetTip(button, entry.Message.Kind == ChatMessageKind.Whisper ? "Whisper back" : "Reply");
+        ToolTip.SetTip(button, "Reply");
         button.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(button).Properties.IsLeftButtonPressed) return;
@@ -143,11 +141,9 @@ public sealed class ChatLine : Border
         return button;
     }
 
-    /// <summary>What answering this line is called ("Reply", "Whisper
-    /// back"), or null if it can't be answered.</summary>
-    public string? ReplyLabel => Entry is { } entry && CanReply(entry)
-        ? entry.Message.Kind == ChatMessageKind.Whisper ? "Whisper back" : "Reply"
-        : null;
+    /// <summary>What answering this line is called, or null if it can't be
+    /// answered.</summary>
+    public string? ReplyLabel => Entry is { } entry && CanReply(entry) ? "Reply" : null;
 
     /// <summary>Answer this line, as its ↩ does (the right-click menu's Reply).</summary>
     public void RequestReply()
@@ -182,11 +178,7 @@ public sealed class ChatLine : Border
     private void StyleRow(ChatEntry entry, StackPanel stack)
     {
         var m = entry.Message;
-        if (m.Kind == ChatMessageKind.Whisper)
-        {
-            Bar("#BF94FF", "#241A33");
-        }
-        else if (entry.IsSelfMention)
+        if (entry.IsSelfMention)
         {
             Bar("#E91916", "#3B1416");
         }
@@ -334,10 +326,7 @@ public sealed class ChatLine : Border
             inlines.Add(new Run(" (" + pronoun + ")") { Foreground = DimBrush, FontSize = 11.5 });
         if (m.Bits > 0)
             inlines.Add(new Run($" ♦{m.Bits:N0}") { Foreground = Brush("#BF94FF"), FontWeight = FontWeight.SemiBold });
-        inlines.Add(new Run(m.Kind == ChatMessageKind.Whisper
-                ? m.WhisperTo is { } to ? $" ▸ {to}: " : " whispers: "
-                : isAction ? " " : isNotice ? " · " : ": ")
-            { Foreground = m.Kind == ChatMessageKind.Whisper ? LinkBrush : TextBrush });
+        inlines.Add(new Run(isAction ? " " : isNotice ? " · " : ": ") { Foreground = TextBrush });
 
         if (entry.IsDeleted && !entry.ShowsDeletedText)
         {

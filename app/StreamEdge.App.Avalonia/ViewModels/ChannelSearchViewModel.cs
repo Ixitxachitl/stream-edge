@@ -33,6 +33,16 @@ public sealed partial class ChannelSearchViewModel : ObservableObject
     /// <summary>The pause in typing before asking Twitch.</summary>
     public TimeSpan Debounce { get; set; } = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>A pick stays in the box (as its login) instead of emptying
+    /// it: the box names someone rather than going somewhere.</summary>
+    public bool KeepsPick { get; init; }
+
+    /// <summary>Under the name as typed: what picking it does.</summary>
+    public string TypedDetail { get; init; } = "Join this channel";
+
+    // Set while a kept pick is put in the box, so it doesn't search again.
+    private bool _picking;
+
     [ObservableProperty]
     private string _query = "";
 
@@ -48,6 +58,7 @@ public sealed partial class ChannelSearchViewModel : ObservableObject
     {
         _pending?.Cancel();
         _pending = null;
+        if (_picking) return;
         var q = ChannelSearch.Normalize(value);
         if (q.Length == 0)
         {
@@ -84,7 +95,7 @@ public sealed partial class ChannelSearchViewModel : ObservableObject
         foreach (var s in found) Suggestions.Add(s);
         // A name nobody has suggested yet can still be joined as typed.
         if (ChannelSearch.IsValidLogin(q) && !found.Any(s => string.Equals(s.Login, q, StringComparison.OrdinalIgnoreCase)))
-            Suggestions.Add(new ChannelSuggestion(q.ToLowerInvariant(), q) { IsTyped = true });
+            Suggestions.Add(new ChannelSuggestion(q.ToLowerInvariant(), q) { IsTyped = true, TypedDetail = TypedDetail });
         var at = keep is null ? -1 : Suggestions.ToList().FindIndex(s => s.Login == keep);
         SelectedIndex = at >= 0 ? at : Suggestions.Count > 0 ? 0 : -1;
         IsOpen = Suggestions.Count > 0;
@@ -98,15 +109,25 @@ public sealed partial class ChannelSearchViewModel : ObservableObject
     }
 
     /// <summary>Joins a suggestion (Enter or a click), or the name as typed
-    /// when none is picked, and empties the box.</summary>
+    /// when none is picked, and empties the box (or, with
+    /// <see cref="KeepsPick"/>, leaves the pick in it).</summary>
     public void Accept(int index, OpenMode mode = OpenMode.NewTab)
     {
         string? login = index >= 0 && index < Suggestions.Count ? Suggestions[index].Login : null;
         if (login is null && ChannelSearch.Normalize(Query) is var typed && ChannelSearch.IsValidLogin(typed))
             login = typed;
         if (login is null) return;
+        if (!KeepsPick)
+        {
+            _open(login, mode);
+            Query = "";
+            return;
+        }
+        _picking = true;
+        Query = login;
+        _picking = false;
+        Close();
         _open(login, mode);
-        Query = "";
     }
 
     /// <summary>Hides the suggestions; the text stays.</summary>

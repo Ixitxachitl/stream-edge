@@ -16,10 +16,13 @@ public sealed record ChannelSuggestion(
     /// exist: joining it is still the user's call.</summary>
     public bool IsTyped { get; init; }
 
+    /// <summary>What picking the name as typed does, under it.</summary>
+    public string TypedDetail { get; init; } = "Join this channel";
+
     public string Initial => DisplayName.Length > 0 ? char.ToUpperInvariant(DisplayName[0]).ToString() : "?";
 
     /// <summary>Under the name: the game while live, else whether it's offline.</summary>
-    public string Detail => IsTyped ? "Join this channel"
+    public string Detail => IsTyped ? TypedDetail
         : IsLive == true ? (Game.Length > 0 ? Game : "Live")
         : IsLive == false ? "Offline"
         : "";

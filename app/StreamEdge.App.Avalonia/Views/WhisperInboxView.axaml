@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="using:StreamEdge.AvaloniaApp.Views"
+             xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
+             x:Class="StreamEdge.AvaloniaApp.Views.WhisperInboxView"
+             x:DataType="vm:WhisperInboxViewModel">
+  <!-- The ✉ inbox: conversations down the left, newest first, under a
+       button to start one; the chosen one on the right, drawn as chat
+       lines, with a box to answer in. -->
+  <UserControl.Styles>
+    <Style Selector="ListBox.whisperThreads">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.whisperThreads ListBoxItem">
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+  </UserControl.Styles>
+  <DockPanel Width="440" Height="320">
+    <DockPanel DockPanel.Dock="Left" Width="150">
+      <Button DockPanel.Dock="Top" Content="✎ New whisper" Command="{Binding ComposeCommand}"
+              HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+      <ListBox Classes="whisperThreads" x:Name="ThreadList"
+               ItemsSource="{Binding Threads}" SelectedItem="{Binding Selected}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:WhisperThreadViewModel">
+            <DockPanel>
+              <Border DockPanel.Dock="Right" Classes="unreadBadge" IsVisible="{Binding HasUnread}" Margin="6,0,0,0">
+                <TextBlock Text="{Binding Unread}" />
+              </Border>
+              <StackPanel>
+                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Preview}" Foreground="{StaticResource SeTextDim}" FontSize="{StaticResource SeSmallFontSize}"
+                           TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </DockPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+    <Border DockPanel.Dock="Left" Width="1" Background="{StaticResource SeRule}" Margin="6,0" />
+    <DockPanel>
+      <Panel DockPanel.Dock="Top" Margin="0,0,0,6">
+        <TextBlock Text="{Binding Selected.Name}" FontWeight="SemiBold" VerticalAlignment="Center"
+                   IsVisible="{Binding !Composing}" />
+        <!-- Who to: searched as the live list's box is. -->
+        <Panel IsVisible="{Binding Composing}">
+          <v:ChannelPicker x:Name="ToInput" DataContext="{Binding Recipients}" Placeholder="To" />
+        </Panel>
+      </Panel>
+      <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" TextWrapping="Wrap" Foreground="{StaticResource SeAccent}"
+                 Margin="0,4,0,0" IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <!-- Enter sends (handled in code); 500 characters is Twitch's limit. -->
+      <TextBox DockPanel.Dock="Bottom" x:Name="WhisperInput" Text="{Binding Draft}" PlaceholderText="{Binding Placeholder}"
+               MaxLength="500" TextWrapping="Wrap" MaxHeight="90" Margin="0,6,0,0" />
+      <ScrollViewer x:Name="WhisperScroll" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding !Composing}">
+        <ItemsControl ItemsSource="{Binding Selected.Lines}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ChatEntry">
+              <v:ChatLine Entry="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </DockPanel>
+  </DockPanel>
+</UserControl>

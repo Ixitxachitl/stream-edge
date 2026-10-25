@@ -125,6 +125,7 @@
     <StreamGeometry x:Key="IconLayout">M3,3 L10,3 L10,10 L3,10 Z M14,3 L21,3 L21,10 L14,10 Z M3,14 L10,14 L10,21 L3,21 Z M14,14 L21,14 L21,21 L14,21 Z</StreamGeometry>
     <StreamGeometry x:Key="IconPerson">M8,8 A4,4 0 1 0 16,8 A4,4 0 1 0 8,8 Z M4,20 C4,15.6 7.6,13 12,13 C16.4,13 20,15.6 20,20 Z</StreamGeometry>
     <StreamGeometry x:Key="IconBell">M12,3 C8.7,3 6,5.7 6,9 L6,14 L4,17 L20,17 L18,14 L18,9 C18,5.7 15.3,3 12,3 Z M10,18.5 A2,2 0 0 0 14,18.5 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconMail">F0 M3,5 L21,5 L21,19 L3,19 Z M3,6.8 L12,12.8 L21,6.8 L21,8.8 L12,14.8 L3,8.8 Z</StreamGeometry>
     <StreamGeometry x:Key="IconBubble">M4,4 L20,4 L20,16 L9,16 L5,20 L5,16 L4,16 Z</StreamGeometry>
     <StreamGeometry x:Key="IconPlug">M8,2 L10,2 L10,7 L14,7 L14,2 L16,2 L16,7 L18,7 L18,11 C18,14 16,16 13,16.5 L13,22 L11,22 L11,16.5 C8,16 6,14 6,11 L6,7 L8,7 Z</StreamGeometry>
     <StreamGeometry x:Key="IconTicket">M3,7 L21,7 L21,10 A2,2 0 0 0 21,14 L21,17 L3,17 L3,14 A2,2 0 0 0 3,10 Z</StreamGeometry>
@@ -349,6 +350,23 @@
     <Setter Property="BorderBrush" Value="{StaticResource SeAccent}" />
     <Setter Property="BorderThickness" Value="2" />
     <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <!-- How many whispers are unread: on the ✉ and beside each conversation. -->
+  <Style Selector="Border.unreadBadge">
+    <Setter Property="Background" Value="#E91916" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="MinWidth" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="Padding" Value="3,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.unreadBadge TextBlock">
+    <Setter Property="FontSize" Value="9.5" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
   <!-- Go-live and whisper alerts, stacked in the top-right corner. -->
