@@ -79,8 +79,10 @@ public sealed class TwitchPlayback(HttpClient http)
     }
 
     /// <summary>The usher master playlist for a token. Hand it to the player
-    /// (LibVLC / mpv), which picks the variant.</summary>
-    public static Uri UsherUrl(string login, AccessToken token)
+    /// (LibVLC / mpv), which picks the variant. Low latency asks for
+    /// playlists that list segments before they're finished, as twitch.tv's
+    /// Low Latency setting does.</summary>
+    public static Uri UsherUrl(string login, AccessToken token, bool lowLatency = true)
     {
         var query = new Dictionary<string, string>
         {
@@ -88,11 +90,11 @@ public sealed class TwitchPlayback(HttpClient http)
             ["token"] = token.Value,
             ["allow_source"] = "true",
             ["allow_audio_only"] = "true",
-            ["fast_bread"] = "true",
             ["playlist_include_framerate"] = "true",
             ["player"] = "twitchweb",
             ["p"] = Random.Shared.Next(1_000_000, 9_999_999).ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
+        if (lowLatency) query["fast_bread"] = "true";
         var qs = string.Join("&", query.Select(kv => kv.Key + "=" + Uri.EscapeDataString(kv.Value)));
         return new Uri($"https://usher.ttvnw.net/api/channel/hls/{Uri.EscapeDataString(login.ToLowerInvariant())}.m3u8?{qs}");
     }

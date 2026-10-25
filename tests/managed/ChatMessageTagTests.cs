@@ -28,13 +28,32 @@ public class ChatMessageTagTests
         Assert.Equal("Bob", m.ReplyParentName);
         Assert.Equal("hello there", m.ReplyParentBody);
         Assert.Equal(100, m.Bits);
+        Assert.Equal(14, m.SubscribedMonths);
         Assert.Empty(m.TwitchEmotes);
+    }
+
+    [Theory]
+    [InlineData("subscriber/14", 14)]
+    [InlineData("predictions/blue-1,founder/30", 30)]
+    [InlineData("predictions/blue-1", null)]
+    [InlineData("subscriber/x", null)]
+    [InlineData("subscriber/0", null)]
+    public void MonthsComeFromBadgeInfo(string badgeInfo, int? months) =>
+        Assert.Equal(months, ChatMessage.MonthsIn(badgeInfo));
+
+    [Fact]
+    public void SharedChatTakesTheMonthsFromTheChannelItWasSentIn()
+    {
+        var m = Chat("@badge-info=subscriber/3;source-badge-info=subscriber/40;source-room-id=99;" +
+                     "badges=subscriber/3;source-badges=subscriber/36 :a!a@a PRIVMSG #c :hi");
+        Assert.Equal(40, m.SubscribedMonths);
     }
 
     [Fact]
     public void AbsentTagsDefault()
     {
         var m = Chat(":a!a@a PRIVMSG #c :hi");
+        Assert.Null(m.SubscribedMonths);
         Assert.Null(m.Id);
         Assert.False(m.IsFirstMessage);
         Assert.False(m.IsReply);

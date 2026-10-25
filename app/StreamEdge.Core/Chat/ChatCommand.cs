@@ -86,5 +86,57 @@ public sealed record ChatCommand(string Name, string Text)
         ("/uniquechat, /uniquechatoff", "Moderators"),
         ("/announce <message>", "Moderators; also /announceblue, green, orange, purple"),
         ("/shield, /shieldoff", "Moderators: shield mode"),
+        ("/shoutout <user>, /so <user>", "Moderators: shout out another channel"),
     ];
+
+    /// <summary>Each command on its own, for the list typing '/' opens.</summary>
+    public static readonly IReadOnlyList<ChatCommandInfo> Known =
+    [
+        new("me", "<text>", "Say it as an action"),
+        new("w", "<user> <message>", "Whisper (direct message)", Aliases: ["whisper"]),
+        new("r", "<message>", "Whisper back to whoever whispered last", Aliases: ["reply"]),
+        new("color", "<name or #hex>", "Change your name colour", Aliases: ["colour"]),
+        new("block", "<user>", "Block someone"),
+        new("unblock", "<user>", "Unblock someone"),
+        new("help", "", "List the commands", Aliases: ["commands"]),
+        new("shoutout", "<user>", "Shout out another channel", Moderator: true, Aliases: ["so"]),
+        new("ban", "<user> [reason]", "Ban someone", Moderator: true),
+        new("unban", "<user>", "Lift a ban", Moderator: true),
+        new("timeout", "<user> [10m] [reason]", "Time someone out; seconds or s/m/h/d/w", Moderator: true),
+        new("untimeout", "<user>", "End a timeout", Moderator: true),
+        new("warn", "<user> <reason>", "Warn someone", Moderator: true),
+        new("announce", "<message>", "Announce; also /announceblue, green, orange, purple", Moderator: true),
+        new("clear", "", "Clear the chat", Moderator: true),
+        new("slow", "[seconds]", "Slow mode", Moderator: true),
+        new("slowoff", "", "Slow mode off", Moderator: true),
+        new("followers", "[duration]", "Followers-only mode", Moderator: true),
+        new("followersoff", "", "Followers-only mode off", Moderator: true),
+        new("subscribers", "", "Subscribers-only mode", Moderator: true),
+        new("subscribersoff", "", "Subscribers-only mode off", Moderator: true),
+        new("emoteonly", "", "Emote-only mode", Moderator: true),
+        new("emoteonlyoff", "", "Emote-only mode off", Moderator: true),
+        new("uniquechat", "", "Unique chat mode", Moderator: true),
+        new("uniquechatoff", "", "Unique chat mode off", Moderator: true),
+        new("shield", "", "Shield mode", Moderator: true),
+        new("shieldoff", "", "Shield mode off", Moderator: true),
+    ];
+
+    /// <summary>The commands whose name (or an alias) starts with
+    /// <paramref name="typed"/>, in <see cref="Known"/>'s order; moderator
+    /// ones only for a <paramref name="moderator"/>.</summary>
+    public static IReadOnlyList<ChatCommandInfo> Complete(string typed, bool moderator) =>
+    [
+        .. Known.Where(c => (moderator || !c.Moderator)
+            && c.Names.Any(n => n.StartsWith(typed, StringComparison.OrdinalIgnoreCase))),
+    ];
+}
+
+/// <summary>A command the chat box knows, as its suggestion list shows it.</summary>
+/// <param name="Usage">Its arguments, e.g. "&lt;user&gt; [reason]".</param>
+public sealed record ChatCommandInfo(string Name, string Usage, string What, bool Moderator = false,
+    IReadOnlyList<string>? Aliases = null)
+{
+    public string Slash => "/" + Name;
+
+    public IEnumerable<string> Names => [Name, .. Aliases ?? []];
 }

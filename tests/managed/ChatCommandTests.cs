@@ -26,6 +26,20 @@ public class ChatCommandTests
         Assert.Null(ChatCommand.Parse("/"));
     }
 
+    [Fact]
+    public void TypingASlashListsTheCommandsThatMatch()
+    {
+        var all = ChatCommand.Complete("", moderator: false);
+        Assert.Contains(all, c => c.Name == "w");
+        Assert.DoesNotContain(all, c => c.Moderator); // not where the user can't use them
+
+        Assert.Equal(["shoutout", "slow", "slowoff", "subscribers", "subscribersoff", "shield", "shieldoff"],
+            ChatCommand.Complete("s", moderator: true).Select(c => c.Name));
+        Assert.Equal("shoutout", Assert.Single(ChatCommand.Complete("SO", moderator: true)).Name); // by alias
+        Assert.Empty(ChatCommand.Complete("so", moderator: false));
+        Assert.Empty(ChatCommand.Complete("nope", moderator: true));
+    }
+
     [Theory]
     [InlineData("90", 90)]
     [InlineData("30s", 30)]

@@ -107,7 +107,7 @@ public sealed partial class MainViewModel
         "slow", "slowoff", "followers", "followersoff", "subscribers", "subscribersoff",
         "emoteonly", "emoteonlyoff", "uniquechat", "uniquechatoff",
         "announce", "announceblue", "announcegreen", "announceorange", "announcepurple",
-        "shield", "shieldoff",
+        "shield", "shieldoff", "shoutout", "so",
     ];
 
     /// <summary>Null when it stopped early and has already said why.</summary>
@@ -142,6 +142,16 @@ public sealed partial class MainViewModel
                 return await mod.ClearChatAsync(room, ct);
             case "shield" or "shieldoff":
                 return await mod.SetShieldModeAsync(room, command.Name == "shield", ct);
+            case "shoutout" or "so":
+            {
+                if (!Account.CanShoutout)
+                {
+                    Say(tab, "Log in again (⚙) to give shoutouts: StreamEdge now asks for that permission.");
+                    return null;
+                }
+                if (await FindUserAsync(tab, command.User(0)) is not { } user) return null;
+                return await mod.ShoutoutAsync(room, user.Id, ct);
+            }
             case var a when a.StartsWith("announce", StringComparison.Ordinal):
                 if (command.Text.Length == 0)
                 {
@@ -184,6 +194,7 @@ public sealed partial class MainViewModel
         "clear" => "Chat cleared.",
         "shield" => "Shield mode on.",
         "shieldoff" => "Shield mode off.",
+        "shoutout" or "so" => $"Shouted out {command.User(0)}.",
         var a when a.StartsWith("announce", StringComparison.Ordinal) => "Announced.",
         _ => "Chat settings updated.",
     };

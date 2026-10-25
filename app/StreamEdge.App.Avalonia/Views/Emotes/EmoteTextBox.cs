@@ -7,6 +7,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using StreamEdge.Chat;
 using StreamEdge.Chat.Emotes;
 
 namespace StreamEdge.AvaloniaApp.Views.Emotes;
@@ -16,6 +17,7 @@ namespace StreamEdge.AvaloniaApp.Views.Emotes;
 /// cycles through the other matches (Shift+Tab back); typing ':' and a few
 /// letters lists matches as you go, as on twitch.tv, for Tab, Enter or a
 /// click to pick. Up and Down move through the list, Esc closes it.
+/// A '/' starting the message lists the commands the same way.
 /// Pasted line breaks become spaces, since a chat message is one line.</summary>
 public sealed partial class EmoteTextBox : TextBox
 {
@@ -87,7 +89,19 @@ public sealed partial class EmoteTextBox : TextBox
     /// "contains" (after ':') rather than "starts with".</summary>
     public Func<string, bool, IReadOnlyList<Emote>>? Completer { get; set; }
 
-    public ObservableCollection<Emote> Suggestions { get; } = [];
+    /// <summary>Commands whose name starts with what's typed after '/'.</summary>
+    public Func<string, IReadOnlyList<ChatCommandInfo>>? CommandCompleter { get; set; }
+
+    /// <summary>Emotes, or commands while the message starts with '/'.</summary>
+    public ObservableCollection<object> Suggestions { get; } = [];
+
+    /// <summary>What picking a suggestion puts in the box.</summary>
+    private static string CodeOf(object suggestion) => suggestion switch
+    {
+        Emote emote => emote.Code,
+        ChatCommandInfo command => command.Slash,
+        _ => "",
+    };
 
     public bool IsSuggesting
     {
@@ -135,7 +149,13 @@ public sealed partial class EmoteTextBox : TextBox
         var text = Text ?? "";
         var (start, length) = EmoteCompletion.WordAt(text, CaretIndex);
         var word = text.Substring(start, length);
-        if (word.Length > ColonMinimum && word[0] == ':' && word != _dismissed && Completer is { } complete)
+        if (IsCommandWord(start, word) && word != _dismissed && CommandCompleter is { } commands)
+        {
+            _wordStart = start;
+            _wordLength = length;
+            Show(commands(word[1..]));
+        }
+        else if (word.Length > ColonMinimum && word[0] == ':' && word != _dismissed && Completer is { } complete)
         {
             _wordStart = start;
             _wordLength = length;
@@ -164,13 +184,13 @@ public sealed partial class EmoteTextBox : TextBox
                 Move(-1);
                 e.Handled = true;
                 break;
-            case Key.Enter when IsSuggesting && !_cycling:
+            // A command typed in full sends, rather than being picked again.
+            case Key.Enter when IsSuggesting && !_cycling && !TypedInFull():
                 Accept(SuggestionIndex);
                 e.Handled = true;
                 break;
             case Key.Escape when IsSuggesting:
-                if (!_cycling) _dismissed = (Text ?? "").Substring(_wordStart, _wordLength);
-                Close();
+                Dismiss();
                 e.Handled = true;
                 break;
         }
@@ -189,30 +209,39 @@ public sealed partial class EmoteTextBox : TextBox
         if (IsSuggesting && SuggestionIndex >= 0)
         {
             _cycling = true;
-            Replace(Suggestions[SuggestionIndex].Code, space: false);
+            Replace(CodeOf(Suggestions[SuggestionIndex]), space: false);
             return;
         }
         var text = Text ?? "";
         var (start, length) = EmoteCompletion.WordAt(text, CaretIndex);
         var word = text.Substring(start, length);
-        var colon = word.StartsWith(':');
-        var typed = colon ? word[1..] : word;
-        if (typed.Length == 0 || Completer is not { } complete) return;
-        var matches = complete(typed, colon);
+        IReadOnlyList<object> matches;
+        if (IsCommandWord(start, word))
+        {
+            if (CommandCompleter is not { } commands) return;
+            matches = commands(word[1..]);
+        }
+        else
+        {
+            var colon = word.StartsWith(':');
+            var typed = colon ? word[1..] : word;
+            if (typed.Length == 0 || Completer is not { } complete) return;
+            matches = complete(typed, colon);
+        }
         if (matches.Count == 0) return;
         _wordStart = start;
         _wordLength = length;
         Show(matches);
         if (step < 0) SuggestionIndex = matches.Count - 1;
         _cycling = true;
-        Replace(Suggestions[SuggestionIndex].Code, space: false);
+        Replace(CodeOf(Suggestions[SuggestionIndex]), space: false);
     }
 
     private void Move(int step)
     {
         if (Suggestions.Count == 0) return;
         SuggestionIndex = (SuggestionIndex + step + Suggestions.Count) % Suggestions.Count;
-        if (_cycling) Replace(Suggestions[SuggestionIndex].Code, space: false);
+        if (_cycling) Replace(CodeOf(Suggestions[SuggestionIndex]), space: false);
     }
 
     /// <summary>A suggestion picked (Enter, or a click in the list): it
@@ -220,7 +249,7 @@ public sealed partial class EmoteTextBox : TextBox
     public void Accept(int index)
     {
         if (index < 0 || index >= Suggestions.Count) return;
-        Replace(Suggestions[index].Code, space: true);
+        Replace(CodeOf(Suggestions[index]), space: true);
         Close();
         Focus();
     }
@@ -246,7 +275,24 @@ public sealed partial class EmoteTextBox : TextBox
         _wordLength = space ? code.Length - 1 : code.Length;
     }
 
-    private void Show(IReadOnlyList<Emote> matches)
+    /// <summary>Closes the list for the word at hand, as Esc does; it opens
+    /// again once the word changes.</summary>
+    public void Dismiss()
+    {
+        if (!IsSuggesting) return;
+        if (!_cycling) _dismissed = (Text ?? "").Substring(_wordStart, _wordLength);
+        Close();
+    }
+
+    /// <summary>The first word of the message, starting with '/'.</summary>
+    private static bool IsCommandWord(int start, string word) => start == 0 && word.StartsWith('/');
+
+    private bool TypedInFull() =>
+        SuggestionIndex >= 0 && SuggestionIndex < Suggestions.Count
+        && string.Equals((Text ?? "").Substring(_wordStart, _wordLength), CodeOf(Suggestions[SuggestionIndex]),
+            StringComparison.OrdinalIgnoreCase);
+
+    private void Show(IEnumerable<object> matches)
     {
         Suggestions.Clear();
         foreach (var m in matches) Suggestions.Add(m);

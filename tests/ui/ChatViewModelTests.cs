@@ -114,12 +114,24 @@ public class ChatViewModelTests
     }
 
     [Fact]
+    public void TheSubscriberBadgeSaysHowManyMonths()
+    {
+        var chat = Chat();
+        chat.Add(Irc("@badge-info=subscriber/14;badges=moderator/1,subscriber/12 :bob!bob@bob PRIVMSG #chan :hi"));
+        chat.Add(Irc("@badge-info=subscriber/1;badges=subscriber/0 :amy!amy@amy PRIVMSG #chan :hi"));
+
+        Assert.Equal([null, "Subscribed for 14 months"], chat.Lines[0].Badges.Select(b => b.Detail));
+        Assert.Equal("Subscribed for 1 month", chat.Lines[1].Badges[0].Detail);
+    }
+
+    [Fact]
     public void BadgesWithoutArtFallBackToTheirSetName()
     {
         var chat = Chat();
         chat.Add(Irc("@badges=moderator/1,subscriber/12 :bob!bob@bob PRIVMSG #chan :hi"));
 
         Assert.Equal(["moderator", "subscriber"], chat.Lines[0].Badges.Select(b => b.Set));
+        Assert.Null(chat.Lines[0].Badges[1].Detail); // no badge-info, no months
         Assert.All(chat.Lines[0].Badges, b => Assert.Null(b.Image));
     }
 

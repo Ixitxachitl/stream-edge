@@ -44,9 +44,13 @@ public sealed class LivePlaybackSessionTests : IDisposable
         /// <summary>This many token requests time out first.</summary>
         public int TokenTimeouts;
 
+        /// <summary>Every request, in order.</summary>
+        public readonly System.Collections.Concurrent.ConcurrentQueue<Uri> Requests = new();
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var uri = request.RequestUri!;
+            Requests.Enqueue(uri);
             string body;
             if (uri.Host == "gql.twitch.tv" && Interlocked.Decrement(ref TokenTimeouts) >= 0)
                 // What HttpClient throws when its Timeout passes.
@@ -241,6 +245,47 @@ public sealed class LivePlaybackSessionTests : IDisposable
         // Wait for the reader to be running, as it is in normal playback.
         await Until(() => player.Received.Length > 0);
         return (player, session);
+    }
+
+    [Theory]
+    [InlineData(true, "seg101.ts")]
+    [InlineData(false, "seg98.ts")]
+    public async Task LowLatencyOffStartsBehindLiveFromOrdinaryPlaylists(bool lowLatency, string first)
+    {
+        var twitch = new FakeTwitch();
+        var player = new FakePlayer();
+        await using var session = new LivePlaybackSession(new HttpClient(twitch), player) { LowLatency = lowLatency };
+        await session.StartAsync("someone", authToken: null);
+        await Until(() => player.Received.Contains("src;"));
+
+        Assert.Equal(lowLatency, twitch.Requests.Single(u => u.Host == "usher.ttvnw.net").Query.Contains("fast_bread=true"));
+        // The first media playlist lists seg96 to seg101: low latency joins
+        // at the newest; off, three back, a buffer's worth at once.
+        Assert.EndsWith(first, twitch.Requests.First(u => u.AbsolutePath.EndsWith(".ts", StringComparison.Ordinal)).AbsolutePath);
+        Assert.Equal(lowLatency ? 1.0 : 4.0, player.ResumeBuffer);
+    }
+
+    [Fact]
+    public async Task LowLatencyOffHoldsTheQualityThroughStalls()
+    {
+        var player = new FakePlayer();
+        await using var session = new LivePlaybackSession(new HttpClient(new FakeTwitch()), player) { LowLatency = false };
+        await session.StartAsync("someone", authToken: null);
+        var t = DateTimeOffset.UtcNow;
+        for (var at = 11; at < 60; at += 5)
+        {
+            player.Stats = new VideoPlayerStats(0, true, false);
+            session.Tick(t + TimeSpan.FromSeconds(at));
+            player.Stats = new VideoPlayerStats(0.5, false, false);
+            session.Tick(t + TimeSpan.FromSeconds(at + 1));
+        }
+        Assert.Equal("1080p60", session.Current?.Name);
+        Assert.True(player.ResumeBuffer > 4.0); // waiting for more after each
+
+        // Turned back on, it reconnects to the low-latency playlists.
+        session.LowLatency = true;
+        await Until(() => player.Loads.Count == 2);
+        Assert.Equal(1.0, player.ResumeBuffer);
     }
 
     [Fact]

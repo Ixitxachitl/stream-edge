@@ -31,6 +31,9 @@ public class PlaybackTests
         Assert.Equal("/api/channel/hls/pixelperegrine.m3u8", url.AbsolutePath);
         Assert.Contains("sig=sig", url.Query);
         Assert.Contains("token=%7B%22a%22%3A1%7D", url.Query);
+        Assert.Contains("fast_bread=true", url.Query);
+        // Low latency off: Twitch's ordinary playlists.
+        Assert.DoesNotContain("fast_bread", TwitchPlayback.UsherUrl("x", new("{}", "sig"), lowLatency: false).Query);
     }
 }
 

@@ -145,8 +145,9 @@ public sealed class ChatServices
     }
 
     /// <summary>One badge to draw: its image when known, else the set name
-    /// for a placeholder chip (Twitch's badge API needs a signed-in user).</summary>
-    public readonly record struct Badge(string Set, BadgeImage? Image);
+    /// for a placeholder chip (Twitch's badge API needs a signed-in user).
+    /// <paramref name="Detail"/> goes under its name in the tooltip.</summary>
+    public readonly record struct Badge(string Set, BadgeImage? Image, string? Detail = null);
 
     /// <summary>Twitch badges in IRC order (FFZ's mod/VIP art replacing
     /// Twitch's when the channel has it), then the user's FFZ badges.</summary>
@@ -162,9 +163,13 @@ public sealed class ChatServices
                 "vip" => Emotes.FfzVipBadge(roomId),
                 _ => null,
             };
+            // As twitch.tv: how long, over the subscriber badge.
+            var detail = set is "subscriber" or "founder" && message.SubscribedMonths is { } months
+                ? $"Subscribed for {months} month{(months == 1 ? "" : "s")}"
+                : null;
             list.Add(ffz is not null
                 ? new Badge(set, new BadgeImage(ffz, set == "vip" ? "VIP" : "Moderator", set == "moderator" ? "#00AD03" : null))
-                : new Badge(set, Badges.Resolve(roomId, badge)));
+                : new Badge(set, Badges.Resolve(roomId, badge), detail));
         }
         foreach (var ffz in Emotes.FfzBadgesFor(message.UserId))
             list.Add(new Badge("ffz", ffz));

@@ -20,6 +20,7 @@ public sealed partial class PlayerViewModel : ObservableObject
     internal Action<int>? SelectQualityHandler { get; set; }
     internal Action<bool>? MuteHandler { get; set; }
     internal Action<bool>? CaptionsHandler { get; set; }
+    internal Action<bool>? LowLatencyHandler { get; set; }
 
     [ObservableProperty]
     private string _channel = "";
@@ -92,6 +93,18 @@ public sealed partial class PlayerViewModel : ObservableObject
     private bool _captions;
 
     partial void OnCaptionsChanged(bool value) => CaptionsHandler?.Invoke(value);
+
+    /// <summary>Close to live, quality dropping to keep up (the LL button);
+    /// off, the picked quality holds and the buffer grows instead.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(QualityTip))]
+    private bool _lowLatency = true;
+
+    partial void OnLowLatencyChanged(bool value) => LowLatencyHandler?.Invoke(value);
+
+    public string QualityTip => LowLatency
+        ? "Quality (drops automatically to keep up with live)"
+        : "Quality (held: low latency is off)";
 
     public ObservableCollection<QualityOption> Qualities { get; } = [];
 

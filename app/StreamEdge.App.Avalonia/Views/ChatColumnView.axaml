@@ -4,6 +4,7 @@
              xmlns:em="using:StreamEdge.AvaloniaApp.Views.Emotes"
              xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
              xmlns:emotes="using:StreamEdge.Chat.Emotes"
+             xmlns:chat="using:StreamEdge.Chat"
              xmlns:se="using:StreamEdge"
              x:Class="StreamEdge.AvaloniaApp.Views.ChatColumnView"
              x:DataType="vm:ChatColumnViewModel">
@@ -181,13 +182,13 @@
             </MultiBinding>
           </Button.IsVisible>
         </Button>
-        <!-- Matching emotes, above the chat box like twitch.tv's. -->
+        <!-- Matching emotes (or commands), above the chat box like twitch.tv's. -->
         <Popup x:Name="SuggestionPopup" PlacementTarget="{Binding #ChatInput}" Placement="TopEdgeAlignedLeft"
                IsOpen="{Binding #ChatInput.IsSuggesting}" IsLightDismissEnabled="False">
           <Border Classes="suggestions" MinWidth="{Binding #ChatInput.Bounds.Width}">
             <ListBox x:Name="SuggestionList" Classes="suggestions" Focusable="False" ItemsSource="{Binding #ChatInput.Suggestions}"
                      SelectedIndex="{Binding #ChatInput.SuggestionIndex, Mode=TwoWay}" MaxHeight="300">
-              <ListBox.ItemTemplate>
+              <ListBox.DataTemplates>
                 <DataTemplate x:DataType="emotes:Emote">
                   <StackPanel Orientation="Horizontal" Spacing="8">
                     <em:EmoteView Source="{Binding ImageUrl}" EmoteHeight="24" />
@@ -195,7 +196,14 @@
                     <TextBlock Text="{Binding Provider}" VerticalAlignment="Center" Classes="suggestionSource" />
                   </StackPanel>
                 </DataTemplate>
-              </ListBox.ItemTemplate>
+                <DataTemplate x:DataType="chat:ChatCommandInfo">
+                  <StackPanel Orientation="Horizontal" Spacing="8" Height="24">
+                    <TextBlock Text="{Binding Slash}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Usage}" VerticalAlignment="Center" Classes="suggestionSource" />
+                    <TextBlock Text="{Binding What}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.DataTemplates>
             </ListBox>
           </Border>
         </Popup>

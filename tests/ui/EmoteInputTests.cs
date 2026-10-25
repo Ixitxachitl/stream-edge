@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using StreamEdge.AvaloniaApp.ViewModels;
 using StreamEdge.AvaloniaApp.Views;
 using StreamEdge.AvaloniaApp.Views.Emotes;
+using StreamEdge.Chat;
 using StreamEdge.Chat.Emotes;
 using StreamEdge.Ui;
 using Xunit;
@@ -122,6 +123,56 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void ASlashListsCommandsToPick() => Ui(() =>
+    {
+        var (window, vm, input) = Open();
+        Type(window, "/");
+        Assert.True(input.IsSuggesting);
+        Assert.DoesNotContain(input.Suggestions.OfType<ChatCommandInfo>(), c => c.Moderator);
+
+        // Where the user moderates, theirs too.
+        vm.Chat.Draft = "";
+        vm.Chat.IsModerator = true;
+        Type(window, "/sh");
+        Assert.Equal(["shoutout", "shield", "shieldoff"], input.Suggestions.OfType<ChatCommandInfo>().Select(c => c.Name));
+        Press(window, Key.Down);
+        Press(window, Key.Enter);
+        Assert.Equal("/shield ", vm.Chat.Draft);
+        Assert.False(input.IsSuggesting); // arguments aren't commands
+
+        // Tab completes too; typed in full, Enter is left to send it.
+        vm.Chat.Draft = "";
+        Type(window, "/cle");
+        Press(window, Key.Tab);
+        Assert.Equal("/clear", vm.Chat.Draft);
+        vm.Chat.Draft = "";
+        Type(window, "/clear");
+        Assert.True(input.IsSuggesting);
+        Press(window, Key.Enter);
+        Assert.Equal("/clear", vm.Chat.Draft); // not picked again as "/clear "
+
+        // Mid-message, a slash is just a slash.
+        vm.Chat.Draft = "";
+        Type(window, "and/or");
+        Assert.False(input.IsSuggesting);
+        window.Close();
+    });
+
+    [Fact]
+    public void ARecalledCommandDoesntTrapUp() => Ui(() =>
+    {
+        var (window, vm, input) = Open();
+        vm.Chat.RememberSent("hello");
+        vm.Chat.RememberSent("/clear");
+        Press(window, Key.Up);
+        Assert.Equal("/clear", vm.Chat.Draft);
+        Assert.False(input.IsSuggesting);
+        Press(window, Key.Up);
+        Assert.Equal("hello", vm.Chat.Draft);
+        window.Close();
+    });
+
+    [Fact]
     public void AColonWordListsMatchesAndEnterPicksWithoutSending() => Ui(() =>
     {
         var (window, vm, input) = Open();
@@ -129,7 +180,7 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.False(input.IsSuggesting); // too short yet
         Type(window, "yp");
         Assert.True(input.IsSuggesting);
-        Assert.Equal(["chanHype"], input.Suggestions.Select(e => e.Code));
+        Assert.Equal(["chanHype"], input.Suggestions.OfType<Emote>().Select(e => e.Code));
         var popup = window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().Single(p => p.Name == "SuggestionPopup");
         Assert.True(popup.IsOpen);
 

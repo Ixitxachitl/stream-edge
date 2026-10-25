@@ -510,6 +510,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             foreach (var other in Tabs)
                 if (other != tab && other.Session is { } session) session.PreferredQuality = quality;
         };
+        // One setting for every tab, like the quality.
+        tab.LowLatencyPicked = on =>
+        {
+            foreach (var other in Tabs) other.Player.LowLatency = on;
+        };
         tab.Chat.CanSend = _chat?.Token is not null;
         tab.Chat.Status = _chat is null ? "" : "Connected";
         tab.Chat.Add(ChatMessage.System(login, $"### Joining #{login} ###", DateTimeOffset.Now));
@@ -885,7 +890,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_options.Demo)
             note = "Demo data.";
         else if (!tab.Chat.IsModerator)
-            note = "Twitch only gives moderators the full list, so this is everyone who has chatted, plus lurkers in smaller channels.";
+            // Who chat has shown, without explaining why it's not everyone.
+            note = "";
         else if (!Account.CanReadChatters || Account.AccessToken is null || Account.UserId is null || tab.RoomId is null)
             note = "Log in again (⚙) to see everyone: StreamEdge now asks for permission to read the viewer list.";
         else

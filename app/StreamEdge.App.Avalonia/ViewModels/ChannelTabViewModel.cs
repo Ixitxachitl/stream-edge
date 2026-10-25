@@ -42,6 +42,13 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
             settings.Captions = on;
             if (Session is { } s) s.Captions = on;
         };
+        Player.LowLatency = settings.LowLatency;
+        Player.LowLatencyHandler = on =>
+        {
+            settings.LowLatency = on;
+            if (Session is { } s) s.LowLatency = on;
+            LowLatencyPicked?.Invoke(on);
+        };
         Player.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(PlayerViewModel.Channel)) OnPropertyChanged(nameof(Title));
@@ -56,6 +63,9 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
 
     /// <summary>The user picked a video quality on this tab, now the preference.</summary>
     internal Action<string>? QualityPicked { get; set; }
+
+    /// <summary>The user turned low latency on or off on this tab.</summary>
+    internal Action<bool>? LowLatencyPicked { get; set; }
 
     /// <summary>"LofiGirl" for "lofigirl", once known.</summary>
     public string? DisplayName { get; set; }
@@ -158,6 +168,7 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
         var session = new LivePlaybackSession(http, player)
         {
             PreferredQuality = settings.PreferredQuality, Tier = tier, Connection = settings.Connection,
+            LowLatency = settings.LowLatency,
         };
         session.SetSurfaceSize(_surfaceSize.Width, _surfaceSize.Height);
         session.StatusChanged += () => Player.Apply(session.Status, session.Variants, session.Picked);

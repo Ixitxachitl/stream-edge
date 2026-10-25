@@ -73,7 +73,11 @@
         <TextBlock Text="{Binding Player.Latency}" Foreground="{StaticResource SeTextDim}"
                    ToolTip.Tip="Approximate delay behind the broadcaster" Margin="0,0,4,0" />
         <ToggleButton Classes="cc" Content="CC" IsChecked="{Binding Player.Captions}" ToolTip.Tip="Closed captions (when the stream has them)" />
-        <Button Content="{Binding Player.QualityLabel}" ToolTip.Tip="Quality (drops automatically to keep up with live)">
+        <!-- Twitch's Low Latency setting. Off, a picked quality holds and
+             the video buffers further behind live instead. -->
+        <ToggleButton Classes="cc" Content="LL" IsChecked="{Binding Player.LowLatency}"
+                      ToolTip.Tip="Low latency: stay close to live, lowering quality when the connection can't keep up. Off: keep the quality picked and buffer further behind instead." />
+        <Button Content="{Binding Player.QualityLabel}" ToolTip.Tip="{Binding Player.QualityTip}">
           <Button.Flyout>
             <MenuFlyout ItemsSource="{Binding Qualities}">
               <MenuFlyout.ItemContainerTheme>

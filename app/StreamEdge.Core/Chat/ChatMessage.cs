@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+using System.Globalization;
+
 namespace StreamEdge.Chat;
 
 public enum ChatMessageKind
@@ -113,6 +115,11 @@ public sealed record ChatMessage(
     /// in the channel the line was sent in, which twitch.tv shows.</summary>
     public IReadOnlyList<string>? SourceBadges { get; init; }
 
+    /// <summary>Months subscribed, from tag <c>badge-info</c> (or, in shared
+    /// chat, <c>source-badge-info</c>): what twitch.tv shows over the
+    /// subscriber or founder badge. Null when Twitch didn't say.</summary>
+    public int? SubscribedMonths { get; init; }
+
     /// <summary>The badges twitch.tv draws: the sender's in the channel the
     /// line came from.</summary>
     public IReadOnlyList<string> ShownBadges => SourceBadges ?? Badges;
@@ -185,6 +192,9 @@ public sealed record ChatMessage(
         SourceBadges = irc.Tag("source-room-id") is { Length: > 0 } && irc.Tag("source-badges") is { } sourceBadges
             ? sourceBadges.Split(',', StringSplitOptions.RemoveEmptyEntries)
             : null,
+        SubscribedMonths = MonthsIn(irc.Tag("source-room-id") is { Length: > 0 }
+            ? irc.Tag("source-badge-info")
+            : irc.Tag("badge-info")),
         AnimationId = irc.Tag("animation-id"),
         IsFirstMessage = irc.Tag("first-msg") == "1",
         ReplyParentName = irc.Tag("reply-parent-display-name") ?? irc.Tag("reply-parent-user-login"),
@@ -201,6 +211,21 @@ public sealed record ChatMessage(
 
     /// <summary>"broadcaster/1,subscriber/12" → ["broadcaster/1", "subscriber/12"].
     /// Kept as set/version pairs so a badge image cache can key on them.</summary>
+    /// <summary>The months in <c>subscriber/14</c> (or <c>founder/14</c>)
+    /// among a badge-info tag's entries.</summary>
+    internal static int? MonthsIn(string? badgeInfo)
+    {
+        foreach (var info in badgeInfo?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? [])
+        {
+            var parts = info.Split('/', 2);
+            if (parts.Length == 2 && parts[0] is "subscriber" or "founder"
+                && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var months)
+                && months > 0)
+                return months;
+        }
+        return null;
+    }
+
     private static IReadOnlyList<string> BadgesOf(IrcMessage irc) =>
         irc.Tag("badges")?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? [];
 

@@ -87,6 +87,25 @@ public sealed record CatchUpOptions
 
     /// <summary>…and gives a step back after this long without a stall.</summary>
     public TimeSpan CushionDecay { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>Low latency off: the quality picked holds whatever the
+    /// connection does, and a deep buffer rides out the hiccups instead.
+    /// Playback starts several seconds back, each stall waits for more,
+    /// catch-up only plays off a buffer far deeper than needed, and it
+    /// jumps to live only a minute behind.</summary>
+    public static CatchUpOptions Steady { get; } = new()
+    {
+        TargetBuffer = 6.0,
+        SpeedUpAbove = 20.0,
+        CatchUpSpeed = 1.05,
+        FastCatchUpSpeed = 1.05,
+        ResyncAbove = 60.0,
+        ResyncSegmentsBehind = 10,
+        StallsForDowngrade = int.MaxValue,
+        ResumeBuffer = 4.0,
+        CushionStep = 2.0,
+        MaxCushion = 8.0,
+    };
 }
 
 /// <summary>What the player is doing right now, sampled a few times a second.</summary>
@@ -129,7 +148,13 @@ public sealed class CatchUpController(CatchUpOptions options)
     private DateTimeOffset _lastStall = DateTimeOffset.MinValue;
     private DateTimeOffset _lastUpgrade = DateTimeOffset.MinValue;
 
-    public CatchUpOptions Options => options;
+    /// <summary>Changeable while playing (low latency turned on or off);
+    /// call <see cref="Reset"/> after.</summary>
+    public CatchUpOptions Options
+    {
+        get => options;
+        set => options = value;
+    }
 
     /// <summary>Steps below the user's preferred quality (0 = at preference).</summary>
     public int QualityOffset { get; private set; }

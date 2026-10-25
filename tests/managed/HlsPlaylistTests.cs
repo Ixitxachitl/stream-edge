@@ -120,6 +120,9 @@ public class HlsPlaylistTests
     {
         var p = HlsPlaylist.ParseMedia(Media, Base);
         Assert.Equal(101, LiveHlsReader.LiveEdge(p.Segments));
+        // Further back for a buffer, but no further than the playlist goes.
+        Assert.Equal(100, LiveHlsReader.LiveEdge(p.Segments, behind: 1));
+        Assert.Equal(p.Segments[0].Sequence, LiveHlsReader.LiveEdge(p.Segments, behind: 50));
     }
 
     [Fact]

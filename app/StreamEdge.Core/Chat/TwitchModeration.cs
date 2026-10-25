@@ -61,6 +61,13 @@ public sealed class TwitchModeration(HttpClient http, string clientId, string to
     public Task<ModResult> SetShieldModeAsync(string broadcasterId, bool on, CancellationToken ct) =>
         SendAsync(HttpMethod.Put, $"moderation/shield_mode?{Ids(broadcasterId)}", new JsonObject { ["is_active"] = on }, ct);
 
+    /// <summary>Twitch's shoutout: a card in the channel's chat that points
+    /// viewers at <paramref name="toBroadcasterId"/>. Needs the channel to be
+    /// live, and Twitch limits how often.</summary>
+    public Task<ModResult> ShoutoutAsync(string broadcasterId, string toBroadcasterId, CancellationToken ct) =>
+        SendAsync(HttpMethod.Post, $"chat/shoutouts?from_broadcaster_id={Esc(broadcasterId)}"
+            + $"&to_broadcaster_id={Esc(toBroadcasterId)}&moderator_id={Esc(moderatorId)}", null, ct);
+
     public async Task<ChatSettings?> GetChatSettingsAsync(string broadcasterId, CancellationToken ct)
     {
         using var request = Request(HttpMethod.Get, $"chat/settings?{Ids(broadcasterId)}", null);

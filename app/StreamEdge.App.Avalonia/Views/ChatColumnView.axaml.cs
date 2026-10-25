@@ -62,11 +62,13 @@ public partial class ChatColumnView : UserControl
         ChatInput.Completer = (typed, contains) => _column is { } c
             ? c.Main.Services.CompleteEmote(typed, c.Selected?.RoomId, contains)
             : [];
-        // A click in the list picks that emote.
+        // Moderator commands only where the user moderates.
+        ChatInput.CommandCompleter = typed => Chat.ChatCommand.Complete(typed, _column?.Chat.IsModerator == true);
+        // A click in the list picks that emote or command.
         SuggestionList.AddHandler(PointerReleasedEvent, (_, e) =>
         {
-            if ((e.Source as Control)?.DataContext is Chat.Emotes.Emote emote)
-                ChatInput.Accept(ChatInput.Suggestions.IndexOf(emote));
+            if ((e.Source as Control)?.DataContext is { } item && ChatInput.Suggestions.IndexOf(item) is >= 0 and var index)
+                ChatInput.Accept(index);
         }, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
@@ -149,6 +151,10 @@ public partial class ChatColumnView : UserControl
         var step = e.Key switch { Key.Up => -1, Key.Down => 1, _ => 0 };
         if (step == 0) return;
         e.Handled = true;
-        if (chat.Recall(step)) ChatInput.CaretIndex = ChatInput.Text?.Length ?? 0;
+        if (!chat.Recall(step)) return;
+        ChatInput.CaretIndex = ChatInput.Text?.Length ?? 0;
+        // A recalled "/clear" would open the command list, and the next Up
+        // would move through that instead.
+        ChatInput.Dismiss();
     }
 }

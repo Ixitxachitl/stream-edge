@@ -55,6 +55,17 @@ public class ModerationTests
     }
 
     [Fact]
+    public async Task ShoutoutNamesBothChannels()
+    {
+        var helix = new FakeHelix();
+        await Mod(helix).ShoutoutAsync("chan", "u1", CancellationToken.None);
+        var (method, url, body) = Assert.Single(helix.Calls);
+        Assert.Equal(HttpMethod.Post, method);
+        Assert.EndsWith("chat/shoutouts?from_broadcaster_id=chan&to_broadcaster_id=u1&moderator_id=me", url);
+        Assert.Null(body);
+    }
+
+    [Fact]
     public async Task TwitchsReasonComesBackOnFailure()
     {
         var helix = new FakeHelix(HttpStatusCode.BadRequest,

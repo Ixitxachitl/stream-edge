@@ -98,6 +98,24 @@ public class CatchUpControllerTests
     }
 
     [Fact]
+    public void SteadyHoldsQualityAndKeepsADeepBuffer()
+    {
+        var c = new CatchUpController(CatchUpOptions.Steady) { MaxDowngrade = 3 };
+        c.Reset(T0 - TimeSpan.FromMinutes(1));
+        Assert.Equal(4.0, c.ResumeBuffer);
+
+        // Stall after stall: never a step down, a longer wait each time instead.
+        for (var at = 0; at < 60; at += 5) Stall(c, at);
+        Assert.Equal(0, c.QualityOffset);
+        Assert.Equal(12.0, c.ResumeBuffer);
+
+        // Fifteen seconds behind is a buffer, not a lag to make up.
+        var held = Hold(c, 120, 30, 15);
+        Assert.Equal(1.0, held.Speed);
+        Assert.Equal(CatchUpAction.None, held.Action);
+    }
+
+    [Fact]
     public void ThreeStallsInAMinuteDropQuality()
     {
         var c = Controller();

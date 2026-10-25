@@ -72,6 +72,11 @@ public sealed class AppSettings
     /// struggles, but never goes above it.</summary>
     public string PreferredQuality { get; set; } = "source";
 
+    /// <summary>Stay close to live, dropping quality when the connection
+    /// can't keep up (twitch.tv's Low Latency). Off, the quality picked
+    /// holds and the video buffers further behind instead.</summary>
+    public bool LowLatency { get; set; } = true;
+
     /// <summary>What the connection last held up at, shared by every tab.</summary>
     public Playback.ConnectionMemory Connection { get; set; } = new();
 

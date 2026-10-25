@@ -40,6 +40,32 @@ public class QualityMenuTests(HeadlessAvalonia ui) : UiTest(ui)
     }
 
     [Fact]
+    public void TheLowLatencyButtonIsOneSettingForEveryTab() => Ui(() =>
+    {
+        var settings = new AppSettings();
+        var vm = new MainViewModel(settings, new StartupOptions { Demo = true }, InlineDispatcher.Instance);
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        vm.OpenChannel("other", OpenMode.Background);
+        Dispatcher.UIThread.RunJobs();
+        var button = window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>()
+            .Single(b => b.Content as string == "LL");
+        Assert.True(button.IsChecked);
+        Assert.Equal("Quality (drops automatically to keep up with live)", vm.Player.QualityTip);
+
+        button.IsChecked = false;
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(settings.LowLatency);
+        Assert.All(vm.Tabs, t => Assert.False(t.Player.LowLatency));
+        Assert.Equal("Quality (held: low latency is off)", vm.Player.QualityTip);
+
+        // Remembered for tabs opened later.
+        vm.OpenChannel("later", OpenMode.Background);
+        Assert.False(vm.Tabs.Single(t => t.Login == "later").Player.LowLatency);
+        window.Close();
+    });
+
+    [Fact]
     public void TheMenuShowsTheNewStreamsQualitiesAfterSwitching() => Ui(() =>
     {
         var vm = new MainViewModel(new AppSettings(), new StartupOptions { Demo = true }, InlineDispatcher.Instance);

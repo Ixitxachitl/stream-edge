@@ -37,7 +37,9 @@ public sealed record PlaybackStatus(
     public static readonly PlaybackStatus Stopped = new(PlaybackState.Stopped, null, 0, null, 1, false, "");
 }
 
-/// <summary>Plays one live channel at the lowest latency it can hold:
+/// <summary>Plays one live channel at the lowest latency it can hold (or,
+/// with <see cref="LivePlaybackSession.LowLatency"/> off, at the quality
+/// picked, however far behind that puts it):
 /// resolves the stream (with the optional ad-free auth-token), feeds the
 /// player through <see cref="LiveHlsReader"/> + <see cref="LocalStreamServer"/>,
 /// and applies <see cref="CatchUpController"/>'s decisions.</summary>
@@ -72,6 +74,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     private readonly IVideoPlayer _player;
     private readonly LocalStreamServer _server;
     private readonly CatchUpController _controller;
+    private readonly CatchUpOptions _latencyOptions;
     private CancellationTokenSource _cts = new();
     private string? _login;
     private string? _authToken;
@@ -87,7 +90,8 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     {
         _http = http;
         _player = player;
-        _controller = new CatchUpController(options ?? new CatchUpOptions());
+        _latencyOptions = options ?? new CatchUpOptions();
+        _controller = new CatchUpController(_latencyOptions);
         // Only the newest load's request is served (see LocalStreamServer).
         _server = new LocalStreamServer(ServeAsync,
             target => target.EndsWith("?n=" + Volatile.Read(ref _loadCount), StringComparison.Ordinal));
@@ -117,6 +121,34 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     }
 
     private string? _preferredQuality;
+
+    /// <summary>Complete segments behind live that playback starts from with
+    /// low latency off: a buffer's worth, downloaded at once.</summary>
+    internal const int SteadyJoinBehind = 3;
+
+    /// <summary>On (the default): close to live, dropping quality when the
+    /// connection can't keep up. Off: the quality picked holds, and the
+    /// buffer grows instead (see <see cref="CatchUpOptions.Steady"/>).
+    /// Changing it while playing reconnects.</summary>
+    public bool LowLatency
+    {
+        get => _lowLatency;
+        set
+        {
+            if (_lowLatency == value) return;
+            _lowLatency = value;
+            _controller.Options = value ? _latencyOptions : CatchUpOptions.Steady;
+            // Steps down for the connection don't carry over either way.
+            _controller.Reset(DateTimeOffset.UtcNow, keepQuality: false);
+            ApplyResumeBuffer();
+            if (value) StartFromMemory();
+            // The playlists asked for differ, so it starts over from them.
+            if (_login is not null && Status.State == PlaybackState.Playing) _ = ResolveAsync();
+            StatusChanged?.Invoke();
+        }
+    }
+
+    private bool _lowLatency = true;
 
     /// <summary>The user picked this channel's quality from the menu.</summary>
     private bool _manualPick;
@@ -248,7 +280,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
                 GoOffline();
                 return;
             }
-            var master = TwitchPlayback.UsherUrl(login, token);
+            var master = TwitchPlayback.UsherUrl(login, token, LowLatency);
             using var response = await _http.GetAsync(master, ct).ConfigureAwait(true);
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
@@ -418,7 +450,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     /// what's actually arriving. True if it changed quality.</summary>
     private bool CheckBandwidth(DateTimeOffset now, LiveHlsReader? reader)
     {
-        if (reader is null || reader.InAdBreak || _tier != PlaybackTier.Full || Current is not { } current)
+        if (reader is null || reader.InAdBreak || _tier != PlaybackTier.Full || !LowLatency || Current is not { } current)
         {
             ResetDelivery();
             return false;
@@ -518,7 +550,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     /// steadily, if the connection has recovered.</summary>
     private void StartFromMemory()
     {
-        if (_tier != PlaybackTier.Full || _controller.QualityOffset > 0 || Connection.Bandwidth is not { } limit) return;
+        if (_tier != PlaybackTier.Full || !LowLatency || _controller.QualityOffset > 0 || Connection.Bandwidth is not { } limit) return;
         var top = TopIndex;
         var target = -1;
         for (var i = top; i < Variants.Count; i++)
@@ -639,7 +671,7 @@ public sealed class LivePlaybackSession : IAsyncDisposable
     private async Task ServeAsync(Stream output, CancellationToken ct)
     {
         if (Current is not { } variant) return;
-        var reader = new LiveHlsReader(_http, variant.Uri);
+        var reader = new LiveHlsReader(_http, variant.Uri) { JoinBehind = LowLatency ? 0 : SteadyJoinBehind };
         reader.Notice += m => Notice?.Invoke(m);
         _reader = reader;
         try

@@ -34,6 +34,10 @@ public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist)
     /// session reconnects (with a fresh token) instead of retrying forever.</summary>
     private const int MaxPlaylistFailures = 4;
 
+    /// <summary>Complete segments behind the live edge to start from: 0 for
+    /// low latency; more downloads a buffer's worth straight away.</summary>
+    public int JoinBehind { get; init; }
+
     private Uri _playlist = mediaPlaylist;
     private Uri? _switchTo;
     private DateTimeOffset? _feedPdt;
@@ -116,7 +120,7 @@ public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist)
 
             if (next < 0)
             {
-                next = LiveEdge(segments);
+                next = LiveEdge(segments, JoinBehind);
             }
             else if (next < segments[0].Sequence || next > segments[^1].Sequence + 1)
             {
@@ -166,11 +170,14 @@ public sealed class LiveHlsReader(HttpClient http, Uri mediaPlaylist)
     }
 
     /// <summary>Where to join: the newest complete segment, so playback
-    /// starts on a keyframe right away, followed by the prefetch ones.</summary>
-    internal static long LiveEdge(IReadOnlyList<HlsSegment> segments)
+    /// starts on a keyframe right away, followed by the prefetch ones; or
+    /// <paramref name="behind"/> complete segments before it, as far as the
+    /// playlist goes.</summary>
+    internal static long LiveEdge(IReadOnlyList<HlsSegment> segments, int behind = 0)
     {
         for (var i = segments.Count - 1; i >= 0; i--)
-            if (!segments[i].IsPrefetch && !segments[i].IsAd) return segments[i].Sequence;
+            if (!segments[i].IsPrefetch && !segments[i].IsAd)
+                return segments[Math.Max(0, i - behind)].Sequence;
         return segments[^1].Sequence;
     }
 

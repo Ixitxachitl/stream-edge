@@ -146,6 +146,9 @@ public sealed partial class AccountViewModel : ObservableObject
     /// <summary>The token may read the full viewer list where the user is a mod.</summary>
     public bool CanReadChatters { get; private set; }
 
+    /// <summary>The token may give shoutouts where the user is a mod.</summary>
+    public bool CanShoutout { get; private set; }
+
     private void NoteScopes(TwitchAuth.Identity identity)
     {
         CanUseOwnEmotes = identity.Scopes?.Contains(TwitchAuth.EmotesScope) == true;
@@ -154,6 +157,8 @@ public sealed partial class AccountViewModel : ObservableObject
         OnPropertyChanged(nameof(CanModerate));
         CanReadChatters = identity.Scopes?.Contains(TwitchAuth.ChattersScope) == true;
         OnPropertyChanged(nameof(CanReadChatters));
+        CanShoutout = identity.Scopes?.Contains(TwitchAuth.ShoutoutsScope) == true;
+        OnPropertyChanged(nameof(CanShoutout));
         CanUseUserActions = identity.Scopes?.Contains(TwitchAuth.UserActionsScope) == true;
         OnPropertyChanged(nameof(CanUseUserActions));
     }

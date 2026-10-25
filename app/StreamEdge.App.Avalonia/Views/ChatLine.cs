@@ -647,9 +647,10 @@ public sealed class ChatLine : Border
     private static Inline Badge(ChatServices.Badge badge)
     {
         Control child;
+        string Tip(string name) => badge.Detail is { } detail ? name + "\n" + detail : name;
         if (badge.Image is { } image)
         {
-            child = new EmoteView(image.ImageUrl, null, image.Title) { EmoteHeight = BadgeHeight };
+            child = new EmoteView(image.ImageUrl, null, Tip(image.Title)) { EmoteHeight = BadgeHeight };
             if (image.BackgroundColor is { } bg)
                 child = new Border { Background = Brush(bg), CornerRadius = new CornerRadius(2), Child = child };
         }
@@ -681,7 +682,7 @@ public sealed class ChatLine : Border
                     VerticalAlignment = VerticalAlignment.Center,
                 },
             };
-            ToolTip.SetTip(child, badge.Set);
+            ToolTip.SetTip(child, Tip(badge.Set));
         }
         child.Margin = new Thickness(0, 0, 3, 0);
         return new InlineUIContainer(new InlineMiddle(child)) { BaselineAlignment = BaselineAlignment.Baseline };

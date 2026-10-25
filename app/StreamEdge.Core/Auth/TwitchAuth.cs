@@ -20,7 +20,7 @@ public sealed partial class TwitchAuth(HttpClient http, string clientId)
     public const string Scopes = "user:read:follows chat:read chat:edit user:read:emotes"
         + " moderator:manage:banned_users moderator:manage:chat_messages moderator:manage:warnings"
         + " moderator:manage:chat_settings moderator:manage:announcements moderator:manage:shield_mode"
-        + " moderator:read:followers moderator:read:chatters"
+        + " moderator:read:followers moderator:read:chatters moderator:manage:shoutouts"
         + " user:manage:whispers user:manage:chat_color user:manage:blocked_users";
 
     /// <summary>Stands in for whispers, /color and /block, asked for
@@ -34,6 +34,9 @@ public sealed partial class TwitchAuth(HttpClient http, string clientId)
     /// <summary>The viewer list's Helix "Get Chatters"; added after the
     /// moderation set, so tokens can have that without this.</summary>
     public const string ChattersScope = "moderator:read:chatters";
+
+    /// <summary>Shoutouts; added after the moderation set.</summary>
+    public const string ShoutoutsScope = "moderator:manage:shoutouts";
 
     /// <summary>Added after the first release; tokens from before lack it.</summary>
     public const string EmotesScope = "user:read:emotes";
