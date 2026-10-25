@@ -801,6 +801,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var text = RepeatedSpaces().Replace(tab.Chat.Draft.Trim(), " ");
         if (text.Length == 0 || _chat is null || !tab.Chat.CanSend) return;
         tab.Chat.Draft = "";
+        tab.Chat.RememberSent(text);
 
         // Slash commands (other than /me) go through Helix, not IRC.
         if (ChatCommand.Parse(text) is { } command)

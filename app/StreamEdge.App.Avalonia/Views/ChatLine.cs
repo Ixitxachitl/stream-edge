@@ -357,13 +357,13 @@ public sealed class ChatLine : Border
             switch (token.Kind)
             {
                 case ChatTokenKind.Emote when token.Emote is { } emote:
-                    inlines.Add(token == gigantic ? GiganticEmote(emote, token.Overlays) : Emote(emote, token.Overlays, EmoteHeight));
+                    inlines.Add(Copies(token == gigantic ? GiganticEmote(emote, token.Overlays) : Emote(emote, token.Overlays, EmoteHeight), token.Text));
                     break;
                 case ChatTokenKind.Cheer when token.Cheer is { } cheer:
-                    inlines.Add(Cheer(cheer));
+                    inlines.Add(Copies(Cheer(cheer), token.Text));
                     break;
                 case ChatTokenKind.Gif when token.Url is { } gif:
-                    inlines.Add(Gif(gif, token.Text));
+                    inlines.Add(Copies(Gif(gif, token.Text), token.Text));
                     break;
                 case ChatTokenKind.Link when token.Url is { } url:
                     inlines.Add(Clickable(token.Text, LinkBrush, FontWeight.Normal, () => UrlLauncher.TryOpen(url.AbsoluteUri), underline: true));
@@ -447,7 +447,48 @@ public sealed class ChatLine : Border
             onClick();
             e.Handled = true;
         };
-        return new InlineUIContainer(block) { BaselineAlignment = BaselineAlignment.Baseline };
+        return Copies(new InlineUIContainer(block) { BaselineAlignment = BaselineAlignment.Baseline }, text);
+    }
+
+    // ----- Copying ----------------------------------------------------------
+
+    /// <summary>What an inline control (a name, an emote) stands for when
+    /// copied. Those without (badges, mod icons) are left out.</summary>
+    public static readonly AttachedProperty<string?> CopyTextProperty =
+        AvaloniaProperty.RegisterAttached<ChatLine, Inline, string?>("CopyText");
+
+    private static Inline Copies(Inline inline, string text)
+    {
+        inline.SetValue(CopyTextProperty, text);
+        return inline;
+    }
+
+    /// <summary>The text selected in a line, as it was written: the text
+    /// itself only has a placeholder for each inline control.</summary>
+    public static string SelectedCopyText(SelectableTextBlock block)
+    {
+        var start = Math.Min(block.SelectionStart, block.SelectionEnd);
+        var end = Math.Max(block.SelectionStart, block.SelectionEnd);
+        var copied = new System.Text.StringBuilder();
+        var at = 0;
+        foreach (var inline in block.Inlines ?? [])
+        {
+            if (at >= end) break;
+            switch (inline)
+            {
+                case Run { Text: { } text }:
+                    var from = Math.Clamp(start - at, 0, text.Length);
+                    copied.Append(text, from, Math.Clamp(end - at, 0, text.Length) - from);
+                    at += text.Length;
+                    break;
+                case InlineUIContainer:
+                    // One placeholder character in the text.
+                    if (at >= start) copied.Append(inline.GetValue(CopyTextProperty));
+                    at++;
+                    break;
+            }
+        }
+        return copied.ToString();
     }
 
     // The mod icons, in the shapes twitch.tv uses (a bin, a clock, a

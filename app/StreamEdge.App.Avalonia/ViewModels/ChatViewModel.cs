@@ -202,6 +202,48 @@ public sealed partial class ChatViewModel : ObservableObject
     [ObservableProperty]
     private string _draft = "";
 
+    /// <summary>How many sent messages Up can bring back.</summary>
+    public const int SentLimit = 100;
+
+    /// <summary>Messages sent from this chat, oldest first.</summary>
+    private readonly List<string> _sent = [];
+    // Which of them the chat box shows while Up and Down step through; -1
+    // is the message being written, kept aside in _unsent.
+    private int _recalled = -1;
+    private string _unsent = "";
+    private bool _recalling;
+
+    partial void OnDraftChanged(string value)
+    {
+        // Typed into or replaced: Up starts again from the newest.
+        if (!_recalling) _recalled = -1;
+    }
+
+    /// <summary>A message just sent, for Up to bring back. The same one
+    /// twice in a row is kept once.</summary>
+    public void RememberSent(string text)
+    {
+        if (_sent.Count == 0 || _sent[^1] != text) _sent.Add(text);
+        if (_sent.Count > SentLimit) _sent.RemoveAt(0);
+        _recalled = -1;
+    }
+
+    /// <summary>Up (-1) puts the previous sent message in the chat box,
+    /// Down (+1) the next; Down past the newest brings back what was being
+    /// written. False when there's nowhere further to go.</summary>
+    public bool Recall(int step)
+    {
+        var from = _recalled == -1 ? _sent.Count : _recalled;
+        var to = from + step;
+        if (to < 0 || to > _sent.Count || to == from) return false;
+        if (_recalled == -1) _unsent = Draft;
+        _recalled = to == _sent.Count ? -1 : to;
+        _recalling = true;
+        Draft = _recalled == -1 ? _unsent : _sent[to];
+        _recalling = false;
+        return true;
+    }
+
     /// <summary>The line the next message answers, shown above the chat box
     /// until sent or cancelled.</summary>
     [ObservableProperty]

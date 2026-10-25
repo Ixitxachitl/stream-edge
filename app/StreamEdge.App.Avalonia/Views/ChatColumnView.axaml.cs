@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -30,6 +31,8 @@ public partial class ChatColumnView : UserControl
     {
         InitializeComponent();
         ChatInput.KeyDown += OnChatInputKeyDown;
+        // Tunnel, so the caret never sees them; an open emote list keeps them.
+        ChatInput.AddHandler(KeyDownEvent, OnChatInputRecall, RoutingStrategies.Tunnel);
         // Tunnel, and handled too: buttons and the text box handle their own
         // presses, and those count as using this column.
         AddHandler(PointerPressedEvent, (_, _) => Activate(), RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -43,8 +46,16 @@ public partial class ChatColumnView : UserControl
         // Right-clicking a line offers to answer it: easier to hit than its ↩
         // while busy chat moves the line along.
         ChatScroll.AddHandler(ContextRequestedEvent, OnChatContextRequested, RoutingStrategies.Tunnel, handledEventsToo: true);
+        // What's selected is read at the right press: the text would take the
+        // press as the start of a new selection, and the menu taking focus
+        // as it opens clears it too.
+        ChatScroll.AddHandler(PointerPressedEvent, OnChatPointerPressed, RoutingStrategies.Tunnel);
         ReplyItem.Click += (_, _) => _menuLine?.RequestReply();
-        CopyItem.Click += (_, _) => _menuText?.Copy();
+        CopyItem.Click += async (_, _) =>
+        {
+            if (_menuSelection is { Length: > 0 } text && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+                await clipboard.SetTextAsync(text);
+        };
         // What the chat box can draw and complete: emotes the user can send
         // in the channel this column shows.
         ChatInput.EmoteLookup = code => _column is { } c ? c.Main.Services.SendableEmote(code, c.Selected?.RoomId)?.ImageUrl : null;
@@ -103,13 +114,21 @@ public partial class ChatColumnView : UserControl
 
     /// <summary>The line the right-click menu was opened on.</summary>
     private ChatLine? _menuLine;
-    private SelectableTextBlock? _menuText;
+    /// <summary>The text selected in that line, for Copy.</summary>
+    private string? _menuSelection;
+
+    private void OnChatPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(ChatScroll).Properties.IsRightButtonPressed) return;
+        var text = (e.Source as Visual)?.FindAncestorOfType<SelectableTextBlock>(includeSelf: true);
+        _menuSelection = text is null ? null : ChatLine.SelectedCopyText(text);
+        if (text is not null) e.Handled = true;
+    }
 
     private void OnChatContextRequested(object? sender, ContextRequestedEventArgs e)
     {
         _menuLine = (e.Source as Visual)?.FindAncestorOfType<ChatLine>(includeSelf: true);
-        _menuText = (e.Source as Visual)?.FindAncestorOfType<SelectableTextBlock>(includeSelf: true);
-        CopyItem.IsVisible = !string.IsNullOrEmpty(_menuText?.SelectedText);
+        CopyItem.IsVisible = !string.IsNullOrEmpty(_menuSelection);
         var label = _menuLine?.ReplyLabel;
         ReplyItem.IsVisible = label is not null;
         if (label is not null) ReplyItem.Header = label;
@@ -121,5 +140,15 @@ public partial class ChatColumnView : UserControl
         column.Main.Activate(column);
         column.Main.SendCommand.Execute(null);
         e.Handled = true;
+    }
+
+    /// <summary>Up and Down step through what was sent in this chat.</summary>
+    private void OnChatInputRecall(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.None || ChatInput.IsSuggesting || _column?.Chat is not { } chat) return;
+        var step = e.Key switch { Key.Up => -1, Key.Down => 1, _ => 0 };
+        if (step == 0) return;
+        e.Handled = true;
+        if (chat.Recall(step)) ChatInput.CaretIndex = ChatInput.Text?.Length ?? 0;
     }
 }

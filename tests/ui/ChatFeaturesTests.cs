@@ -144,6 +144,55 @@ public class ChatFeaturesTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void RightClickCopiesTheSelectedText() => Ui(() =>
+    {
+        var vm = Demo();
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        var tab = vm.FrontTab!;
+        // A badge, a name and an emote: each an inline control in the text.
+        tab.Chat.Add(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, tab.Login, "viewer", "Viewer", null,
+            ["subscriber/12"], "copy Kappa words")
+        {
+            Id = "a",
+            TwitchEmotes = [new TwitchEmoteRange("25", 5, 5)],
+        });
+        Dispatcher.UIThread.RunJobs();
+
+        var line = window.GetVisualDescendants().OfType<ChatLine>().Single(l => l.Entry?.Message.Text == "copy Kappa words");
+        var column = line.FindAncestorOfType<ChatColumnView>()!;
+        var menu = column.FindControl<ScrollViewer>("ChatScroll")!.ContextMenu!;
+        var copy = column.FindControl<MenuItem>("CopyItem")!;
+        var block = line.GetVisualDescendants().OfType<SelectableTextBlock>().First();
+
+        // Drag across the line with the mouse, then right-click on it.
+        var from = block.TranslatePoint(new Point(1, block.Bounds.Height / 2), window)!.Value;
+        var to = block.TranslatePoint(new Point(block.Bounds.Width - 1, block.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(from, MouseButton.Left);
+        window.MouseMove(to, RawInputModifiers.LeftMouseButton);
+        window.MouseUp(to, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+        Assert.EndsWith("copy ￼ words", block.SelectedText);
+        // As written: the name and the emote's code, no badge.
+        var selected = $"{line.Entry!.Time} Viewer: copy Kappa words";
+
+        // On the text, clear of the ↩ in the corner.
+        var on = block.TranslatePoint(new Point(20, block.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(on, MouseButton.Right);
+        window.MouseUp(on, MouseButton.Right);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(menu.IsOpen);
+        Assert.True(copy.IsVisible);
+
+        copy.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        var clipboard = TopLevel.GetTopLevel(window)!.Clipboard!;
+        Assert.Equal(selected, Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clipboard).GetAwaiter().GetResult());
+        menu.Close();
+        window.Close();
+    });
+
+    [Fact]
     public void FavouritesGoingLiveAlertButNotAtStartUp() => Ui(() =>
     {
         var settings = new AppSettings { Favorites = ["fav", "later"] };

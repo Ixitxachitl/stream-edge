@@ -83,6 +83,45 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void UpAndDownBringBackSentMessages() => Ui(() =>
+    {
+        var (window, vm, input) = Open();
+        vm.Chat.RememberSent("first");
+        vm.Chat.RememberSent("second");
+        vm.Chat.RememberSent("second"); // kept once
+        Type(window, "half wri");
+
+        Press(window, Key.Up);
+        Assert.Equal("second", vm.Chat.Draft);
+        Assert.Equal(6, input.CaretIndex);
+        Press(window, Key.Up);
+        Assert.Equal("first", vm.Chat.Draft);
+        Press(window, Key.Up); // nothing older
+        Assert.Equal("first", vm.Chat.Draft);
+        Press(window, Key.Down);
+        Assert.Equal("second", vm.Chat.Draft);
+        Press(window, Key.Down);
+        Assert.Equal("half wri", vm.Chat.Draft);
+
+        // Edited, Up starts again from the newest.
+        Press(window, Key.Up);
+        Press(window, Key.Up);
+        Type(window, "!");
+        Press(window, Key.Up);
+        Assert.Equal("second", vm.Chat.Draft);
+        Press(window, Key.Down);
+        Assert.Equal("first!", vm.Chat.Draft);
+
+        // An open emote list keeps the arrows.
+        vm.Chat.Draft = "";
+        Type(window, ":hyp");
+        Assert.True(input.IsSuggesting);
+        Press(window, Key.Up);
+        Assert.Equal(":hyp", vm.Chat.Draft);
+        window.Close();
+    });
+
+    [Fact]
     public void AColonWordListsMatchesAndEnterPicksWithoutSending() => Ui(() =>
     {
         var (window, vm, input) = Open();
