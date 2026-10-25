@@ -55,3 +55,7 @@ for Windows, Linux (x64 and arm64) and macOS.
 ## License
 
 GPL-3.0-or-later
+
+Spell check uses [WeCantSpell.Hunspell](https://github.com/aarondandy/WeCantSpell.Hunspell)
+(MPL-1.1/GPL-2.0/LGPL-2.1) with the en_US dictionary from [SCOWL](http://wordlist.aspell.net/)
+(MIT/BSD-style; see `app/StreamEdge.Core/Chat/Dictionaries/en_US.LICENSE.txt`).

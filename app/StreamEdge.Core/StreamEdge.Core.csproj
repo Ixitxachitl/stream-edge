@@ -13,6 +13,16 @@
     <!-- DPAPI for SecretStore on Windows. Referenced unconditionally so the
          build is the same everywhere; only called behind IsWindows(). -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+    <!-- Spell check in the chat box: Hunspell, in managed code, so it's the
+         same on every OS. -->
+    <PackageReference Include="WeCantSpell.Hunspell" Version="7.0.1" />
+  </ItemGroup>
+
+  <!-- The en_US Hunspell dictionary, from SCOWL (see its LICENSE), inside
+       the assembly so every platform's package carries it. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Chat\Dictionaries\en_US.aff" LogicalName="StreamEdge.Dictionaries.en_US.aff" />
+    <EmbeddedResource Include="Chat\Dictionaries\en_US.dic" LogicalName="StreamEdge.Dictionaries.en_US.dic" />
   </ItemGroup>
 
   <ItemGroup>

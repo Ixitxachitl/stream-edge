@@ -20,8 +20,9 @@
     <x:Double x:Key="SeFontSize">13</x:Double>
     <x:Double x:Key="SeSmallFontSize">11.5</x:Double>
     <!-- The chat box: Fluent's TextBox, with a presenter that draws emote
-         codes as emotes. The template is Fluent's (Avalonia 12.1.1) with
-         only the presenter swapped; its states come from BasedOn. -->
+         codes as emotes and a layer over it for spelling. The template is
+         Fluent's (Avalonia 12.1.1) with only those changed; its states come
+         from BasedOn. -->
     <ControlTheme x:Key="{x:Type em:EmoteTextBox}" TargetType="em:EmoteTextBox"
                   BasedOn="{StaticResource {x:Type TextBox}}">
     <Setter Property="Template">
@@ -95,6 +96,8 @@
                                      CaretBrush="{TemplateBinding CaretBrush}"
                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                      <!-- Red wavy lines under misspelled words. -->
+                      <em:SpellingUnderlines Name="PART_Spelling" IsHitTestVisible="False" />
                     </Panel>
                     <ScrollViewer.Styles>
                       <Style Selector="ScrollContentPresenter#PART_ContentPresenter">

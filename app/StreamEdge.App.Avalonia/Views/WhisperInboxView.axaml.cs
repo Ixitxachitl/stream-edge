@@ -23,6 +23,12 @@ public partial class WhisperInboxView : UserControl
             if (_vm is { } vm && vm.SendCommand.CanExecute(null)) vm.SendCommand.Execute(null);
             e.Handled = true;
         }, RoutingStrategies.Tunnel);
+        // Emotes and spelling as in the chat box, with no channel's own emotes.
+        WhisperInput.EmoteLookup = code => _vm?.Services?.SendableEmote(code, null)?.ImageUrl;
+        WhisperInput.Completer = (typed, contains) => _vm?.Services?.CompleteEmote(typed, null, contains) ?? [];
+        WhisperInput.Spelling = () => _vm?.Services?.Spelling;
+        WhisperInput.IsName = word => _vm?.IsName(word) == true;
+        WhisperInput.AddToDictionary = word => _vm?.Services?.AddSpellingWord(word);
         // Newest at the bottom, in view: a line arriving or another
         // conversation chosen grows or swaps what's scrolled.
         WhisperScroll.ScrollChanged += (_, e) =>
@@ -38,14 +44,19 @@ public partial class WhisperInboxView : UserControl
         {
             _vm.PropertyChanged -= OnViewModelChanged;
             _vm.RecipientPicked -= OnRecipientPicked;
+            if (_vm.Services is { } old) old.SpellingChanged -= OnSpellingChanged;
         }
         _vm = DataContext as WhisperInboxViewModel;
         if (_vm is not null)
         {
             _vm.PropertyChanged += OnViewModelChanged;
             _vm.RecipientPicked += OnRecipientPicked;
+            if (_vm.Services is { } services) services.SpellingChanged += OnSpellingChanged;
         }
+        WhisperInput.RefreshEmotes();
     }
+
+    private void OnSpellingChanged() => Dispatcher.UIThread.Post(WhisperInput.RefreshSpelling);
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {

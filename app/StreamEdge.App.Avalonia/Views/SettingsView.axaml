@@ -46,6 +46,19 @@
       <Setter Property="Margin" Value="12,0,0,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!-- A word added to the dictionary, with an × to take it out. -->
+    <Style Selector="Border.wordChip">
+      <Setter Property="Background" Value="{StaticResource SeHeaderBg}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="6,0,0,0" />
+      <Setter Property="Margin" Value="0,0,4,4" />
+    </Style>
+    <Style Selector="Border.wordChip Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="5,1" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
+    </Style>
   </UserControl.Styles>
 
   <!-- Taller than a bar display: it scrolls rather than clips. -->
@@ -158,6 +171,41 @@
             </StackPanel>
             <ToggleSwitch IsChecked="{Binding ShowGifs}" />
           </Grid>
+          <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="settingName" Text="Spell check" />
+              <TextBlock Classes="settingHint" Text="Underlines misspelled words as you type; right-click one for spellings" />
+            </StackPanel>
+            <ToggleSwitch IsChecked="{Binding SpellCheck}" />
+          </Grid>
+          <!-- Words added with "Add to dictionary". -->
+          <StackPanel Spacing="4" Margin="0,0,0,4">
+            <StackPanel.IsVisible>
+              <MultiBinding Converter="{x:Static BoolConverters.And}">
+                <Binding Path="SpellCheck" />
+                <Binding Path="HasSpellingWords" />
+              </MultiBinding>
+            </StackPanel.IsVisible>
+            <TextBlock Classes="settingHint" Text="Your words" />
+            <ItemsControl x:Name="SpellingWords" ItemsSource="{Binding Services.SpellingWords}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Border Classes="wordChip">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="{Binding}" VerticalAlignment="Center" Foreground="{StaticResource SeText}" />
+                      <Button Content="×" ToolTip.Tip="Remove from your dictionary" CommandParameter="{Binding}"
+                              Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).RemoveSpellingWordCommand}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
           <Grid Classes="settingRow" ColumnDefinitions="*,Auto">
             <StackPanel>
               <TextBlock Classes="settingName" Text="History when a channel opens" />

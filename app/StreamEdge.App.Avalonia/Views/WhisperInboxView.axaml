@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:v="using:StreamEdge.AvaloniaApp.Views"
+             xmlns:em="using:StreamEdge.AvaloniaApp.Views.Emotes"
              xmlns:vm="using:StreamEdge.AvaloniaApp.ViewModels"
              x:Class="StreamEdge.AvaloniaApp.Views.WhisperInboxView"
              x:DataType="vm:WhisperInboxViewModel">
@@ -51,9 +52,11 @@
       </Panel>
       <TextBlock DockPanel.Dock="Bottom" Text="{Binding Status}" TextWrapping="Wrap" Foreground="{StaticResource SeAccent}"
                  Margin="0,4,0,0" IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-      <!-- Enter sends (handled in code); 500 characters is Twitch's limit. -->
-      <TextBox DockPanel.Dock="Bottom" x:Name="WhisperInput" Text="{Binding Draft}" PlaceholderText="{Binding Placeholder}"
-               MaxLength="500" TextWrapping="Wrap" MaxHeight="90" Margin="0,6,0,0" />
+      <!-- The chat box's own: emotes drawn as typed, Tab completes them,
+           spell check. Enter sends (handled in code); 500 characters is
+           Twitch's limit. -->
+      <em:EmoteTextBox DockPanel.Dock="Bottom" x:Name="WhisperInput" Text="{Binding Draft}" PlaceholderText="{Binding Placeholder}"
+                       MaxLength="500" TextWrapping="Wrap" MaxHeight="90" Margin="0,6,0,0" />
       <ScrollViewer x:Name="WhisperScroll" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding !Composing}">
         <ItemsControl ItemsSource="{Binding Selected.Lines}">
           <ItemsControl.ItemTemplate>

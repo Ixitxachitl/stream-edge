@@ -11,7 +11,8 @@ namespace StreamEdge.AvaloniaApp.Views.Emotes;
 /// <summary>A text box's text with emote codes drawn as the emotes, the way
 /// they'll look once sent. Each code is one unit to the caret and selection
 /// (it moves over and deletes the code whole), and copying still gives the
-/// code. Wraps like plain text when the box wraps.</summary>
+/// code. Wraps like plain text when the box wraps. Says which words are
+/// misspelled, for <see cref="SpellingUnderlines"/> to draw.</summary>
 public sealed class EmoteTextPresenter : TextPresenter
 {
     protected override Type StyleKeyOverride => typeof(TextPresenter);
@@ -41,6 +42,36 @@ public sealed class EmoteTextPresenter : TextPresenter
 
     /// <summary>Re-lays out the text: emote sets loaded, or the channel changed.</summary>
     public void Refresh() => InvalidateTextLayout();
+
+    /// <summary>The misspelled words in the text, given the caret; null for
+    /// no spell check.</summary>
+    public Func<string, int, IReadOnlyList<(int Start, int Length)>>? Misspellings { get; set; }
+
+    // The last answer, kept while the text and caret stay (the caret's
+    // blink redraws twice a second).
+    private (string Text, int Caret, IReadOnlyList<(int Start, int Length)> Words)? _misspelled;
+
+    /// <summary>Spelling changed (a word added, spell check turned on or
+    /// off, the dictionary loaded): look again.</summary>
+    public void RefreshSpelling()
+    {
+        _misspelled = null;
+        SpellingChanged?.Invoke();
+    }
+
+    /// <summary>The underlines need drawing again.</summary>
+    public event Action? SpellingChanged;
+
+    /// <summary>The misspelled words as of now.</summary>
+    public IReadOnlyList<(int Start, int Length)> Misspelled()
+    {
+        var text = Text ?? "";
+        if (Misspellings is not { } find || text.Length == 0 || !string.IsNullOrEmpty(PreeditText)) return [];
+        if (_misspelled is { } last && last.Text == text && last.Caret == CaretIndex) return last.Words;
+        var words = find(text, CaretIndex);
+        _misspelled = (text, CaretIndex, words);
+        return words;
+    }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {

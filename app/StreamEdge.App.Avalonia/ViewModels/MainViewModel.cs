@@ -49,6 +49,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (!options.Demo && !Playback.Mpv.MpvPlayer.IsAvailable(out var why)) PlayerUnavailable = why;
         Account = new AccountViewModel(settings, _http);
         Services = new ChatServices(_http, settings, ui, () => Account.IsSignedIn ? Account.Login : null);
+        _ = Services.LoadSpellingAsync();
+        Services.SpellingWords.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSpellingWords));
         // Emotes and badges load in the background; lines already drawn are
         // redrawn when they arrive (null room = globals: every tab).
         Services.Emotes.Changed += room => _ui.Post(() => RenderChats(room));
@@ -1175,6 +1177,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set
         {
             if (SetProperty(_settings.ShowGifs, value, _settings, (s, v) => s.ShowGifs = v)) RenderChats(null);
+        }
+    }
+
+    /// <summary>The user has added words to the dictionary (listed under
+    /// spell check in settings).</summary>
+    public bool HasSpellingWords => Services.SpellingWords.Count > 0;
+
+    [RelayCommand]
+    private void RemoveSpellingWord(string word) => Services.RemoveSpellingWord(word);
+
+    /// <summary>Misspelled words underlined in the chat box.</summary>
+    public bool SpellCheck
+    {
+        get => _settings.SpellCheck;
+        set
+        {
+            if (SetProperty(_settings.SpellCheck, value, _settings, (s, v) => s.SpellCheck = v)) Services.RaiseSpellingChanged();
         }
     }
 

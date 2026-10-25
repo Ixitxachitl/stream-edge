@@ -207,6 +207,12 @@ public sealed class AppSettings
     /// switch for a slow connection or a busy chat.</summary>
     public bool ShowGifs { get; set; } = true;
 
+    /// <summary>Misspelled words underlined in the chat box, as a browser does.</summary>
+    public bool SpellCheck { get; set; } = true;
+
+    /// <summary>Words the user added to the dictionary.</summary>
+    public List<string> SpellingWords { get; set; } = [];
+
     /// <summary>An alert in the window when a favourite goes live.</summary>
     public bool NotifyGoLive { get; set; } = true;
 

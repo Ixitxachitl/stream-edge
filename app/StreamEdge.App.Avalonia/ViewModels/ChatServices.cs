@@ -144,6 +144,65 @@ public sealed class ChatServices
         if (recent.Count > MaxRecent) recent.RemoveRange(MaxRecent, recent.Count - MaxRecent);
     }
 
+    // ----- Spell check ------------------------------------------------------
+
+    private ChatSpelling? _spelling;
+
+    /// <summary>The chat box's spell checker, once its dictionary has loaded
+    /// and while spell check is on; null otherwise.</summary>
+    public ChatSpelling? Spelling => Settings.SpellCheck ? _spelling : null;
+
+    /// <summary>Spelling to draw again: the dictionary loaded, a word was
+    /// added, or spell check was turned on or off (on the UI thread).</summary>
+    public event Action? SpellingChanged;
+
+    /// <summary>Reads the dictionary in the background.</summary>
+    public async Task LoadSpellingAsync()
+    {
+        var spelling = await Task.Run(ChatSpelling.Load).ConfigureAwait(false);
+        Ui.Post(() =>
+        {
+            spelling.SetOwnWords(Settings.SpellingWords);
+            _spelling = spelling;
+            SpellingChanged?.Invoke();
+        });
+    }
+
+    /// <summary>The words the user added, A to Z, as settings lists them.
+    /// Change them on the UI thread, through the methods below.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<string> SpellingWords =>
+        _spellingWords ??= [.. Settings.SpellingWords.Order(StringComparer.OrdinalIgnoreCase)];
+    private System.Collections.ObjectModel.ObservableCollection<string>? _spellingWords;
+
+    /// <summary>"Add to dictionary": the word is fine from now on, here and
+    /// in later runs.</summary>
+    public void AddSpellingWord(string word)
+    {
+        if (!Settings.SpellingWords.Contains(word, StringComparer.OrdinalIgnoreCase))
+        {
+            Settings.SpellingWords.Add(word);
+            var words = SpellingWords;
+            var at = 0;
+            while (at < words.Count && StringComparer.OrdinalIgnoreCase.Compare(words[at], word) < 0) at++;
+            words.Insert(at, word);
+        }
+        _spelling?.AddOwnWord(word);
+        Settings.Save();
+        SpellingChanged?.Invoke();
+    }
+
+    /// <summary>Takes a word back out of the user's dictionary.</summary>
+    public void RemoveSpellingWord(string word)
+    {
+        Settings.SpellingWords.RemoveAll(w => string.Equals(w, word, StringComparison.OrdinalIgnoreCase));
+        SpellingWords.Remove(word);
+        _spelling?.SetOwnWords(Settings.SpellingWords);
+        Settings.Save();
+        SpellingChanged?.Invoke();
+    }
+
+    internal void RaiseSpellingChanged() => SpellingChanged?.Invoke();
+
     /// <summary>One badge to draw: its image when known, else the set name
     /// for a placeholder chip (Twitch's badge API needs a signed-in user).
     /// <paramref name="Detail"/> goes under its name in the tooltip.</summary>

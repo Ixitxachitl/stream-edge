@@ -41,6 +41,14 @@ public sealed partial class WhisperInboxViewModel : ObservableObject
         };
     }
 
+    /// <summary>Emotes and spelling for the message box; null in tests.</summary>
+    public ChatServices? Services => _services;
+
+    /// <summary>Someone in the inbox, by login or name: not a misspelling.</summary>
+    public bool IsName(string word) =>
+        Threads.Any(t => string.Equals(t.Login, word, StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(t.Name, word, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Who a new whisper goes to: typed, or picked from suggestions.</summary>
     public ChannelSearchViewModel Recipients { get; }
 

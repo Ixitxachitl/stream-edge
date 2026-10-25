@@ -64,6 +64,11 @@ public partial class ChatColumnView : UserControl
             : [];
         // Moderator commands only where the user moderates.
         ChatInput.CommandCompleter = typed => Chat.ChatCommand.Complete(typed, _column?.Chat.IsModerator == true);
+        // Spell check; the channel's and its chatters' names aren't misspellings.
+        ChatInput.Spelling = () => _column?.Main.Services.Spelling;
+        ChatInput.IsName = word => _column?.Chat is { } chat
+            && (chat.Roster.Contains(word) || string.Equals(word, chat.Channel, StringComparison.OrdinalIgnoreCase));
+        ChatInput.AddToDictionary = word => _column?.Main.Services.AddSpellingWord(word);
         // A click in the list picks that emote or command.
         SuggestionList.AddHandler(PointerReleasedEvent, (_, e) =>
         {
@@ -80,9 +85,17 @@ public partial class ChatColumnView : UserControl
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (_column is not null) _column.PropertyChanged -= OnColumnChanged;
+        if (_column is not null)
+        {
+            _column.PropertyChanged -= OnColumnChanged;
+            _column.Main.Services.SpellingChanged -= OnSpellingChanged;
+        }
         _column = DataContext as ChatColumnViewModel;
-        if (_column is not null) _column.PropertyChanged += OnColumnChanged;
+        if (_column is not null)
+        {
+            _column.PropertyChanged += OnColumnChanged;
+            _column.Main.Services.SpellingChanged += OnSpellingChanged;
+        }
         FollowFromTheBottom();
     }
 
@@ -93,6 +106,8 @@ public partial class ChatColumnView : UserControl
         ChatInput.RefreshEmotes();
         FollowFromTheBottom();
     }
+
+    private void OnSpellingChanged() => Dispatcher.UIThread.Post(ChatInput.RefreshSpelling);
 
     /// <summary>A chat just shown starts at its newest line.</summary>
     private void FollowFromTheBottom()

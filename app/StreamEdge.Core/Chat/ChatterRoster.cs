@@ -29,6 +29,9 @@ public sealed class ChatterRoster(string channel)
 
     public int Count => _present.Count;
 
+    /// <summary>Someone of that login is here.</summary>
+    public bool Contains(string login) => _present.ContainsKey(login);
+
     /// <summary>Bumped on every change, so a view can tell when to redraw.</summary>
     public int Version { get; private set; }
 

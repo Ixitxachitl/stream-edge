@@ -18,7 +18,9 @@ namespace StreamEdge.AvaloniaApp.Views.Emotes;
 /// letters lists matches as you go, as on twitch.tv, for Tab, Enter or a
 /// click to pick. Up and Down move through the list, Esc closes it.
 /// A '/' starting the message lists the commands the same way.
-/// Pasted line breaks become spaces, since a chat message is one line.</summary>
+/// Pasted line breaks become spaces, since a chat message is one line.
+/// With a spell checker, misspelled words are underlined, and right-clicking
+/// one offers spellings and adding it to the dictionary.</summary>
 public sealed partial class EmoteTextBox : TextBox
 {
     public static readonly DirectProperty<EmoteTextBox, bool> IsSuggestingProperty =
@@ -52,6 +54,8 @@ public sealed partial class EmoteTextBox : TextBox
         // navigation, sending, or the caret moving take them.
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         PastingFromClipboard += OnPasting;
+        // Before the text box's own Cut/Copy/Paste menu opens.
+        AddHandler(ContextRequestedEvent, OnContextRequested, RoutingStrategies.Tunnel);
     }
 
     /// <summary>A single-line TextBox keeps only the first line of a
@@ -117,13 +121,102 @@ public sealed partial class EmoteTextBox : TextBox
     }
 
     /// <summary>Redraws inline emotes, e.g. after emote sets have loaded.</summary>
-    public void RefreshEmotes() => _presenter?.Refresh();
+    public void RefreshEmotes()
+    {
+        _presenter?.Refresh();
+        _presenter?.RefreshSpelling();
+    }
+
+    /// <summary>The spell checker, or null for none (off, or not loaded yet).</summary>
+    public Func<ChatSpelling?>? Spelling { get; set; }
+
+    /// <summary>Someone's name, never underlined (emote codes never are either).</summary>
+    public Func<string, bool>? IsName { get; set; }
+
+    /// <summary>"Add to dictionary" was picked for this word.</summary>
+    public Action<string>? AddToDictionary { get; set; }
+
+    /// <summary>Underlines again: the checker or its words changed.</summary>
+    public void RefreshSpelling() => _presenter?.RefreshSpelling();
+
+    private IReadOnlyList<(int Start, int Length)> Misspellings(string text, int caret) =>
+        Spelling?.Invoke() is { } spelling
+            ? spelling.Misspelled(text, caret, word => _emoteLookup?.Invoke(word) is not null || IsName?.Invoke(word) == true)
+            : [];
 
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
         _presenter = e.NameScope.Find<EmoteTextPresenter>("PART_TextPresenter");
-        if (_presenter is not null) _presenter.EmoteLookup = _emoteLookup;
+        if (_presenter is null) return;
+        _presenter.EmoteLookup = _emoteLookup;
+        _presenter.Misspellings = Misspellings;
+        if (e.NameScope.Find<SpellingUnderlines>("PART_Spelling") is { } underlines) underlines.Presenter = _presenter;
+    }
+
+    // ----- Spelling menu ----------------------------------------------------
+
+    /// <summary>Right-click on an underlined word: its spellings, then "Add
+    /// to dictionary", then the usual Cut, Copy and Paste. Anywhere else,
+    /// the text box's own menu.</summary>
+    private void OnContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (_presenter is null || !e.TryGetPosition(_presenter, out var point)) return;
+        if (SpellingMenuAt(_presenter.TextLayout.HitTestPoint(point).TextPosition) is not { } menu) return;
+        menu.ShowAt(this, showAtPointer: true);
+        e.Handled = true;
+    }
+
+    /// <summary>The spelling menu for the misspelled word at this place in
+    /// the text, or null when there's none there.</summary>
+    public MenuFlyout? SpellingMenuAt(int at)
+    {
+        if (_presenter is null || Spelling?.Invoke() is not { } spelling) return null;
+        var text = Text ?? "";
+        foreach (var (start, length) in _presenter.Misspelled())
+            if (at >= start && at <= start + length)
+                return SpellingMenu(spelling, start, length, text.Substring(start, length));
+        return null;
+    }
+
+    private MenuFlyout SpellingMenu(ChatSpelling spelling, int start, int length, string word)
+    {
+        var menu = new MenuFlyout();
+        var suggestions = spelling.Suggest(word);
+        foreach (var suggestion in suggestions)
+        {
+            var item = new MenuItem { Header = suggestion, FontWeight = Avalonia.Media.FontWeight.SemiBold };
+            item.Click += (_, _) => ReplaceRange(start, length, suggestion);
+            menu.Items.Add(item);
+        }
+        if (suggestions.Count == 0) menu.Items.Add(new MenuItem { Header = "No spellings found", IsEnabled = false });
+        menu.Items.Add(new Separator());
+        var add = new MenuItem { Header = "Add to dictionary" };
+        add.Click += (_, _) => AddToDictionary?.Invoke(word);
+        menu.Items.Add(add);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Command("Cut", CanCut, Cut));
+        menu.Items.Add(Command("Copy", CanCopy, Copy));
+        menu.Items.Add(Command("Paste", CanPaste, Paste));
+        return menu;
+    }
+
+    private static MenuItem Command(string name, bool enabled, Action run)
+    {
+        var item = new MenuItem { Header = name, IsEnabled = enabled };
+        item.Click += (_, _) => run();
+        return item;
+    }
+
+    /// <summary>A spelling picked: it takes the word's place, caret after it.</summary>
+    private void ReplaceRange(int start, int length, string with)
+    {
+        var text = Text ?? "";
+        if (start + length > text.Length) return;
+        Text = text[..start] + with + text[(start + length)..];
+        CaretIndex = start + with.Length;
+        ClearSelection();
+        Focus();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
