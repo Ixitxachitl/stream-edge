@@ -44,9 +44,16 @@ public sealed class WhisperArchive
     public static WhisperArchive Load(string? owner)
     {
         var path = AppData.PathFor(FileName);
+        if (owner is null) return new();
+        // The copy before it, if a crash left this one unreadable.
+        return TryRead(path, owner) ?? TryRead(AppData.BackupOf(path), owner) ?? new() { Owner = owner };
+    }
+
+    private static WhisperArchive? TryRead(string path, string owner)
+    {
         try
         {
-            if (owner is not null && File.Exists(path)
+            if (File.Exists(path)
                 && JsonSerializer.Deserialize(File.ReadAllText(path), WhisperArchiveJson.Default.WhisperArchive) is { } archive
                 && archive.Owner == owner)
                 return archive;
@@ -54,7 +61,7 @@ public sealed class WhisperArchive
         catch (Exception ex) when (ex is JsonException or IOException)
         {
         }
-        return new() { Owner = owner };
+        return null;
     }
 
     public void Save()
@@ -63,10 +70,7 @@ public sealed class WhisperArchive
         foreach (var c in Conversations)
             if (c.Lines.Count > MaxLines) c.Lines.RemoveRange(0, c.Lines.Count - MaxLines);
         if (Conversations.Count > MaxConversations) Conversations.RemoveRange(MaxConversations, Conversations.Count - MaxConversations);
-        var path = AppData.PathFor(FileName);
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this, WhisperArchiveJson.Default.WhisperArchive));
-        File.Move(temp, path, overwrite: true);
+        AppData.WriteSafely(AppData.PathFor(FileName), JsonSerializer.Serialize(this, WhisperArchiveJson.Default.WhisperArchive));
     }
 }
 

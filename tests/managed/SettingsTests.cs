@@ -94,6 +94,29 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
+    public void FileZeroedByACrashFallsBackToThePreviousSave()
+    {
+        new AppSettings { Channel = "first" }.Save();
+        new AppSettings { Channel = "second" }.Save();
+        // What NTFS leaves after a power cut: the new length, but NULs.
+        var path = AppData.PathFor(AppSettings.FileName);
+        File.WriteAllBytes(path, new byte[1000]);
+        Assert.Equal("first", AppSettings.Load().Channel);
+        Assert.True(File.Exists(path + ".bad"));
+    }
+
+    [Fact]
+    public void SigningOutRemovesTheSecretsBackupToo()
+    {
+        SecretStore.Set(SecretStore.OAuthToken, "old");
+        SecretStore.Set(SecretStore.OAuthToken, "new");
+        Assert.Equal("new", SecretStore.Get(SecretStore.OAuthToken));
+        SecretStore.Set(SecretStore.OAuthToken, null);
+        Assert.Null(SecretStore.Get(SecretStore.OAuthToken));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_dir, "secrets")));
+    }
+
+    [Fact]
     public void SecretsRoundTripAndAreNotPlaintextOnWindows()
     {
         SecretStore.Set(SecretStore.PlaybackAuthToken, "hunter2token");

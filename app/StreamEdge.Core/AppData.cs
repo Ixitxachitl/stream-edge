@@ -26,4 +26,30 @@ public static class AppData
     }
 
     public static string PathFor(string fileName) => Path.Combine(Directory, fileName);
+
+    /// <summary>The previous good copy of <paramref name="path"/>, kept by
+    /// <see cref="WriteSafely(string, byte[])"/>.</summary>
+    public static string BackupOf(string path) => path + ".bak";
+
+    /// <summary>Replaces <paramref name="path"/> so that a crash or power cut
+    /// leaves either the old file or the new one, never a half-written one.
+    /// The new bytes reach the disk before the swap: without that, NTFS can
+    /// keep the new length but not the data, leaving a file of NULs. The file
+    /// it replaces is kept as <see cref="BackupOf"/>.</summary>
+    public static void WriteSafely(string path, byte[] bytes)
+    {
+        var temp = path + ".tmp";
+        using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write))
+        {
+            stream.Write(bytes);
+            stream.Flush(flushToDisk: true);
+        }
+        if (File.Exists(path))
+            File.Replace(temp, path, BackupOf(path), ignoreMetadataErrors: true);
+        else
+            File.Move(temp, path);
+    }
+
+    public static void WriteSafely(string path, string text) =>
+        WriteSafely(path, System.Text.Encoding.UTF8.GetBytes(text));
 }

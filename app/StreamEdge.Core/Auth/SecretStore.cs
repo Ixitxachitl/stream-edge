@@ -31,6 +31,12 @@ public static class SecretStore
     public static string? Get(string name)
     {
         var path = PathOf(name);
+        // The copy before it, if a crash left this one unreadable.
+        return Read(path) ?? Read(AppData.BackupOf(path));
+    }
+
+    private static string? Read(string path)
+    {
         if (!File.Exists(path)) return null;
         try
         {
@@ -50,12 +56,13 @@ public static class SecretStore
         if (string.IsNullOrEmpty(value))
         {
             File.Delete(path);
+            File.Delete(AppData.BackupOf(path));
             return;
         }
         var bytes = Encoding.UTF8.GetBytes(value);
         if (OperatingSystem.IsWindows())
         {
-            File.WriteAllBytes(path, Protect(bytes));
+            AppData.WriteSafely(path, Protect(bytes));
             return;
         }
         // Create with 0600 before any secret byte is written.

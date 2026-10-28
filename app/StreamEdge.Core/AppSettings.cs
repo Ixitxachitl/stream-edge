@@ -236,18 +236,25 @@ public sealed class AppSettings
     public static AppSettings Load()
     {
         var path = AppData.PathFor(FileName);
+        if (!File.Exists(path)) return TryRead(AppData.BackupOf(path)) ?? new();
+        if (TryRead(path) is { } settings) return settings;
+        // A hand-edited file that no longer parses, or one a crash left
+        // empty, must not stop the app starting; keep it aside so the user
+        // can recover their edits, and fall back to the copy before it.
+        File.Copy(path, path + ".bad", overwrite: true);
+        return TryRead(AppData.BackupOf(path)) ?? new();
+    }
+
+    private static AppSettings? TryRead(string path)
+    {
         try
         {
-            if (File.Exists(path))
-                return JsonSerializer.Deserialize(File.ReadAllText(path), AppSettingsJson.Default.AppSettings) ?? new();
+            return File.Exists(path) ? JsonSerializer.Deserialize(File.ReadAllText(path), AppSettingsJson.Default.AppSettings) : null;
         }
         catch (JsonException)
         {
-            // A hand-edited file that no longer parses must not stop the app
-            // starting; keep it aside so the user can recover their edits.
-            File.Copy(path, path + ".bad", overwrite: true);
+            return null;
         }
-        return new();
     }
 
     /// <summary>Set for <c>--demo</c>: settings are read so the layout looks
@@ -269,10 +276,7 @@ public sealed class AppSettings
     public void Save()
     {
         if (ReadOnly) return;
-        var path = AppData.PathFor(FileName);
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this, AppSettingsJson.Default.AppSettings));
-        File.Move(temp, path, overwrite: true);
+        AppData.WriteSafely(AppData.PathFor(FileName), JsonSerializer.Serialize(this, AppSettingsJson.Default.AppSettings));
     }
 }
 
