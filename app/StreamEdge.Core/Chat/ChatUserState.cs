@@ -21,8 +21,17 @@ public sealed record ChatUserState(
         {
             IsMod = irc.Tag("mod") == "1",
             MessageId = irc.Command == "USERSTATE" ? irc.Tag("id") : null,
+            EmoteSets = irc.Tag("emote-sets")?.Split(',', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal).ToArray(),
         };
     }
+
+    /// <summary>The <c>emote-sets</c> tag, sorted; null when absent. It
+    /// changes when a sub starts or ends, so the user's emotes need fetching
+    /// again.</summary>
+    public IReadOnlyList<string>? EmoteSets { get; init; }
+
+    /// <summary>Shows a subscriber (or founder) badge here.</summary>
+    public bool IsSubscriber => ChatRoles.Has(Badges, "subscriber") || ChatRoles.Has(Badges, "founder");
 
     /// <summary>The <c>mod</c> tag: a moderator here, whichever badge they
     /// show (a lead moderator's is <c>lead_moderator</c>).</summary>

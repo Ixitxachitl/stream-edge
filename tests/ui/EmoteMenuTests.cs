@@ -60,6 +60,24 @@ public class EmoteMenuTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void LapsedSubEmotesLeaveTheMenu() => Ui(() =>
+    {
+        var vm = Demo();
+        vm.Services.NoteUsed(E("otherWave"));
+        vm.Services.SetMyEmotes(
+        [
+            new UserEmote(E("chanHype"), "100", "subscriptions"),
+            new UserEmote(E("Kappa"), "0", "globals"),
+        ], null, replace: true);
+
+        vm.EmoteMenu.Open();
+
+        Assert.DoesNotContain("otherWave", Codes(vm.EmoteMenu));
+        Assert.DoesNotContain("OtherStreamer", Headers(vm.EmoteMenu));
+        Assert.Null(vm.Services.SendableEmote("otherWave", "100"));
+    });
+
+    [Fact]
     public void SearchFlattensAndPrefersPrefixMatches() => Ui(() =>
     {
         var vm = Demo();

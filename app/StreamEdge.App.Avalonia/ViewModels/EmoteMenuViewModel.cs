@@ -99,7 +99,10 @@ public sealed partial class EmoteMenuViewModel : ObservableObject
             return;
         }
 
+        // A Twitch emote only while the user still has it (a sub can lapse);
+        // until their emotes load, all of them.
         Section("Frequently used", null, _services.Settings.RecentEmotes
+            .Where(r => r.Provider != EmoteProvider.Twitch || mine.Count == 0 || _services.MyEmote(r.Code) is not null)
             .Select(r => new Emote(r.Code, r.ImageUrl, r.Provider)));
 
         var channelName = (roomId is null ? null : owners.GetValueOrDefault(roomId)?.DisplayName) ?? tab?.DisplayName ?? tab?.Login;

@@ -18,6 +18,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private static readonly TimeSpan StreamRefresh = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ClockTick = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PointsRefresh = TimeSpan.FromMinutes(5);
+    // Backstop for a sub lapsing without a USERSTATE to say so.
+    private static readonly TimeSpan EmoteRefresh = TimeSpan.FromMinutes(30);
     // Catch-up decisions need fresh buffer readings; 4 Hz is plenty.
     private static readonly TimeSpan PlaybackTick = TimeSpan.FromMilliseconds(250);
 
@@ -34,6 +36,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private TwitchChatClient? _chat;
     private EventSubClient? _eventSub;
     private DateTimeOffset _lastStreamRefresh = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastEmoteRefresh = DateTimeOffset.MinValue;
 
     public MainViewModel(AppSettings settings, StartupOptions options, IUiDispatcher ui)
     {
@@ -442,6 +445,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task OnAccountChangedAsync()
     {
         Whispers.Load(Account.UserId);
+        _emoteSets = null;
         // Reconnect chat under the new identity, keeping every open channel.
         if (_chat is not null) await _chat.DisposeAsync();
         _chat = CreateChatClient();
@@ -850,9 +854,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private readonly Dictionary<string, ChatUserState> _userStates =new(StringComparer.OrdinalIgnoreCase);
     private ChatUserState? _globalUserState;
+    private IReadOnlyList<string>? _emoteSets;
 
     private void OnUserState(ChatUserState state)
     {
+        // A sub starting or ending changes the emote sets (and, in that
+        // channel, the badge): fetch the user's emotes afresh, so a lapsed
+        // sub's emotes leave the menu and the chat box.
+        var before = state.Channel is { } c ? _userStates.GetValueOrDefault(c) : _globalUserState;
+        if (state.EmoteSets is { } sets && _emoteSets is { } known && !sets.SequenceEqual(known)
+            || before is not null && before.IsSubscriber != state.IsSubscriber)
+            _ = LoadMyEmotesAsync();
+        if (state.EmoteSets is not null) _emoteSets = state.EmoteSets;
+
         if (state.Channel is { } channel)
         {
             _userStates[channel] = state;
@@ -949,15 +963,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>The user's Twitch emotes, for the emote menu and their own
     /// lines. Needs the emotes permission, which logins from before it was
-    /// added don't have.</summary>
+    /// added don't have. Without <paramref name="roomId"/> it replaces them
+    /// all, follower emotes for open channels included, which is how a
+    /// lapsed sub's emotes go away.</summary>
     private async Task LoadMyEmotesAsync(string? roomId = null)
     {
         if (!Account.IsSignedIn || !Account.CanUseOwnEmotes || Account.UserId is not { } userId
             || Account.AccessToken is not { } token) return;
+        if (roomId is null) _lastEmoteRefresh = DateTimeOffset.Now;
         try
         {
             var clientId = _settings.EffectiveClientId;
             var emotes = await TwitchUserEmotes.FetchAsync(_http, clientId, token, userId, roomId, _stop.Token);
+            if (roomId is null)
+            {
+                var all = emotes.ToList();
+                foreach (var room in Tabs.Select(t => t.RoomId).OfType<string>().Distinct().ToList())
+                    all.AddRange((await TwitchUserEmotes.FetchAsync(_http, clientId, token, userId, room, _stop.Token))
+                        .Where(e => e.OwnerId == room));
+                emotes = all;
+            }
             var owners = await TwitchUserEmotes.FetchOwnersAsync(_http, clientId, token,
                 emotes.Select(e => e.OwnerId).Where(id => !Services.Owners.ContainsKey(id)), _stop.Token);
             _ui.Post(() => Services.SetMyEmotes(emotes, owners, replace: roomId is null));
@@ -1740,6 +1765,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // Signed out, a watched row is live while its video plays.
         UpdateWatched();
         if (!_options.Demo && now - _lastStreamRefresh >= StreamRefresh) _ = RefreshStreamsAsync();
+        if (!_options.Demo && now - _lastEmoteRefresh >= EmoteRefresh) _ = LoadMyEmotesAsync();
         // The balance changes as the user redeems or earns elsewhere; only
         // the columns' shown tabs have theirs on screen.
         if (!_options.Demo)

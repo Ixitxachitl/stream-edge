@@ -52,6 +52,8 @@ public class UserEmoteTests
         Assert.Equal("Me", state.DisplayName);
         Assert.Equal("#1E90FF", state.Color);
         Assert.Equal(["moderator/1", "subscriber/12"], state.Badges);
+        Assert.Equal(["0", "33"], state.EmoteSets);
+        Assert.True(state.IsSubscriber);
 
         var global = ChatUserState.FromIrc(IrcMessage.Parse("@user-id=123;display-name=Me :tmi.twitch.tv GLOBALUSERSTATE"));
         Assert.Null(global!.Channel);
