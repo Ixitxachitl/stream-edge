@@ -35,9 +35,14 @@
               <!-- As in twitch.tv's followed channels: avatar, name over
                    game, live dot and viewers; the title is on hover, after
                    a pause (and not straight from row to row) so it doesn't
-                   pop up under the wheel while the list scrolls past. -->
+                   pop up under the wheel while the list scrolls past.
+                   Below the row, not at the pointer: at the screen's bottom
+                   edge one at the pointer flipped up under it, and closed
+                   and reopened as the pointer left and re-entered the row.
+                   Below the row flips to above it, still clear of the pointer. -->
               <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" Background="Transparent"
-                    Classes.offline="{Binding !IsLive}" ToolTip.ShowDelay="1000" ToolTip.BetweenShowDelay="0">
+                    Classes.offline="{Binding !IsLive}" ToolTip.ShowDelay="1000" ToolTip.BetweenShowDelay="0"
+                    ToolTip.Placement="Bottom" ToolTip.VerticalOffset="0">
                 <ToolTip.Tip>
                   <StackPanel MaxWidth="360" Spacing="2">
                     <TextBlock Text="{Binding SharedText}" Foreground="{StaticResource SeAccent}" FontWeight="SemiBold"

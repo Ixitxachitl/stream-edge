@@ -56,6 +56,8 @@ public partial class ChatColumnView : UserControl
             if (_menuSelection is { Length: > 0 } text && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
                 await clipboard.SetTextAsync(text);
         };
+        // Ctrl+C too: the text's own copy gives a placeholder for each emote.
+        ChatScroll.AddHandler(KeyDownEvent, OnChatCopyKey, RoutingStrategies.Tunnel);
         // What the chat box can draw and complete: emotes the user can send
         // in the channel this column shows.
         ChatInput.EmoteLookup = code => _column is { } c ? c.Main.Services.SendableEmote(code, c.Selected?.RoomId)?.ImageUrl : null;
@@ -140,6 +142,19 @@ public partial class ChatColumnView : UserControl
         var text = (e.Source as Visual)?.FindAncestorOfType<SelectableTextBlock>(includeSelf: true);
         _menuSelection = text is null ? null : ChatLine.SelectedCopyText(text);
         if (text is not null) e.Handled = true;
+    }
+
+    /// <summary>The copy shortcut on a line's selection copies it as written:
+    /// names, links and emote codes rather than placeholders.</summary>
+    private async void OnChatCopyKey(object? sender, KeyEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+        if (Application.Current?.PlatformSettings?.HotkeyConfiguration.Copy.Any(g => g.Matches(e)) != true) return;
+        if ((e.Source as Visual)?.FindAncestorOfType<SelectableTextBlock>(includeSelf: true) is not { } block) return;
+        var text = ChatLine.SelectedCopyText(block);
+        if (text.Length == 0) return;
+        e.Handled = true;
+        await clipboard.SetTextAsync(text);
     }
 
     private void OnChatContextRequested(object? sender, ContextRequestedEventArgs e)

@@ -347,6 +347,17 @@ public class ChatFeaturesTests(HeadlessAvalonia ui) : UiTest(ui)
         var clipboard = TopLevel.GetTopLevel(window)!.Clipboard!;
         Assert.Equal(selected, Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clipboard).GetAwaiter().GetResult());
         menu.Close();
+
+        // Ctrl+C on the selection gives the same.
+        clipboard.ClearAsync().GetAwaiter().GetResult();
+        window.MouseDown(from, MouseButton.Left);
+        window.MouseMove(to, RawInputModifiers.LeftMouseButton);
+        window.MouseUp(to, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(block.IsFocused);
+        window.KeyPress(Key.C, RawInputModifiers.Control, PhysicalKey.C, "c");
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(selected, Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clipboard).GetAwaiter().GetResult());
         window.Close();
     });
 
