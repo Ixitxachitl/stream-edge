@@ -77,6 +77,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
         Streams.OpenRequested += (login, mode) => OpenChannel(login, mode);
         Streams.ShowOfflineChanged += OnShowOfflineChanged;
+        Streams.FavoritesChanged += UpdateWatched;
         Search = new ChannelSearchViewModel(LocalChannels, SearchChannelsAsync, (login, mode) => OpenChannel(login, mode), ui);
 
         if (options.Demo) LoadDemo();
@@ -367,6 +368,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var shared = SampleData.SharedChat.Select(SampleData.RoomId).ToList();
         foreach (var room in shared) _sharedSessions[room] = shared;
         sample = [.. sample.Select(WithSharedChat)];
+        _polledLive = sample;
+        _followedLogins = sample.Select(s => s.Login).ToHashSet(StringComparer.OrdinalIgnoreCase);
         Streams.Set(sample, now);
         var tab = OpenChannel(SampleData.Channel, OpenMode.NewTab)!;
         tab.Chat.Clear();
@@ -387,6 +390,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = LoadMyEmotesAsync();
         _chat = CreateChatClient();
         _eventSub = CreateEventSub();
+        _streamEvents = CreateStreamEvents();
         if (_options.Channel is { Length: > 0 } wanted)
         {
             // --channel always wins, alone.
@@ -452,6 +456,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_eventSub is not null) await _eventSub.DisposeAsync();
         _eventSub = CreateEventSub();
         _follows.Clear();
+        // Who's followed, and so which stars aren't, is this account's to
+        // say; and its favourites already live aren't news.
+        _followedChannels = null;
+        _followedLogins = [];
+        _polledLive = [];
+        _starred.Clear();
+        _favouritesLive = null;
         foreach (var tab in Tabs) await _chat.JoinAsync(tab.Login);
         await LoadTwitchBadgesAsync();
         RenderChats(null);
@@ -1033,13 +1044,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(_settings.UseRecentMessages, value, _settings, (s, v) => s.UseRecentMessages = v);
     }
 
+    /// <summary>A look that didn't arrive (Twitch unreachable, or busy) is
+    /// asked for again this often: the offline banner would otherwise be
+    /// missing for as long as the tab stayed open.</summary>
+    private static readonly TimeSpan LookRetry = TimeSpan.FromSeconds(30);
+
     /// <summary>Name, offline banner and avatar, for the player pane when
     /// the channel isn't live. Signed out works too (GQL).</summary>
     private async Task LoadChannelLookAsync(ChannelTabViewModel tab)
     {
+        tab.LookAskedAt = DateTimeOffset.Now;
         try
         {
-            if (await ChannelInfo.FetchAsync(_http, tab.Login, _stop.Token) is not { } info) return;
+            var info = await ChannelInfo.FetchAsync(_http, tab.Login, _stop.Token);
+            // Answered, even if with "no such channel": not asked again.
+            tab.LookLoaded = true;
+            if (info is null) return;
             _ui.Post(() =>
             {
                 tab.DisplayName = info.DisplayName;
@@ -1051,7 +1071,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
-            // Cosmetic: without it the pane just says "Offline".
+            // Until it comes the pane just says "Offline"; the clock tick
+            // asks again.
         }
     }
 
@@ -1160,6 +1181,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         // Follower emotes are only listed when asked for by channel.
         _ = LoadMyEmotesAsync(roomId);
         _eventSub?.Watch(roomId);
+        WatchStreamEvents();
         _ = RefreshWatchedAsync();
     }
 
@@ -1580,26 +1602,40 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly Dictionary<string, bool> _follows = [];
 
     /// <summary>Open tabs the user doesn't follow, for the top of the stream
-    /// list, in tab order. Signed in, a tab is listed once Twitch has said
-    /// it isn't followed; signed out, every open tab is.</summary>
+    /// list, in tab order; then the starred channels they don't follow that
+    /// have no tab, live ones first. Signed in, a tab is listed once Twitch
+    /// has said it isn't followed; signed out, every open tab is.</summary>
     private void UpdateWatched()
     {
         var followedLive = Streams.Followed.Select(s => s.Login).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var signedIn = Account.IsSignedIn && !_options.Demo;
         var watched = new List<LiveStream>();
+        var listed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var t in Columns.SelectMany(c => c.Tabs))
         {
             if (followedLive.Contains(t.Login)) continue;
             if (signedIn && (t.RoomId is not { } room || _follows.GetValueOrDefault(room, true))) continue;
-            watched.Add(_watchedLive.TryGetValue(t.Login, out var live)
+            var row = _watchedLive.TryGetValue(t.Login, out var live)
                 ? WithSharedChat(live with { ProfileImage = live.ProfileImage ?? t.Player.ProfileImage })
                 // No stream info: live is whether it's playing (or was, when
                 // a background tab stopped with PIP off).
                 : new LiveStream(t.Login, t.DisplayName ?? t.Login, "", t.Player.Game, -1, default,
                     ProfileImage: t.Player.ProfileImage,
                     IsLive: t.Session?.LastKnownLive == true,
-                    LastLive: LastLiveFor(t.Login)));
+                    LastLive: LastLiveFor(t.Login));
+            watched.Add(row);
+            listed.Add(t.Login);
+            // Starred: its row stays when the tab closes, as it was until
+            // the next refresh looks it up.
+            if (_settings.IsFavorite(t.Login)) _starred[t.Login] = row with { SharedWith = null };
         }
+        // Unstarred, or followed since: no longer one of these.
+        foreach (var gone in _starred.Keys.Where(k => !_settings.IsFavorite(k) || followedLive.Contains(k)).ToList())
+            _starred.Remove(gone);
+        watched.AddRange(_starred.Values.Where(s => !listed.Contains(s.Login))
+            .Select(s => s with { LastLive = s.IsLive ? null : LastLiveFor(s.Login) })
+            .OrderByDescending(s => s.IsLive)
+            .ThenBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase));
         Streams.SetWatched(watched, DateTimeOffset.Now);
         // Offline ones: when they were last live, for the hover card.
         _ = LoadWatchedLastLiveAsync(watched.Where(w => !w.IsLive).Select(w => w.Login));
@@ -1611,6 +1647,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_options.Demo || !Account.IsSignedIn || Account.UserId is not { } me || Account.AccessToken is not { } token)
         {
+            // Signed out, the only stream info is from a channel going live
+            // just now: good for as long as that event stands.
+            foreach (var login in _watchedLive.Keys.ToList())
+                if (_tabEvents.Live(login, null, DateTimeOffset.Now) is null) _watchedLive.Remove(login);
             UpdateWatched();
             return;
         }
@@ -1623,8 +1663,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 _follows[room] = await helix.IsFollowingAsync(me, room, _stop.Token);
             var live = others.Count == 0 ? [] : await helix.GetStreamsAsync([.. others.Select(t => t.Login)], _stop.Token);
             live = await WithLabelsAsync(helix, await WithAvatarsAsync(helix, live));
+            var polled = live.ToDictionary(s => s.Login, StringComparer.OrdinalIgnoreCase);
             _watchedLive.Clear();
-            foreach (var s in live) _watchedLive[s.Login] = s;
+            // With the ones that have just gone live, which Helix doesn't
+            // list yet, and less the ones just gone offline, which it does.
+            foreach (var t in others)
+                if (_tabEvents.Live(t.Login, polled.GetValueOrDefault(t.Login), DateTimeOffset.Now) is { } row)
+                    _watchedLive[t.Login] = row;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
@@ -1670,10 +1715,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var token = Account.IsSignedIn ? await Account.FreshTokenAsync(_stop.Token) : null;
             if (Account.UserId is not { } me || token is null)
             {
+                _polledLive = [];
                 Streams.Set([], DateTimeOffset.Now);
                 Streams.EmptyText = "Log in to see which channels you follow are live.";
                 Streams.RefreshProblem = null;
                 UpdateWatched();
+                // Signed out nothing is followed: every starred channel lists.
+                await RefreshStarredAsync(null, null);
+                if (mine == _streamRefreshes) AlertGoLive([.. StarredLive]);
+                WatchStreamEvents();
                 return;
             }
             IReadOnlyList<LiveStream> live;
@@ -1692,18 +1742,37 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
             live = await WithLabelsAsync(helix, await WithAvatarsAsync(helix, live));
             if (mine != _streamRefreshes) return;
+            // Helix lists a stream a minute or two after it starts, and
+            // keeps one about as long after it ends: what the event socket
+            // has said since goes on top, here and each time the list is set
+            // again below (an event may come in between).
+            _polledLive = live;
             // The list first; who shares chat is filled in after (one
             // request per live channel) and the list redrawn with it.
-            Streams.Set([.. live.Select(WithSharedChat)], DateTimeOffset.Now);
-            AlertGoLive(live);
+            Streams.Set([.. FollowedLive(DateTimeOffset.Now).Select(WithSharedChat)], DateTimeOffset.Now);
             Streams.EmptyText = "No followed channels are live.";
             Streams.RefreshProblem = null;
             foreach (var tab in Tabs) ShowChannelInfo(tab);
             await RefreshWatchedAsync();
+            // Who's followed: which stars aren't, and whom to listen for.
+            await LoadFollowedChannelsAsync(helix, me);
+            await RefreshStarredAsync(helix, me);
+            if (mine != _streamRefreshes) return;
+            // Stars alert whether followed or not, so once both are known.
+            AlertGoLive([.. FollowedLive(DateTimeOffset.Now), .. StarredLive]);
+            WatchStreamEvents();
             await RefreshSharedChatsAsync(helix, live);
-            if (mine == _streamRefreshes) Streams.Set([.. live.Select(WithSharedChat)], DateTimeOffset.Now);
+            if (mine != _streamRefreshes) return;
+            live = FollowedLive(DateTimeOffset.Now);
+            Streams.Set([.. live.Select(WithSharedChat)], DateTimeOffset.Now);
             // Offline followed channels last: slow to change, fetched seldom.
-            if (mine == _streamRefreshes) await RefreshOfflineAsync(helix, me, live);
+            await RefreshOfflineAsync(helix, me, live);
+            // More followed than the event socket takes: it's the ones most
+            // recently live that are listened for, which needs knowing when
+            // each was (already known if the offline ones are listed).
+            if (_followedChannels is { Count: > StreamEventsClient.MaxChannels } all)
+                await LoadLastLiveAsync(all.Select(c => c.Login));
+            if (mine == _streamRefreshes) WatchStreamEvents();
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException && !_stop.IsCancellationRequested)
         {
@@ -1771,6 +1840,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (!_options.Demo)
             foreach (var shown in Columns.Select(c => c.Selected).OfType<ChannelTabViewModel>())
                 if (now - shown.PointsLoadedAt >= PointsRefresh) _ = LoadPointsAsync(shown);
+        if (!_options.Demo)
+            foreach (var tab in Tabs)
+                if (!tab.LookLoaded && now - tab.LookAskedAt >= LookRetry) _ = LoadChannelLookAsync(tab);
         // Not just at exit: a crash or power cut should cost at most this
         // tick's worth of layout, tabs and window placement.
         _settings.Save();
@@ -1786,6 +1858,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _stop.Cancel();
         if (_chat is not null) await _chat.DisposeAsync().ConfigureAwait(false);
         if (_eventSub is not null) await _eventSub.DisposeAsync().ConfigureAwait(false);
+        if (_streamEvents is not null) await _streamEvents.DisposeAsync().ConfigureAwait(false);
         _http.Dispose();
         _stop.Dispose();
     }

@@ -57,6 +57,50 @@ public class EmoteLoadingTests(HeadlessAvalonia ui) : UiTest(ui)
         }
     });
 
+    [Fact]
+    public void APictureOnShowKeepsTryingUntilItLoads() => Ui(() =>
+    {
+        var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+        var url = new Uri($"http://127.0.0.1:{port}/banner-{Guid.NewGuid():N}.png");
+
+        var saved = EmoteImageCache.RetryAfter;
+        EmoteImageCache.RetryAfter = TimeSpan.FromMilliseconds(100);
+        var window = new Avalonia.Controls.Window { Width = 200, Height = 100 };
+        try
+        {
+            var picture = new RemoteImage();
+            window.Content = picture;
+            window.Show();
+            picture.Source = url;
+
+            bool Loaded()
+            {
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                picture.Measure(Avalonia.Size.Infinity);
+                return picture.DesiredSize.Width > 0;
+            }
+
+            // Nothing answers: it stays blank (an offline banner did so for good).
+            EmoteImageCache.GetAsync(url).GetAwaiter().GetResult();
+            Assert.False(Loaded());
+
+            // The server comes up: with nothing else done, the picture arrives.
+            using var server = ServeOnePng(port);
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            while (!Loaded() && waited.Elapsed < TimeSpan.FromSeconds(20)) Thread.Sleep(20);
+            Assert.True(Loaded());
+            Assert.Equal(new Avalonia.Size(2, 2), picture.DesiredSize);
+        }
+        finally
+        {
+            window.Close();
+            EmoteImageCache.RetryAfter = saved;
+        }
+    });
+
     /// <summary>Answers one HTTP request with a 2×2 PNG.</summary>
     private static IDisposable ServeOnePng(int port)
     {

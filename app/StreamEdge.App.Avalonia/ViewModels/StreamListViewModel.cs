@@ -67,8 +67,8 @@ public sealed partial class StreamItemViewModel : ObservableObject
     public bool HasTags => TagsText.Length > 0;
     public bool IsLive => Stream.IsLive;
 
-    /// <summary>Open in a tab but not followed: listed above the followed
-    /// channels, which <see cref="SeparatorBelow"/> marks off.</summary>
+    /// <summary>Not followed, and open in a tab or starred: listed above the
+    /// followed channels, which <see cref="SeparatorBelow"/> marks off.</summary>
     public bool IsWatched { get; init; }
 
     /// <summary>The last of a group (watched, or live above offline), with
@@ -207,8 +207,8 @@ public sealed partial class StreamListViewModel : ObservableObject
 
     private IReadOnlyList<LiveStream> _watched = [];
 
-    /// <summary>Channels open in tabs that the user doesn't follow, listed
-    /// first, in tab order.</summary>
+    /// <summary>Channels the user doesn't follow, listed first: the ones
+    /// open in tabs, in tab order, then the starred ones with no tab.</summary>
     public IReadOnlyList<LiveStream> Watched => _watched;
 
     public void SetWatched(IReadOnlyList<LiveStream> watched, DateTimeOffset now)
@@ -243,8 +243,13 @@ public sealed partial class StreamListViewModel : ObservableObject
     {
         _settings.ToggleFavorite(item.Stream.Login);
         _settings.Save();
+        FavoritesChanged?.Invoke();
         Rebuild(DateTimeOffset.Now);
     }
+
+    /// <summary>A star was put on or taken off: an unfollowed channel with
+    /// no tab is listed only while starred.</summary>
+    public event Action? FavoritesChanged;
 
     private void Rebuild(DateTimeOffset now)
     {

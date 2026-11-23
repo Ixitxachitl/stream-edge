@@ -40,7 +40,9 @@ public sealed record ChannelInfo(string Login, string DisplayName, Uri? OfflineI
         request.Headers.Add("Client-ID", TwitchPlayback.WebClientId);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) return null;
+        // Thrown, not null: Twitch not answering isn't "no such channel",
+        // and the caller may want to ask again.
+        response.EnsureSuccessStatusCode();
         return Parse(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
     }
 

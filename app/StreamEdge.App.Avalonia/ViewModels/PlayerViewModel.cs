@@ -48,7 +48,8 @@ public sealed partial class PlayerViewModel : ObservableObject
     [ObservableProperty]
     private bool _isVideoVisible;
 
-    /// <summary>The channel isn't live: show its offline banner.</summary>
+    /// <summary>The channel isn't live, as of the last answer either way:
+    /// show its offline banner.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowsBanner))]
     private bool _isOffline;
@@ -130,12 +131,19 @@ public sealed partial class PlayerViewModel : ObservableObject
         Status = status.State switch
         {
             PlaybackState.Offline => "Offline.",
+            // An offline channel is checked again every half minute: it
+            // still says offline while that's asked.
+            PlaybackState.Resolving when IsOffline => Status,
             PlaybackState.Error or PlaybackState.Resolving => status.Message,
             _ => Status,
         };
         // Only the settled states change visibility: a restart passes through
         // Stopped, and hiding the video for that moment would make it blink.
-        IsOffline = status.State == PlaybackState.Offline;
+        // Offline likewise lasts until the channel plays: the banner stays up
+        // through each check for whether it's live yet (and a check that
+        // fails), rather than blinking off for it.
+        if (status.State == PlaybackState.Offline) IsOffline = true;
+        else if (status.State == PlaybackState.Playing) IsOffline = false;
         if (status.State == PlaybackState.Offline) IsVideoVisible = false;
         else if (status.State == PlaybackState.Playing) IsVideoVisible = true;
 

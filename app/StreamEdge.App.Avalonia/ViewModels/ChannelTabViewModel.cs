@@ -100,6 +100,13 @@ public sealed partial class ChannelTabViewModel : ObservableObject, IAsyncDispos
     [ObservableProperty]
     private bool _isSelected;
 
+    /// <summary>The channel's look (offline banner, avatar) has arrived;
+    /// until it has, it's asked for again every so often.</summary>
+    internal bool LookLoaded { get; set; }
+
+    /// <summary>When the look was last asked for.</summary>
+    internal DateTimeOffset LookAskedAt { get; set; }
+
     /// <summary>When channel points were last asked for.</summary>
     internal DateTimeOffset PointsLoadedAt { get; set; }
 

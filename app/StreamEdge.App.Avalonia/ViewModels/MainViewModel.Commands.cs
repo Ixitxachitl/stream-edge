@@ -271,6 +271,13 @@ public sealed partial class MainViewModel
     /// so starting up doesn't announce everyone already live.</summary>
     private HashSet<string>? _favouritesLive;
 
+    /// <summary>When each favourite was last announced. A stream on a shaky
+    /// connection drops and comes back, over and over, and each return is
+    /// heard of at once now: it isn't news again for this long.</summary>
+    private readonly Dictionary<string, DateTimeOffset> _announced = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly TimeSpan AnnounceAgain = TimeSpan.FromMinutes(10);
+
     /// <summary>Favourites that went live since the last refresh get an alert.</summary>
     public void AlertGoLive(IReadOnlyList<LiveStream> live)
     {
@@ -278,9 +285,12 @@ public sealed partial class MainViewModel
         var known = _favouritesLive;
         _favouritesLive = [.. now.Select(s => s.Login.ToLowerInvariant())];
         if (known is null || !_settings.NotifyGoLive) return;
+        var time = DateTimeOffset.Now;
         foreach (var s in now.Where(s => !known.Contains(s.Login.ToLowerInvariant())))
         {
             var login = s.Login;
+            if (_announced.TryGetValue(login, out var last) && time - last < AnnounceAgain) continue;
+            _announced[login] = time;
             Notify?.Invoke(new AppNotification($"{s.DisplayName} is live",
                 s.Game.Length > 0 ? $"{s.Title}\n{s.Game}" : s.Title,
                 () => OpenChannel(login, OpenMode.NewTab)));

@@ -365,6 +365,42 @@ public class LayoutTests(HeadlessAvalonia ui) : UiTest(ui)
         }
         window.Close();
     });
+
+    [Fact]
+    public void TheLogInButtonSitsBelowUnfollowedRowsNotOverThem() => Ui(() =>
+    {
+        var vm = new MainViewModel(new AppSettings(), new StartupOptions { Demo = true }, InlineDispatcher.Instance);
+        vm.Streams.Set([], DateTimeOffset.Now);
+        vm.Streams.EmptyText = "Log in to see which channels you follow are live.";
+        // Signed out, open and starred channels list with nothing followed
+        // under them: enough of them reach where the button used to float.
+        foreach (var n in Enumerable.Range(1, 6)) vm.OpenChannel("channel_" + n, OpenMode.Background);
+        var window = new MainWindow { DataContext = vm, Width = 1920, Height = 480 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var frame = window.CaptureRenderedFrame();
+
+        var streams = window.FindControl<Control>("StreamsPane")!;
+        Rect In(Visual v) => new(v.TranslatePoint(default, streams)!.Value, v.Bounds.Size);
+        var login = streams.GetVisualDescendants().OfType<Button>()
+            .Single(b => b.Content as string == "Log in with Twitch");
+        var note = streams.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == vm.Streams.EmptyText);
+        var list = streams.GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "StreamList");
+        var rows = list.GetVisualDescendants().OfType<ListBoxItem>().ToList();
+        Assert.True(rows.Count >= 2);
+        Assert.True(login.IsEffectivelyVisible);
+        Assert.True(In(note).Top >= In(list).Bottom);
+        Assert.True(In(login).Bottom <= streams.Bounds.Height);
+        Assert.All(rows, row => Assert.False(In(row).Intersects(In(login)) && In(row).Intersects(In(list))));
+
+        if (Environment.GetEnvironmentVariable("STREAMEDGE_SNAPSHOT_LOGIN") is { Length: > 0 } path)
+        {
+#pragma warning disable CS0618
+            frame!.Save(path.Replace(".png", "-rows.png"));
+#pragma warning restore CS0618
+        }
+        window.Close();
+    });
 }
 
 public class SidesAndFavoritesTests(HeadlessAvalonia ui) : UiTest(ui)

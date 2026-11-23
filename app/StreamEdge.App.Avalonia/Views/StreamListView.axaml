@@ -25,8 +25,9 @@
       <!-- Join any channel: suggestions as you type, as on twitch.tv. -->
       <v:ChannelPicker DockPanel.Dock="Top" Margin="8,6,8,4" x:Name="ChannelSearch"
                        DataContext="{Binding Search}" Placeholder="Search or join a channel" />
-      <Panel>
-        <!-- Open channels the user doesn't follow head the list, live or not. -->
+      <Grid RowDefinitions="*,Auto">
+        <!-- Channels the user doesn't follow (open in a tab, or starred)
+             head the list, live or not. -->
         <ListBox x:Name="StreamList" Classes="streams" ItemsSource="{Binding Streams.Items}" SelectedItem="{Binding Streams.Selected}"
                  IsVisible="{Binding !Streams.IsEmpty}"
                  Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -118,15 +119,17 @@
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
-        <!-- After the list, so the login button sits over it and gets its
-             clicks; it shows under any open-but-unfollowed channels. -->
-        <StackPanel IsVisible="{Binding Streams.NoFollowed}" VerticalAlignment="Center" Margin="16" Spacing="10">
+        <!-- Nobody followed is live (or signed out): said in the middle of
+             an empty pane, or below any unfollowed channels listed, which
+             scroll in the room above it rather than run underneath. -->
+        <StackPanel Classes="emptyNote" Classes.alone="{Binding Streams.IsEmpty}" IsVisible="{Binding Streams.NoFollowed}"
+                    VerticalAlignment="Center" Margin="16" Spacing="10">
           <TextBlock Text="{Binding Streams.EmptyText}" Foreground="{StaticResource SeTextFaint}"
                      TextWrapping="Wrap" TextAlignment="Center" />
           <!-- The login screen: shown in place of the list until signed in. -->
           <v:LoginBox DataContext="{Binding Account}" IsVisible="{Binding !IsSignedIn}" HorizontalAlignment="Center" />
         </StackPanel>
-      </Panel>
+      </Grid>
     </DockPanel>
     </Border>
 </UserControl>

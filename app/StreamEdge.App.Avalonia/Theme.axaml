@@ -625,6 +625,15 @@
     <Setter Property="Background" Value="{StaticResource SeRule}" />
     <Setter Property="Margin" Value="-6,8,-6,-4" />
   </Style>
+  <!-- "No followed channels are live" and the login box: under the list's
+       rows, or with none, in the middle of the whole pane. -->
+  <Style Selector="StackPanel.emptyNote">
+    <Setter Property="Grid.Row" Value="1" />
+  </Style>
+  <Style Selector="StackPanel.emptyNote.alone">
+    <Setter Property="Grid.Row" Value="0" />
+    <Setter Property="Grid.RowSpan" Value="2" />
+  </Style>
   <Style Selector="ListBox.streams Grid.offline TextBlock.streamName">
     <Setter Property="Foreground" Value="{StaticResource SeTextDim}" />
   </Style>

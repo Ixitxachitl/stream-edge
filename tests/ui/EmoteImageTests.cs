@@ -40,19 +40,39 @@ public class EmoteImageTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.Null(EmoteImageCache.Decode([1, 2, 3, 4])));
 
     [Fact]
-    public void TallImagesAreShrunkWhenDecoded() => Ui(() =>
+    public void TallAnimatedImagesAreShrunkWhenDecoded() => Ui(() =>
     {
-        // A 480x480 picture, like a GIF from GIPHY.
-        using var bitmap = new SkiaSharp.SKBitmap(480, 480);
-        bitmap.Erase(SkiaSharp.SKColors.Purple);
-        using var png = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
-
-        var image = EmoteImageCache.Decode(png.ToArray())!;
+        // The two-frame GIF on a 512×512 canvas, like a GIF from GIPHY:
+        // every frame is kept, so they're kept small.
+        var tall = TwoFrameGif.ToArray();
+        (tall[6], tall[7], tall[8], tall[9]) = (0x00, 0x02, 0x00, 0x02);
+        var image = EmoteImageCache.Decode(tall)!;
+        Assert.True(image.IsAnimated);
         Assert.Equal(new Avalonia.PixelSize(256, 256), image.PixelSize);
 
         // Emote-sized images are left alone.
         using var small = new SkiaSharp.SKBitmap(112, 112);
         using var smallPng = small.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
         Assert.Equal(new Avalonia.PixelSize(112, 112), EmoteImageCache.Decode(smallPng.ToArray())!.PixelSize);
+    });
+
+    [Fact]
+    public void StillPicturesKeepTheirOwnSize() => Ui(() =>
+    {
+        static Avalonia.PixelSize Decoded(int width, int height)
+        {
+            using var bitmap = new SkiaSharp.SKBitmap(width, height);
+            bitmap.Erase(SkiaSharp.SKColors.Purple);
+            using var png = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+            return EmoteImageCache.Decode(png.ToArray())!.PixelSize;
+        }
+
+        // An offline banner as Twitch asks for it: it fills the player
+        // pane, where a 256-pixel copy stretched back up was soft.
+        Assert.Equal(new Avalonia.PixelSize(1920, 1080), Decoded(1920, 1080));
+        // A tall About panel image, shown at its own size.
+        Assert.Equal(new Avalonia.PixelSize(320, 600), Decoded(320, 600));
+        // Far past any screen: held to 4K's height, in proportion.
+        Assert.Equal(new Avalonia.PixelSize(2880, 2160), Decoded(4000, 3000));
     });
 }

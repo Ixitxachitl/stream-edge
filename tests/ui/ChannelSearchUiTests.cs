@@ -120,6 +120,89 @@ public class ChannelSearchUiTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void AStarredUnfollowedChannelStaysListedWithoutItsTab() => Ui(() =>
+    {
+        var settings = new AppSettings();
+        var vm = Demo(settings);
+        vm.OpenChannel("somebody_new", OpenMode.Background);
+        vm.OpenChannel("another_one", OpenMode.Background);
+        vm.Streams.Items.Single(i => i.Stream.Login == "another_one").ToggleFavoriteCommand.Execute(null);
+        Assert.True(settings.IsFavorite("another_one"));
+
+        // Both tabs closed: the starred one keeps its row, above the
+        // followed channels as before; the other's goes.
+        foreach (var tab in vm.Tabs.Where(t => t.Login != "pixelperegrine").ToList()) tab.CloseCommand.Execute(null);
+        var left = Assert.Single(vm.Streams.Items, i => i.IsWatched);
+        Assert.Equal("another_one", left.Stream.Login);
+        Assert.True(left.IsFavorite);
+        Assert.True(left.SeparatorBelow);
+        Assert.Same(left, vm.Streams.Items[0]);
+        Assert.StartsWith("Live Streams (12)", vm.Streams.Header);
+
+        // Opened again from its row, it's listed once.
+        left.OpenInBackgroundCommand.Execute(null);
+        Assert.Contains(vm.Tabs, t => t.Login == "another_one");
+        Assert.Single(vm.Streams.Items, i => i.Stream.Login == "another_one");
+        vm.Tabs.Single(t => t.Login == "another_one").CloseCommand.Execute(null);
+
+        // Unstarred with no tab open: nothing keeps it listed.
+        vm.Streams.Items.Single(i => i.IsWatched).ToggleFavoriteCommand.Execute(null);
+        Assert.DoesNotContain(vm.Streams.Items, i => i.IsWatched);
+        Assert.Equal(12, vm.Streams.Items.Count);
+    });
+
+    [Fact]
+    public void AFollowedChannelGoingOfflineLeavesTheListAtOnceAndComesBackLive() => Ui(() =>
+    {
+        var vm = Demo();
+        var row = vm.Streams.Followed.Single(s => s.Login == "cometcrumb");
+
+        // The event socket says so: no waiting for the next poll.
+        vm.OnWentOffline("cometcrumb");
+        Assert.DoesNotContain(vm.Streams.Items, i => i.Stream.Login == "cometcrumb");
+        Assert.StartsWith("Live Streams (11)", vm.Streams.Header);
+
+        vm.OnWentLive(row with { Title = "Back again" });
+        Assert.Equal(12, vm.Streams.Items.Count);
+        Assert.Contains(vm.Streams.Items, i => i.Stream.Login == "cometcrumb" && i.IsLive);
+
+        // Not a followed channel, starred or open: nothing to show.
+        vm.OnWentLive(new LiveStream("stranger", "Stranger", "t", "g", 3, DateTimeOffset.Now));
+        Assert.Equal(12, vm.Streams.Items.Count);
+    });
+
+    [Fact]
+    public void AStarredUnfollowedChannelGoingLiveShowsLiveAndAlerts() => Ui(() =>
+    {
+        var vm = Demo(new AppSettings());
+        vm.OpenChannel("another_one", OpenMode.Background);
+        vm.Streams.Items.Single(i => i.Stream.Login == "another_one").ToggleFavoriteCommand.Execute(null);
+        vm.Tabs.Single(t => t.Login == "another_one").CloseCommand.Execute(null);
+        Assert.False(vm.Streams.Items.Single(i => i.IsWatched).IsLive);
+        var alerts = new List<AppNotification>();
+        vm.Notify += alerts.Add;
+        // The first refresh: who's live already isn't news.
+        vm.AlertGoLive([.. vm.Streams.Followed]);
+
+        vm.OnWentLive(new LiveStream("another_one", "Another_One", "Speedruns", "Chess", 7, DateTimeOffset.Now, UserId: "9"));
+        var live = vm.Streams.Items.Single(i => i.IsWatched);
+        Assert.True(live.IsLive);
+        Assert.Equal(("Chess", "7"), (live.Game, live.ViewersText));
+        Assert.Equal("Another_One is live", Assert.Single(alerts).Title);
+
+        vm.OnWentOffline("another_one");
+        var offline = vm.Streams.Items.Single(i => i.IsWatched);
+        Assert.False(offline.IsLive);
+        Assert.Equal("Another_One", offline.DisplayName);
+        Assert.Single(alerts);
+
+        // A shaky stream comes straight back: live again, but not news again.
+        vm.OnWentLive(new LiveStream("another_one", "Another_One", "Speedruns", "Chess", 7, DateTimeOffset.Now, UserId: "9"));
+        Assert.True(vm.Streams.Items.Single(i => i.IsWatched).IsLive);
+        Assert.Single(alerts);
+    });
+
+    [Fact]
     public void SearchBoxShowsSuggestionsUnderIt() => Ui(() =>
     {
         var vm = Demo();

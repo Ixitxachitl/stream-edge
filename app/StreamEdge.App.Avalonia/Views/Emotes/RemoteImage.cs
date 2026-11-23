@@ -23,7 +23,20 @@ public sealed class RemoteImage : Control
         ClipToBoundsProperty.OverrideDefaultValue<RemoteImage>(true);
     }
 
+    public RemoteImage()
+    {
+        // Pictures are kept at their own size and drawn smaller (a 1080p
+        // banner in the pane, a 300-pixel avatar at 88): scaled smoothly.
+        RenderOptions.SetBitmapInterpolationMode(this, Avalonia.Media.Imaging.BitmapInterpolationMode.HighQuality);
+    }
+
     private EmoteImage? _image;
+
+    /// <summary>The picture being fetched, so it isn't asked for twice.</summary>
+    private Uri? _loading;
+
+    /// <summary>The longest wait between tries for a picture that won't load.</summary>
+    private static readonly TimeSpan MaxRetry = TimeSpan.FromMinutes(5);
 
     public Uri? Source
     {
@@ -44,21 +57,72 @@ public sealed class RemoteImage : Control
         _image = null;
         InvalidateMeasure();
         InvalidateVisual();
-        if (change.NewValue is not Uri url) return;
+        _loading = null;
+        if (change.NewValue is Uri url) Load(url);
+    }
+
+    /// <summary>Back on show with its picture still missing (the last try
+    /// failed, or it was taken off show while waiting to try again).</summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _onShow = true;
+        if (_image is null && Source is { } url) Load(url);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _onShow = false;
+    }
+
+    private bool _onShow;
+
+    private void Load(Uri url)
+    {
         _image = EmoteImageCache.TryGet(url);
-        if (_image is not null) return;
+        if (_image is not null)
+        {
+            InvalidateMeasure();
+            InvalidateVisual();
+            return;
+        }
+        if (_loading == url) return;
+        _loading = url;
         _ = Task.Run(async () =>
         {
-            var image = await EmoteImageCache.GetAsync(url);
-            Dispatcher.UIThread.Post(() =>
+            // A download that fails (a slow or dropped connection) is tried
+            // again, less and less often, for as long as this is on show
+            // wanting that picture: an offline banner otherwise stayed blank
+            // until its tab was left and come back to.
+            for (var wait = EmoteImageCache.RetryAfter; ;
+                 wait = TimeSpan.FromSeconds(Math.Clamp(wait.TotalSeconds * 2, 1, MaxRetry.TotalSeconds)))
             {
-                if (Source != url) return;
-                _image = image;
-                // Without a set size (About panel images), it takes the
-                // picture's, which is only known now.
-                InvalidateMeasure();
-                InvalidateVisual();
-            });
+                var image = await EmoteImageCache.GetAsync(url);
+                if (image is not null)
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (Source != url) return;
+                        _loading = null;
+                        _image = image;
+                        // Without a set size (About panel images), it takes the
+                        // picture's, which is only known now.
+                        InvalidateMeasure();
+                        InvalidateVisual();
+                    });
+                    return;
+                }
+                // The cache refuses to try sooner than RetryAfter.
+                await Task.Delay(wait + TimeSpan.FromMilliseconds(50));
+                var wanted = await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (Source == url && _onShow) return true;
+                    if (_loading == url) _loading = null;
+                    return false;
+                });
+                if (!wanted) return;
+            }
         });
     }
 

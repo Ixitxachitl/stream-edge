@@ -14,6 +14,9 @@ public sealed partial class MainViewModel
     private IReadOnlyList<ChannelRef>? _followedChannels;
     private DateTimeOffset _followedChannelsAt;
 
+    /// <summary>Their logins; empty while they aren't known.</summary>
+    private HashSet<string> _followedLogins = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Last broadcasts by login, and when each was fetched.</summary>
     private readonly Dictionary<string, (LastBroadcast? Last, DateTimeOffset At)> _lastLive = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _lastLiveLoading = new(StringComparer.OrdinalIgnoreCase);
@@ -66,18 +69,7 @@ public sealed partial class MainViewModel
     private async Task RefreshOfflineAsync(HelixClient helix, string me, IReadOnlyList<LiveStream> live)
     {
         if (!Streams.ShowOffline || _options.Demo) return;
-        try
-        {
-            if (_followedChannels is null || DateTimeOffset.Now - _followedChannelsAt >= OfflineRefresh)
-            {
-                _followedChannels = await helix.GetFollowedChannelsAsync(me, _stop.Token);
-                _followedChannelsAt = DateTimeOffset.Now;
-            }
-        }
-        catch (HttpRequestException)
-        {
-            if (_followedChannels is null) return;
-        }
+        if (!await LoadFollowedChannelsAsync(helix, me) || _followedChannels is null) return;
         var liveLogins = live.Select(s => s.Login).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var offline = _followedChannels.Where(c => !liveLogins.Contains(c.Login)).ToList();
         await LoadLastLiveAsync(offline.Select(c => c.Login));

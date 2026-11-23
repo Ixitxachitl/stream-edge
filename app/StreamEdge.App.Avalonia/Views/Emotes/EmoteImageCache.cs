@@ -50,11 +50,17 @@ public static class EmoteImageCache
     // early rather than hold that much memory per emote.
     private const int MaxFrames = 240;
 
-    /// <summary>Tallest frame kept, in pixels. Emotes are far below it; GIFs
-    /// from GIPHY come full-size, and every frame is kept decoded, so they
-    /// are shrunk to this (still sharp at chat's 100-pixel GIF height on a
-    /// 2x display).</summary>
+    /// <summary>Tallest frame kept of an animated image, in pixels. Emotes
+    /// are far below it; GIFs from GIPHY come full-size, and every frame is
+    /// kept decoded, so they are shrunk to this (still sharp at chat's
+    /// 100-pixel GIF height on a 2x display).</summary>
     private const int MaxDecodeHeight = 256;
+
+    /// <summary>Tallest still picture kept. One frame costs little, so
+    /// offline banners (1920×1080 as a rule) and About panel images keep
+    /// their own size and stay sharp; only something far larger than any
+    /// screen is shrunk.</summary>
+    private const int MaxStillHeight = 2160;
 
     // A slow connection (tens of KB/s) can still fetch a 50 KB emote; it
     // just can't fetch fifty at once inside 20 s, which is what used to happen.
@@ -183,13 +189,15 @@ public static class EmoteImageCache
         if (codec is null) return null;
 
         var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        // Frames are decoded at full size (later frames draw over earlier
-        // ones) and kept at most MaxDecodeHeight tall.
-        var shrink = info.Height > MaxDecodeHeight;
-        var kept = shrink
-            ? new SKImageInfo(Math.Max(1, info.Width * MaxDecodeHeight / info.Height), MaxDecodeHeight, SKColorType.Bgra8888, SKAlphaType.Premul)
-            : info;
         var frameInfos = codec.FrameInfo;
+        // Frames are decoded at full size (later frames draw over earlier
+        // ones) and kept at most MaxDecodeHeight tall; a still picture, at
+        // its own size short of MaxStillHeight.
+        var tallest = frameInfos.Length > 1 ? MaxDecodeHeight : MaxStillHeight;
+        var shrink = info.Height > tallest;
+        var kept = shrink
+            ? new SKImageInfo(Math.Max(1, (int)((long)info.Width * tallest / info.Height)), tallest, SKColorType.Bgra8888, SKAlphaType.Premul)
+            : info;
         var count = Math.Clamp(frameInfos.Length, 1, MaxFrames);
         var decoded = new SKBitmap[count];
         var durations = new int[count];
