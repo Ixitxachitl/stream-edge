@@ -461,6 +461,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _followedChannels = null;
         _followedLogins = [];
         _polledLive = [];
+        _offlineFollowed = [];
         _starred.Clear();
         _favouritesLive = null;
         foreach (var tab in Tabs) await _chat.JoinAsync(tab.Login);
@@ -1603,8 +1604,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>Open tabs the user doesn't follow, for the top of the stream
     /// list, in tab order; then the starred channels they don't follow that
-    /// have no tab, live ones first. Signed in, a tab is listed once Twitch
-    /// has said it isn't followed; signed out, every open tab is.</summary>
+    /// are live and have no tab. Starred ones that aren't live go with the
+    /// followed channels' offline rows, listed only when those are. Signed
+    /// in, a tab is listed once Twitch has said it isn't followed; signed
+    /// out, every open tab is.</summary>
     private void UpdateWatched()
     {
         var followedLive = Streams.Followed.Select(s => s.Login).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1625,20 +1628,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                     LastLive: LastLiveFor(t.Login));
             watched.Add(row);
             listed.Add(t.Login);
-            // Starred: its row stays when the tab closes, as it was until
-            // the next refresh looks it up.
+            // Starred: what's known of it is kept for when the tab closes,
+            // until the next refresh looks it up.
             if (_settings.IsFavorite(t.Login)) _starred[t.Login] = row with { SharedWith = null };
         }
         // Unstarred, or followed since: no longer one of these.
         foreach (var gone in _starred.Keys.Where(k => !_settings.IsFavorite(k) || followedLive.Contains(k)).ToList())
             _starred.Remove(gone);
-        watched.AddRange(_starred.Values.Where(s => !listed.Contains(s.Login))
-            .Select(s => s with { LastLive = s.IsLive ? null : LastLiveFor(s.Login) })
-            .OrderByDescending(s => s.IsLive)
-            .ThenBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase));
+        var starred = _starred.Values.Where(s => !listed.Contains(s.Login)).ToList();
+        // Live, a starred channel heads the list like an open tab does.
+        watched.AddRange(starred.Where(s => s.IsLive).OrderBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase));
         Streams.SetWatched(watched, DateTimeOffset.Now);
-        // Offline ones: when they were last live, for the hover card.
-        _ = LoadWatchedLastLiveAsync(watched.Where(w => !w.IsLive).Select(w => w.Login));
+        // Not live, it's an offline row like a followed channel's: listed
+        // with them, below the live ones, only while Offline is switched on.
+        var followedOffline = _offlineFollowed.Select(s => s.Login).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var starredOffline = starred.Where(s => !s.IsLive && !followedOffline.Contains(s.Login))
+            .Select(s => s with { LastLive = LastLiveFor(s.Login) }).ToList();
+        Streams.SetOffline([.. _offlineFollowed, .. starredOffline], DateTimeOffset.Now);
+        // Offline ones on show: when they were last live, for the hover
+        // card, and for the starred ones' place among the offline rows.
+        _ = LoadWatchedLastLiveAsync(watched.Where(w => !w.IsLive).Select(w => w.Login)
+            .Concat(Streams.ShowOffline ? starredOffline.Select(s => s.Login) : []));
     }
 
     /// <summary>Asks Twitch which open channels the user follows and which

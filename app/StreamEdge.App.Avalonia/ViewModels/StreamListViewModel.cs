@@ -67,8 +67,8 @@ public sealed partial class StreamItemViewModel : ObservableObject
     public bool HasTags => TagsText.Length > 0;
     public bool IsLive => Stream.IsLive;
 
-    /// <summary>Not followed, and open in a tab or starred: listed above the
-    /// followed channels, which <see cref="SeparatorBelow"/> marks off.</summary>
+    /// <summary>Not followed, and open in a tab or starred and live: listed
+    /// above the followed channels, which <see cref="SeparatorBelow"/> marks off.</summary>
     public bool IsWatched { get; init; }
 
     /// <summary>The last of a group (watched, or live above offline), with
@@ -174,15 +174,18 @@ public sealed partial class StreamListViewModel : ObservableObject
 
     private IReadOnlyList<LiveStream> _offline = [];
 
-    /// <summary>Followed channels that aren't live, listed below the live
-    /// ones (with <see cref="ShowOffline"/>), most recently live first.</summary>
+    /// <summary>Channels that aren't live (followed ones, and starred ones
+    /// that aren't followed), listed below the live ones (with
+    /// <see cref="ShowOffline"/>), most recently live first.</summary>
     public void SetOffline(IReadOnlyList<LiveStream> offline, DateTimeOffset now)
     {
+        if (offline.SequenceEqual(_offline)) return;
         _offline = offline;
         if (ShowOffline) Rebuild(now);
     }
 
-    /// <summary>List followed channels that are offline too.</summary>
+    /// <summary>List channels that are offline too: followed ones, and
+    /// starred ones that aren't followed.</summary>
     public bool ShowOffline
     {
         get => _settings.ShowOffline;
@@ -208,7 +211,7 @@ public sealed partial class StreamListViewModel : ObservableObject
     private IReadOnlyList<LiveStream> _watched = [];
 
     /// <summary>Channels the user doesn't follow, listed first: the ones
-    /// open in tabs, in tab order, then the starred ones with no tab.</summary>
+    /// open in tabs, in tab order, then the starred ones that are live.</summary>
     public IReadOnlyList<LiveStream> Watched => _watched;
 
     public void SetWatched(IReadOnlyList<LiveStream> watched, DateTimeOffset now)

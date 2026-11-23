@@ -3,8 +3,9 @@ using StreamEdge.Streams;
 
 namespace StreamEdge.AvaloniaApp.ViewModels;
 
-/// <summary>Starred channels the user doesn't follow: listed with the open
-/// but unfollowed tabs at the top of the list, live or not, tab or no tab.</summary>
+/// <summary>Starred channels the user doesn't follow: while live, listed
+/// with the open but unfollowed tabs at the top of the list, tab or no tab;
+/// otherwise among the offline rows, when those are listed.</summary>
 public sealed partial class MainViewModel
 {
     /// <summary>The row of each starred channel known not to be followed, by

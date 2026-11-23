@@ -17,7 +17,7 @@
           <TextBlock DockPanel.Dock="Left" Classes="dragGrip" Text="⠿" ToolTip.Tip="Drag to move: drop on a side of the video" />
           <Button DockPanel.Dock="Right" Content="⇅" ToolTip.Tip="Change sort" Command="{Binding Streams.CycleSortCommand}" />
           <ToggleButton DockPanel.Dock="Right" Classes="pip" Content="◌ Offline" IsChecked="{Binding Streams.ShowOffline}"
-                        ToolTip.Tip="Also list followed channels that are offline, most recently live first" />
+                        ToolTip.Tip="Also list followed and starred channels that are offline, most recently live first" />
           <Button DockPanel.Dock="Right" Content="⟳" ToolTip.Tip="Refresh the live list (and retry offline tabs)" Command="{Binding RefreshCommand}" />
           <TextBlock Text="{Binding Streams.Header}" ToolTip.Tip="{Binding Streams.HeaderTip}" />
         </DockPanel>
@@ -26,8 +26,8 @@
       <v:ChannelPicker DockPanel.Dock="Top" Margin="8,6,8,4" x:Name="ChannelSearch"
                        DataContext="{Binding Search}" Placeholder="Search or join a channel" />
       <Grid RowDefinitions="*,Auto">
-        <!-- Channels the user doesn't follow (open in a tab, or starred)
-             head the list, live or not. -->
+        <!-- Channels the user doesn't follow head the list: the ones open
+             in a tab, live or not, and starred ones while they're live. -->
         <ListBox x:Name="StreamList" Classes="streams" ItemsSource="{Binding Streams.Items}" SelectedItem="{Binding Streams.Selected}"
                  IsVisible="{Binding !Streams.IsEmpty}"
                  Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">

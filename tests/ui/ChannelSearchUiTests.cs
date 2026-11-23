@@ -120,7 +120,7 @@ public class ChannelSearchUiTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
-    public void AStarredUnfollowedChannelStaysListedWithoutItsTab() => Ui(() =>
+    public void AStarredUnfollowedChannelThatIsOfflineListsOnlyWithOfflineOn() => Ui(() =>
     {
         var settings = new AppSettings();
         var vm = Demo(settings);
@@ -129,25 +129,38 @@ public class ChannelSearchUiTests(HeadlessAvalonia ui) : UiTest(ui)
         vm.Streams.Items.Single(i => i.Stream.Login == "another_one").ToggleFavoriteCommand.Execute(null);
         Assert.True(settings.IsFavorite("another_one"));
 
-        // Both tabs closed: the starred one keeps its row, above the
-        // followed channels as before; the other's goes.
+        // Both tabs closed (demo plays nothing, so they're offline): neither
+        // has a row, starred or not.
         foreach (var tab in vm.Tabs.Where(t => t.Login != "pixelperegrine").ToList()) tab.CloseCommand.Execute(null);
-        var left = Assert.Single(vm.Streams.Items, i => i.IsWatched);
-        Assert.Equal("another_one", left.Stream.Login);
-        Assert.True(left.IsFavorite);
-        Assert.True(left.SeparatorBelow);
-        Assert.Same(left, vm.Streams.Items[0]);
+        Assert.DoesNotContain(vm.Streams.Items, i => i.IsWatched);
+        Assert.Equal(12, vm.Streams.Items.Count);
+
+        // Offline switched on: the starred one is an offline row, below the
+        // live channels like a followed one's; the other still isn't listed.
+        vm.Streams.ShowOffline = true;
+        Assert.Equal(13, vm.Streams.Items.Count);
+        var offline = vm.Streams.Items[^1];
+        Assert.Equal("another_one", offline.Stream.Login);
+        Assert.Equal((false, false, true), (offline.IsWatched, offline.IsLive, offline.IsFavorite));
+        Assert.True(vm.Streams.Items[^2].SeparatorBelow);
         Assert.StartsWith("Live Streams (12)", vm.Streams.Header);
 
-        // Opened again from its row, it's listed once.
-        left.OpenInBackgroundCommand.Execute(null);
-        Assert.Contains(vm.Tabs, t => t.Login == "another_one");
-        Assert.Single(vm.Streams.Items, i => i.Stream.Login == "another_one");
+        // Opened again from its row, it's listed once: as its tab's row.
+        offline.OpenInBackgroundCommand.Execute(null);
+        Assert.True(Assert.Single(vm.Streams.Items, i => i.Stream.Login == "another_one").IsWatched);
         vm.Tabs.Single(t => t.Login == "another_one").CloseCommand.Execute(null);
+        Assert.False(Assert.Single(vm.Streams.Items, i => i.Stream.Login == "another_one").IsWatched);
 
         // Unstarred with no tab open: nothing keeps it listed.
-        vm.Streams.Items.Single(i => i.IsWatched).ToggleFavoriteCommand.Execute(null);
-        Assert.DoesNotContain(vm.Streams.Items, i => i.IsWatched);
+        vm.Streams.Items[^1].ToggleFavoriteCommand.Execute(null);
+        Assert.Equal(12, vm.Streams.Items.Count);
+
+        // Offline switched off again, a starred one that's offline isn't listed.
+        vm.OpenChannel("another_one", OpenMode.Background);
+        vm.Streams.Items.Single(i => i.Stream.Login == "another_one").ToggleFavoriteCommand.Execute(null);
+        vm.Tabs.Single(t => t.Login == "another_one").CloseCommand.Execute(null);
+        Assert.Equal(13, vm.Streams.Items.Count);
+        vm.Streams.ShowOffline = false;
         Assert.Equal(12, vm.Streams.Items.Count);
     });
 
@@ -178,7 +191,8 @@ public class ChannelSearchUiTests(HeadlessAvalonia ui) : UiTest(ui)
         vm.OpenChannel("another_one", OpenMode.Background);
         vm.Streams.Items.Single(i => i.Stream.Login == "another_one").ToggleFavoriteCommand.Execute(null);
         vm.Tabs.Single(t => t.Login == "another_one").CloseCommand.Execute(null);
-        Assert.False(vm.Streams.Items.Single(i => i.IsWatched).IsLive);
+        // Offline, with no tab: not listed.
+        Assert.DoesNotContain(vm.Streams.Items, i => i.Stream.Login == "another_one");
         var alerts = new List<AppNotification>();
         vm.Notify += alerts.Add;
         // The first refresh: who's live already isn't news.
@@ -190,10 +204,14 @@ public class ChannelSearchUiTests(HeadlessAvalonia ui) : UiTest(ui)
         Assert.Equal(("Chess", "7"), (live.Game, live.ViewersText));
         Assert.Equal("Another_One is live", Assert.Single(alerts).Title);
 
+        // It heads the list, above the followed channels, like an open tab.
+        Assert.Same(live, vm.Streams.Items[0]);
+        Assert.True(live.SeparatorBelow);
+
+        // Offline again: off the list (the Offline switch is off).
         vm.OnWentOffline("another_one");
-        var offline = vm.Streams.Items.Single(i => i.IsWatched);
-        Assert.False(offline.IsLive);
-        Assert.Equal("Another_One", offline.DisplayName);
+        Assert.DoesNotContain(vm.Streams.Items, i => i.Stream.Login == "another_one");
+        Assert.Equal(12, vm.Streams.Items.Count);
         Assert.Single(alerts);
 
         // A shaky stream comes straight back: live again, but not news again.

@@ -75,14 +75,19 @@ public sealed partial class MainViewModel
         await LoadLastLiveAsync(offline.Select(c => c.Login));
         var rows = offline.Select(c => new LiveStream(c.Login, c.DisplayName, "", "", -1, default,
             UserId: c.Id, IsLive: false, LastLive: LastLiveFor(c.Login))).ToList();
-        Streams.SetOffline(await WithAvatarsAsync(helix, rows), DateTimeOffset.Now);
+        _offlineFollowed = await WithAvatarsAsync(helix, rows);
+        // With the starred, unfollowed channels that aren't live.
+        UpdateWatched();
     }
+
+    /// <summary>The followed channels' offline rows, as last fetched.</summary>
+    private IReadOnlyList<LiveStream> _offlineFollowed = [];
 
     /// <summary>The toggle went on: fill the offline rows now rather than at
     /// the next refresh.</summary>
     private void OnShowOfflineChanged()
     {
-        if (Streams.ShowOffline) _ = RefreshStreamsAsync();
+        if (Streams.ShowOffline && !_options.Demo) _ = RefreshStreamsAsync();
     }
 
     /// <summary>Open tabs whose channel is offline get their last broadcast
