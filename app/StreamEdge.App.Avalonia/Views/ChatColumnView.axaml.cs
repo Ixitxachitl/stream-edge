@@ -66,12 +66,14 @@ public partial class ChatColumnView : UserControl
             : [];
         // Moderator commands only where the user moderates.
         ChatInput.CommandCompleter = typed => Chat.ChatCommand.Complete(typed, _column?.Chat.IsModerator == true);
+        // '@' lists who's in this chat.
+        ChatInput.MentionCompleter = typed => _column?.Chat is { } chat ? chat.Roster.Complete(typed) : [];
         // Spell check; the channel's and its chatters' names aren't misspellings.
         ChatInput.Spelling = () => _column?.Main.Services.Spelling;
         ChatInput.IsName = word => _column?.Chat is { } chat
             && (chat.Roster.Contains(word) || string.Equals(word, chat.Channel, StringComparison.OrdinalIgnoreCase));
         ChatInput.AddToDictionary = word => _column?.Main.Services.AddSpellingWord(word);
-        // A click in the list picks that emote or command.
+        // A click in the list picks that emote, command or chatter.
         SuggestionList.AddHandler(PointerReleasedEvent, (_, e) =>
         {
             if ((e.Source as Control)?.DataContext is { } item && ChatInput.Suggestions.IndexOf(item) is >= 0 and var index)

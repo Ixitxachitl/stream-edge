@@ -191,6 +191,32 @@ public class EmoteInputTests(HeadlessAvalonia ui) : UiTest(ui)
     });
 
     [Fact]
+    public void AnAtListsChattersToMention() => Ui(() =>
+    {
+        var (window, vm, input) = Open();
+        var chat = vm.FrontTab!.Chat;
+        chat.Roster.AddNames(["bobby"]);
+        chat.Add(new ChatMessage(DateTimeOffset.Now, ChatMessageKind.Message, chat.Channel, "bob", "Bob", null, [], "hi"));
+        Type(window, "hey @");
+        Assert.False(input.IsSuggesting); // a letter first
+        Type(window, "bo");
+        Assert.True(input.IsSuggesting);
+        Assert.Equal(["bob", "bobby"], input.Suggestions.OfType<Chatter>().Select(c => c.Login).Take(2));
+
+        Press(window, Key.Enter);
+        Assert.Equal("hey @Bob ", vm.Chat.Draft);
+        Assert.False(input.IsSuggesting);
+
+        // Tab completes and cycles too.
+        Type(window, "@bo");
+        Press(window, Key.Tab);
+        Assert.Equal("hey @Bob @Bob", vm.Chat.Draft);
+        Press(window, Key.Tab);
+        Assert.Equal("hey @Bob @bobby", vm.Chat.Draft);
+        window.Close();
+    });
+
+    [Fact]
     public void EscapeClosesTheListUntilTheWordChanges() => Ui(() =>
     {
         var (window, _, input) = Open();

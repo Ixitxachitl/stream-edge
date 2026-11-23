@@ -15,7 +15,11 @@ public enum ChatterRole
     User,
 }
 
-public sealed record Chatter(string Login, string DisplayName, ChatterRole Role);
+public sealed record Chatter(string Login, string DisplayName, ChatterRole Role)
+{
+    /// <summary>The display name isn't just the login's capitals (日本語 names).</summary>
+    public bool NameIsNotLogin => !string.Equals(DisplayName, Login, StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>Who is in a channel's chat, as far as chat itself shows: anyone
 /// who has said something, plus the NAMES list and JOIN/PART that Twitch
@@ -26,6 +30,9 @@ public sealed record Chatter(string Login, string DisplayName, ChatterRole Role)
 public sealed class ChatterRoster(string channel)
 {
     private readonly Dictionary<string, Chatter> _present = new(StringComparer.OrdinalIgnoreCase);
+    // When each login last said something, as a running count: higher is more recent.
+    private readonly Dictionary<string, long> _spoke = new(StringComparer.OrdinalIgnoreCase);
+    private long _said;
 
     public int Count => _present.Count;
 
@@ -43,6 +50,7 @@ public sealed class ChatterRoster(string channel)
             if (message.Text.StartsWith("PART", StringComparison.Ordinal))
             {
                 if (_present.Remove(login)) Version++;
+                _spoke.Remove(login);
             }
             else
             {
@@ -52,7 +60,32 @@ public sealed class ChatterRoster(string channel)
         }
         // Messages, actions, and user notices (subs, raids) all mean they're here.
         Add(login, message.DisplayName, message.Badges);
+        _spoke[login] = ++_said;
     }
+
+    /// <summary>Chatters whose name or login starts with <paramref name="typed"/>
+    /// (what follows '@' in the chat box), best first: the most recent
+    /// speakers, then the rest by name. The channel itself is always one,
+    /// here or not.</summary>
+    public IReadOnlyList<Chatter> Complete(string typed, int max = 10)
+    {
+        var candidates = _present.Values.AsEnumerable();
+        if (!_present.ContainsKey(channel) && channel.Length > 0)
+            candidates = candidates.Append(new Chatter(channel.ToLowerInvariant(), channel, ChatterRole.Broadcaster));
+        return candidates
+            .Where(c => c.Login.StartsWith(typed, StringComparison.OrdinalIgnoreCase)
+                        || c.DisplayName.StartsWith(typed, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(c => _spoke.GetValueOrDefault(c.Login))
+            .ThenBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Take(max)
+            .ToList();
+    }
+
+    /// <summary>What a mention of them looks like: their display name, or
+    /// their login where the name is in another script (日本語) and Twitch
+    /// wouldn't know it.</summary>
+    public static string MentionOf(Chatter chatter) =>
+        "@" + (chatter.NameIsNotLogin ? chatter.Login : chatter.DisplayName);
 
     /// <summary>IRC 353: the logins already in chat when we joined.</summary>
     public void AddNames(IEnumerable<string> logins)

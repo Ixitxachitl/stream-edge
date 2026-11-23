@@ -17,7 +17,8 @@ namespace StreamEdge.AvaloniaApp.Views.Emotes;
 /// cycles through the other matches (Shift+Tab back); typing ':' and a few
 /// letters lists matches as you go, as on twitch.tv, for Tab, Enter or a
 /// click to pick. Up and Down move through the list, Esc closes it.
-/// A '/' starting the message lists the commands the same way.
+/// A '/' starting the message lists the commands the same way, and '@'
+/// and a letter lists the people in chat, recent speakers first.
 /// Pasted line breaks become spaces, since a chat message is one line.
 /// With a spell checker, misspelled words are underlined, and right-clicking
 /// one offers spellings and adding it to the dictionary.</summary>
@@ -96,7 +97,11 @@ public sealed partial class EmoteTextBox : TextBox
     /// <summary>Commands whose name starts with what's typed after '/'.</summary>
     public Func<string, IReadOnlyList<ChatCommandInfo>>? CommandCompleter { get; set; }
 
-    /// <summary>Emotes, or commands while the message starts with '/'.</summary>
+    /// <summary>Chatters whose name starts with what's typed after '@'.</summary>
+    public Func<string, IReadOnlyList<Chatter>>? MentionCompleter { get; set; }
+
+    /// <summary>Emotes, commands while the message starts with '/', or
+    /// chatters after '@'.</summary>
     public ObservableCollection<object> Suggestions { get; } = [];
 
     /// <summary>What picking a suggestion puts in the box.</summary>
@@ -104,6 +109,7 @@ public sealed partial class EmoteTextBox : TextBox
     {
         Emote emote => emote.Code,
         ChatCommandInfo command => command.Slash,
+        Chatter chatter => ChatterRoster.MentionOf(chatter),
         _ => "",
     };
 
@@ -248,6 +254,12 @@ public sealed partial class EmoteTextBox : TextBox
             _wordLength = length;
             Show(commands(word[1..]));
         }
+        else if (IsMentionWord(word) && word != _dismissed && MentionCompleter is { } mentions)
+        {
+            _wordStart = start;
+            _wordLength = length;
+            Show(mentions(word[1..]));
+        }
         else if (word.Length > ColonMinimum && word[0] == ':' && word != _dismissed && Completer is { } complete)
         {
             _wordStart = start;
@@ -314,6 +326,11 @@ public sealed partial class EmoteTextBox : TextBox
             if (CommandCompleter is not { } commands) return;
             matches = commands(word[1..]);
         }
+        else if (IsMentionWord(word))
+        {
+            if (MentionCompleter is not { } mentions) return;
+            matches = mentions(word[1..]);
+        }
         else
         {
             var colon = word.StartsWith(':');
@@ -379,6 +396,9 @@ public sealed partial class EmoteTextBox : TextBox
 
     /// <summary>The first word of the message, starting with '/'.</summary>
     private static bool IsCommandWord(int start, string word) => start == 0 && word.StartsWith('/');
+
+    /// <summary>'@' and at least a letter of someone's name.</summary>
+    private static bool IsMentionWord(string word) => word.Length > 1 && word[0] == '@';
 
     private bool TypedInFull() =>
         SuggestionIndex >= 0 && SuggestionIndex < Suggestions.Count

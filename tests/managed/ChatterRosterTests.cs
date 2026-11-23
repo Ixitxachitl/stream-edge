@@ -96,4 +96,30 @@ public class ChatterRosterTests
         var http = new HttpClient(new FakeHttp(_ => FakeHttp.Status(System.Net.HttpStatusCode.Forbidden)));
         Assert.Null(await ChatterRoster.FetchAsync(http, "client", "token", "10", "20", CancellationToken.None));
     }
+
+    [Fact]
+    public void AtCompletesRecentSpeakersFirstThenByName()
+    {
+        var roster = new ChatterRoster("chan");
+        roster.AddNames(["sam", "sal"]);
+        roster.Observe(Say("sue", "Sue"));
+        roster.Observe(Say("sid", "Sid"));
+        roster.Observe(Say("zed", "Zed"));
+        Assert.Equal(["sid", "sue", "sal", "sam"], roster.Complete("s").Select(c => c.Login));
+        Assert.Equal(["sid"], roster.Complete("SI").Select(c => c.Login));
+        // The channel even before it says anything.
+        Assert.Equal(["chan"], roster.Complete("ch").Select(c => c.Login));
+    }
+
+    [Fact]
+    public void MentionsUseTheLoginWhenTheNameIsInAnotherScript()
+    {
+        Assert.Equal("@CoolGuy", ChatterRoster.MentionOf(new Chatter("coolguy", "CoolGuy", ChatterRole.User)));
+        Assert.Equal("@nihon", ChatterRoster.MentionOf(new Chatter("nihon", "日本", ChatterRole.User)));
+        // Either name finds them.
+        var roster = new ChatterRoster("chan");
+        roster.Observe(Say("nihon", "日本"));
+        Assert.Single(roster.Complete("日"));
+        Assert.Single(roster.Complete("ni"));
+    }
 }
